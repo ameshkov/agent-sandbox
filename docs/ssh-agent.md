@@ -91,7 +91,11 @@ ssh -T git@github.com         # or whatever server you actually use
   cleared per boot, so the socket must be recreated after every boot).
 - **Host**: keep the `socat` line in your `run-sandbox.sh` next to `tart run`,
   or run it as a LaunchAgent. One host-side listener can serve all your
-  sandboxes.
+  sandboxes. The repo's [`scripts/run-macos-sandbox.sh`](../scripts/run-macos-sandbox.sh)
+  automates the whole flow: it detects the host agent socket and starts the
+  host bridge for the current run (nothing is written to the host's shell
+  profile), then sets up the guest bridge and persists it in the guest's
+  `~/.zprofile`, so it survives guest reboots.
 
 Tip: with the bridge in place, even `tart exec` commands can use the agent,
 e.g. `tart exec sandbox env SSH_AUTH_SOCK=/tmp/ssh-agent.sock git push`.

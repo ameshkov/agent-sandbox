@@ -247,6 +247,27 @@ END
     ]
   }
 
+  # Browsers — Google Chrome and Mozilla Firefox (latest stable universal
+  # macOS builds, via Homebrew casks). Quarantine is stripped explicitly so
+  # they launch without Gatekeeper prompts (the VM boots straight to the
+  # desktop and may run headless; same choice as the xattr call for VS Code
+  # above — brew's own --no-quarantine flag was removed in newer Homebrew).
+  provisioner "shell" {
+    inline = [<<-END
+set -e -x
+source ~/.zprofile
+brew install --cask google-chrome firefox
+
+# Drop the quarantine attribute so the apps launch without Gatekeeper prompts
+sudo xattr -dr com.apple.quarantine "/Applications/Google Chrome.app" || true
+sudo xattr -dr com.apple.quarantine "/Applications/Firefox.app" || true
+
+"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --version
+"/Applications/Firefox.app/Contents/MacOS/firefox" --version
+END
+    ]
+  }
+
   # OpenCode — the AI coding agent
   provisioner "shell" {
     inline = [<<-END
@@ -270,6 +291,15 @@ set -e -x
 source ~/.zprofile
 npm install -g @openchamber/web
 openchamber --version
+
+# Pin the opencode binary the service will run: `startup enable` snapshots
+# the environment into the LaunchAgent, so resolving the absolute path here
+# (instead of relying on PATH lookup inside the login session) guarantees
+# OpenChamber uses exactly the opencode this image ships.
+opencode_bin="$(command -v opencode)"
+test -x "$opencode_bin"
+export OPENCODE_BINARY="$opencode_bin"
+echo "OpenChamber will run opencode at: $OPENCODE_BINARY"
 
 # Auto-start at login, bind to 0.0.0.0 for host access. --lan refuses to
 # start without a UI password, hence openchamber_ui_password.
@@ -311,6 +341,8 @@ ruby --version
 git --version
 gh --version | head -1
 code --version | head -1
+"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --version
+"/Applications/Firefox.app/Contents/MacOS/firefox" --version
 opencode --version
 openchamber --version
 echo "========================================"

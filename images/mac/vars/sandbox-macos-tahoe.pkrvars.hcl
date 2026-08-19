@@ -27,6 +27,7 @@ ssh_password = "admin"
 # docs/macos.md). OpenChamber refuses to serve on the network without it.
 openchamber_ui_password = "sandbox"
 
-# Semantic version this image is published under (also the push tag, besides
-# :latest).  Bump it and add a CHANGELOG.md entry for every release.
-image_version = "1.1.0"
+# Semantic version this image is published under (also the GHCR push tag,
+# besides :latest).  For every release: bump it, add a CHANGELOG.md entry,
+# and create the mac-v<version> git tag (./scripts/tag.sh <image>).
+image_version = "1.2.0"

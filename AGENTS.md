@@ -15,14 +15,18 @@ recipes; it is the authoritative build/release guide.
   version): OS/toolchain versions, VM resources, `image_version`. Single
   source of truth for versions — wire changes through template variables,
   never hardcode in the template.
-- `scripts/build.sh`, `scripts/deploy.sh` — wrappers that discover images from
-  `images/*/vars/*.pkrvars.hcl`; they resolve the repo root themselves, so run
-  them from anywhere.
+- `scripts/build.sh`, `scripts/deploy.sh`, `scripts/tag.sh` — wrappers that
+  discover images from `images/*/vars/*.pkrvars.hcl`; they resolve the repo
+  root themselves, so run them from anywhere.
+- `scripts/run-macos-sandbox.sh` — user-facing runner: pulls/clones the sandbox
+  if needed, runs it with the recommended settings, bridges the host's SSH
+  agent into the guest (see `docs/ssh-agent.md`), and verifies OpenChamber.
 - `docs/` — user guides. Only `macos.md` and `ssh-agent.md` are real;
   `linux.md` / `windows.md` are placeholders (only macOS host → macOS guest is
   supported today).
 - `images/mac/CHANGELOG.md` — per-image changelog, keep in sync with
-  `image_version`.
+  `image_version`; always keeps an `[Unreleased]` section on top and links to
+  the release tags (`mac-v<version>`) at the bottom.
 
 ## Commands
 
@@ -35,6 +39,10 @@ recipes; it is the authoritative build/release guide.
   `ghcr.io/<owner>/agent-sandbox/macos/<image>`; needs a one-time
   `tart login ghcr.io` with `packages:write`. Owner comes from the git remote,
   override with `GHCR_OWNER`.
+- Tag a release: `./scripts/tag.sh <image>` — creates and pushes the annotated
+  git tag `<platform>-v<version>` (e.g. `mac-v1.2.0`); fails on a dirty tree
+  or a missing `[<tag>]` CHANGELOG entry. Run after committing a release,
+  before `build.sh` + `deploy.sh`.
 
 ## Conventions & gotchas
 
@@ -42,7 +50,8 @@ recipes; it is the authoritative build/release guide.
   The Xcode version is **not** part of the name (it only selects the base
   image). Never introduce a separate naming scheme.
 - Every release: bump `image_version` in the vars file, add a CHANGELOG entry,
-  then `build.sh` + `deploy.sh`. Keep them in sync.
+  commit, create the release tag (`./scripts/tag.sh <image>`, e.g.
+  `mac-v1.2.0`), then `build.sh` + `deploy.sh`. Keep them in sync.
 - Any change to an image — the Packer template, its vars file, or the
   provisioner scripts — must be recorded in `images/mac/CHANGELOG.md`, not
   just released versions. Update the changelog in the same change as the

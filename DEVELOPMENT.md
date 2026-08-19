@@ -25,9 +25,11 @@ whenever you change how an image behaves.
 ```text
 ├── README.md                      # Index: point of entry to all docs
 ├── DEVELOPMENT.md                # This document
-├── scripts/                       # Shared build & deploy scripts (repo root)
+├── scripts/                       # Shared build, deploy & tag scripts (repo root)
 │   ├── build.sh                   # ./scripts/build.sh [<image>]  — packer init + build
-│   └── deploy.sh                  # ./scripts/deploy.sh [<image>] — push to GHCR
+│   ├── deploy.sh                  # ./scripts/deploy.sh [<image>] — push to GHCR
+│   ├── tag.sh                     # ./scripts/tag.sh [<image>]    — create & push the release git tag
+│   └── run-macos-sandbox.sh       # user-facing: pull/run a VM + SSH agent bridge + OpenChamber
 ├── docs/                          # User-facing, per host OS setup guides
 │   ├── macos.md                   # macOS (Apple Silicon) — pull & run, details
 │   ├── linux.md                   # placeholder (not supported yet)
@@ -67,11 +69,16 @@ whenever you change how an image behaves.
      `python`/`pip` aliases;
    - Visual Studio Code (latest stable, from
      `update.code.visualstudio.com`) with the `code` CLI on PATH;
+   - Google Chrome and Mozilla Firefox (latest stable universal macOS
+     builds, via Homebrew casks; quarantine is stripped with `xattr` so they
+     launch without Gatekeeper prompts);
    - OpenCode (`brew install anomalyco/tap/opencode`);
    - OpenChamber (`npm install -g @openchamber/web`) — web UI for OpenCode;
      installed as a login service (LaunchAgent) listening on `0.0.0.0:3000`,
      reachable from the host at `http://<vm-ip>:3000` (see
-     [docs/macos.md](docs/macos.md));
+     [docs/macos.md](docs/macos.md)). The build pins the absolute `opencode`
+     path into the service via `OPENCODE_BINARY` (the `startup enable`
+     environment snapshot);
    - final version check.
 3. Leaves a runnable VM named `sandbox-macos-<macos-version>`.
 
@@ -129,7 +136,9 @@ To add a new one:
 
 Image naming convention: `sandbox-macos-<macos-version>` (e.g.
 `sandbox-macos-tahoe`). The vars file name **must** match the image name — it
-is used as the VM name and as the tag prefix.
+is used as the VM name and as the GHCR image name. Git release tags are
+`<platform>-v<version>` (e.g. `mac-v1.2.0`), see "Releasing a new image
+version" below.
 
 ### Template variables
 
@@ -156,6 +165,7 @@ Images are published to GHCR with a semantic version tag (from
 
 ```bash
 # One-time: authenticate with a token that has `packages:write`
+# (create one: https://github.com/settings/tokens/new?scopes=write:packages&description=agent-sandbox)
 tart login ghcr.io
 
 # Push the locally built VM with its version tag and :latest
@@ -171,8 +181,22 @@ can be overridden with the `GHCR_OWNER` env var.
 1. Make the image changes in `images/mac/sandbox.pkr.hcl` (and/or
    `vars/sandbox-macos-tahoe.pkrvars.hcl`).
 2. Bump `image_version` in the image's vars file.
-3. Add a `CHANGELOG.md` entry describing the changes.
-4. Build the image locally (`./scripts/build.sh <image-name>`) and push the
+3. Add a `CHANGELOG.md` entry describing the changes. The entry's heading is
+   the release tag (`[mac-v1.2.0] - <date>`), and the changelog must always
+   keep an `[Unreleased]` section on top for changes that are not released
+   yet; update the tag links at the bottom (the `[unreleased]` compare link
+   moves to the new tag) in the same change.
+4. Commit the release — the working tree must be clean before tagging.
+5. Create and push the release tag:
+   ```bash
+   ./scripts/tag.sh <image-name>
+   ```
+   `tag.sh` reads `image_version` from the vars file, verifies the working
+   tree is clean and that the `[<tag>]` entry exists in the changelog, and
+   creates an annotated `<platform>-v<version>` tag on the release commit
+   (e.g. `mac-v1.2.0`), then pushes it to origin. The changelog's tag links
+   resolve to it.
+6. Build the image locally (`./scripts/build.sh <image-name>`) and push the
    new version tag plus `:latest` to GHCR with
    `./scripts/deploy.sh <image-name>` (see "Publishing" above).
 
@@ -195,7 +219,8 @@ new `images/<platform>/` directory following the macOS pattern:
   sync with the template.
 - Test every image change locally before pushing — a broken image costs a
   ~1-hour rebuild.
-- Name VMs and tags exactly after images (`sandbox-macos-<macos-version>`);
-  never introduce a separate naming scheme for one platform.
-- Keep `image_version` and `CHANGELOG.md` in sync — every release bumps the
-  version and adds a changelog entry.
+- Name VMs exactly after images (`sandbox-macos-<macos-version>`); never
+  introduce a separate naming scheme for one platform. Git release tags are
+  `<platform>-v<version>` (e.g. `mac-v1.2.0`), created by `./scripts/tag.sh`.
+- Keep `image_version`, `CHANGELOG.md`, and the release tag in sync — every
+  release bumps the version, adds a changelog entry, and creates the tag.

@@ -7,15 +7,12 @@
 > you share a working directory into the VM and run the agent on it from
 > inside the sandbox.
 >
-> **Quick setup** — seven steps and you're done:
+> **Quick setup** — four steps and you're done:
 >
 > 1. [Install Tart](#1-install-tart)
-> 2. [Sign in to the image registry](#2-sign-in-to-the-image-registry) *(one-time)*
-> 3. [Pull the image](#3-pull-the-image)
-> 4. [Clone a working sandbox](#4-clone-a-working-sandbox)
-> 5. [Configure the sandbox (CPU, memory, display)](#5-configure-the-sandbox-cpu-memory-display)
-> 6. [Run the sandbox with your working directory shared](#6-run-the-sandbox-with-your-working-directory-shared)
-> 7. [Run the coding agent](#7-run-the-coding-agent)
+> 2. [Run the sandbox](#2-run-the-sandbox)
+> 3. [Configure the environment](#3-configure-the-environment)
+> 4. [Use the sandbox](#4-use-the-sandbox)
 >
 > Everything below the **Details** divider is optional reading: what's inside
 > the image, how to configure the VM, and troubleshooting.
@@ -47,84 +44,78 @@ It is built on Apple's Virtualization framework. Install it with Homebrew:
 brew install cirruslabs/cli/tart
 ```
 
-### 2. Sign in to the image registry
+### 2. Run the sandbox
 
-The images are published to GHCR. This repository is private, so authenticate
-once with a GitHub token that has `read:packages` scope:
-
-```bash
-tart login ghcr.io
-```
-
-### 3. Pull the image
-
-Pull the pre-built image. Replace `<owner>` with the GitHub account or
-organization that owns this repository:
+The repo ships a runner script that replaces the manual pull, clone, configure,
+and run steps. From the repo root:
 
 ```bash
-tart pull ghcr.io/<owner>/agent-sandbox/macos/sandbox-macos-tahoe:latest
+./scripts/run-macos-sandbox.sh
 ```
 
-Images are versioned with semantic version tags (e.g. `:1.0.0`) plus
-`:latest`; `:latest` always points at the most recent build.
+On first use it asks before pulling the image (~50 GB, one-time) and before
+cloning a working VM from it, then applies the recommended settings (8 CPUs /
+16 GB RAM, 1280x800 display-refit). It then starts the VM with `--no-audio`
+(audio-isolated from the host) and your work directory shared, bridges a
+password manager's SSH agent into the guest when one is detected on the host
+(see [Sharing the SSH agent](#sharing-the-ssh-agent)), and finishes by
+verifying OpenChamber and offering to open it in your browser. Later runs skip
+straight to starting the VM.
 
-### 4. Clone a working sandbox
-
-Never run the pristine image directly — keep it clean. Instead, clone a working
-copy. Thanks to copy-on-write this costs almost no extra disk, and you can
-re-clone from the pristine image in seconds whenever the sandbox gets messy:
-
-```bash
-tart clone sandbox-macos-tahoe sandbox
-```
-
-### 5. Configure the sandbox (CPU, memory, display)
-
-Before the first run, give the VM enough resources and a display that fits your
-screen — do this once, right after cloning (the VM must be stopped):
-
-```bash
-tart set sandbox --cpu 8 --memory 16384
-tart set sandbox --display 1280x800 --display-refit
-```
-
-- Defaults are 4 CPUs / 8 GB / `1024x768` — bump the CPU/memory if the sandbox
-  feels slow.
-- Display sizes are in **points** (macOS guests); `--display-refit` makes the
-  guest resolution follow the window, so fullscreen resizes and stays sharp.
-  Pick a size that fits your screen — see [Display setup](#display-setup) for
-  details.
-
-### 6. Run the sandbox with your working directory shared
+A window with the guest desktop opens and auto-logs in as `admin` (password:
+`admin`); clipboard sharing works out of the box. Pass `--headless` to run
+without a window, or `--no-agent` to skip the SSH agent bridge.
 
 This follows the recommended **one VM, many projects** workflow: keep **one**
 sandbox VM and share your whole working directory into it, so your code stays
 on the host while the toolchain and agent live in the VM and are reused across
-all projects. Start the VM with your work directory mounted:
+all projects (see [The one-VM, many-projects workflow in depth](#the-one-vm-many-projects-workflow-in-depth)).
+By default the script shares `/Volumes/dev` — the host directory with all your
+projects — into the guest at `/Volumes/My Shared Files/dev`.
+
+Two environment variables cover most needs (the full list is in [Runner script
+reference](#runner-script-reference)):
+
+| Variable | Default | What it does |
+|----------|---------|--------------|
+| `SANDBOX_WORK_DIR` | `/Volumes/dev` | Host directory shared into the guest; empty disables the mount |
+| `SANDBOX_VM` | `sandbox-macos` | Name of the working VM — set it to run several sandboxes side by side |
+
+For example, a separate sandbox for one project:
 
 ```bash
-tart run \
-    --dir=dev:/Volumes/dev \
-    --no-audio \
-    sandbox
+SANDBOX_VM=my-project SANDBOX_WORK_DIR="$HOME/dev/my-project" ./scripts/run-macos-sandbox.sh
 ```
 
-`/Volumes/dev` is the directory with **work-related stuff on the host
-machine** — all your projects live there. Inside the VM it appears as a single
-shared directory named `dev`.
+### 3. Configure the environment
 
-`--no-audio` keeps the sandbox audio-isolated from the host: the guest gets no
-access to the host's microphone and can't play sound on the host's speakers.
-Omit it only if you deliberately want to share audio with the host.
+The coding agent (OpenCode) needs an LLM provider before it can work. In the
+VM's Terminal, add yours:
 
-A window with the guest desktop opens. Auto-login is configured in the image,
-so the VM boots straight into the desktop as user `admin` (password: `admin`);
-clipboard sharing works out of the box. The shared directory appears inside the
-guest under `/Volumes/My Shared Files/dev`.
+```bash
+opencode providers login
+```
 
-### 7. Run the coding agent
+(In a headless VM, run it over SSH or with `tart exec -t <vm-name> opencode
+providers login`.)
 
-In the VM's Terminal, open the shared work directory and start the agent:
+This walks you through the provider setup (API key, model, ...). Once
+configured, restart OpenChamber so it picks up the provider:
+
+```bash
+openchamber restart
+```
+
+### 4. Use the sandbox
+
+Everything is set up now — two ways to use it:
+
+- **Browser UI (OpenChamber)**: on the host, open `http://<sandbox-ip>:3000/`
+  (the IP is `tart ip <vm-name>`; default password: `sandbox`) and start or
+  supervise agent sessions from your browser — see
+  [OpenChamber from the host](#openchamber-from-the-host).
+- **Terminal (OpenCode)**: in the VM's Terminal, open the shared work
+  directory and start the agent:
 
 ```bash
 cd "/Volumes/My Shared Files/dev"
@@ -134,10 +125,6 @@ opencode
 All your host projects are inside — `cd` into whichever folder you're working
 on and the agent sees your code. That's it — you are running an AI coding agent
 in an isolated sandbox, with your code safely on the host.
-
-Prefer a browser UI? OpenChamber is already running on port 3000 — from the
-host open `http://$(tart ip sandbox):3000` (default password: `sandbox`; see
-[OpenChamber from the host](#openchamber-from-the-host)).
 
 ---
 
@@ -159,6 +146,8 @@ with Tart. The default image ships the following software:
 | Python | 3.14 (`python`, `python3`, `pip`, `pip3` aliases) |
 | Ruby | latest (brew) |
 | Visual Studio Code | latest (+ `code` CLI) |
+| Google Chrome | latest (universal) |
+| Firefox | latest (universal) |
 | OpenCode | latest (AI coding agent) |
 | OpenChamber | latest (web UI for OpenCode, auto-started on port 3000) |
 | CLI tools | `git`, `gh`, `jq`, `ripgrep`, `coreutils`, `curl`, `wget`, `socat`, `bash` |
@@ -173,6 +162,8 @@ nvm --version
 python3 --version
 ruby --version
 code --version
+"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --version
+"/Applications/Firefox.app/Contents/MacOS/firefox" --version
 opencode --version
 openchamber --version
 ```
@@ -194,15 +185,20 @@ account. To change it, run inside the guest:
 
 ```bash
 openchamber startup disable
-openchamber startup enable --port 3000 --lan --ui-password 'your-password'
+OPENCODE_BINARY="$(command -v opencode)" openchamber startup enable --port 3000 --lan --ui-password 'your-password'
 ```
+
+(`startup enable` snapshots the current environment into the LaunchAgent, so
+keep the `OPENCODE_BINARY` pin from the image when re-enabling the service.)
 
 Notes:
 
 - The VM sits behind Tart's NAT network, so in practice only the host can
   reach the UI — still, don't set an easy password if your host is on a shared
   network.
-- The service runs the installed `opencode` CLI under the hood; `openchamber
+- The service runs the installed `opencode` CLI under the hood; the image
+  bakes the resolved binary path (`OPENCODE_BINARY`) into the LaunchAgent, so
+  the service doesn't depend on the login session's `PATH`. `openchamber
   status` (state of the server) and `openchamber logs` (recent output) from
   the guest help when something is off.
 - Headless (`tart run --no-graphics`) works too — auto-login still brings up
@@ -398,6 +394,11 @@ export SSH_AUTH_SOCK=/tmp/ssh-agent.sock   # add to ~/.zprofile
 
 ### Troubleshooting
 
+- **Pulling the image fails or asks for authentication.** The images are
+  public and pull without any login. If you still hit an auth error (or need
+  to publish images), create a GitHub personal access token with
+  `read:packages` (and `write:packages` to publish) —
+  [create one](https://github.com/settings/tokens/new?scopes=read:packages,write:packages&description=agent-sandbox).
 - **The image is huge.** The base macOS image with Xcode is ~50 GB and the
   sandbox VM itself takes another ~80 GB of disk. `tart list` shows what you
   have; `tart prune` removes OCI/IPSW caches.
@@ -427,6 +428,31 @@ export SSH_AUTH_SOCK=/tmp/ssh-agent.sock   # add to ~/.zprofile
   match your screen's aspect ratio (see [Display setup](#display-setup)). On
   macOS 14+ hosts, open **System Settings → Displays** inside the guest and
   select **Resolution: Default for display**.
+
+### Runner script reference
+
+[`scripts/run-macos-sandbox.sh`](../scripts/run-macos-sandbox.sh) is the
+automated way to pull, run, and wire up the sandbox. Everything it accepts:
+
+Options:
+
+- `--headless` — run without a window (`tart run --no-graphics`)
+- `--no-agent` — skip the SSH agent bridge setup
+
+Environment variables (defaults in parentheses):
+
+| Variable | Default | What it does |
+|----------|---------|--------------|
+| `SANDBOX_IMAGE` | `sandbox-macos-tahoe` | Pristine image VM to pull and clone from |
+| `SANDBOX_VM` | `sandbox-macos` | Name of the working VM |
+| `SANDBOX_WORK_DIR` | `/Volumes/dev` | Host directory shared into the guest; empty disables the mount |
+| `SANDBOX_MOUNT_NAME` | `dev` | Mount name inside the guest (appears at `/Volumes/My Shared Files/<name>`) |
+| `SANDBOX_AGENT_PORT` | `4100` | TCP port for the SSH agent bridge |
+| `SANDBOX_OPENCHAMBER_PORT` | `3000` | Guest port of OpenChamber |
+| `SANDBOX_CPU_COUNT` | `8` | CPUs for a freshly cloned VM |
+| `SANDBOX_MEMORY_MB` | `16384` | RAM for a freshly cloned VM, in MB |
+| `GHCR_OWNER` | from the git remote | GHCR owner used when pulling the image |
+| `NO_COLOR` | unset | Any non-empty value disables colored output |
 
 ## Building your own images
 
