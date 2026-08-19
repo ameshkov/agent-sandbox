@@ -12,6 +12,16 @@ is never removed — changes land there until the next release.
 
 ## [Unreleased]
 
+### Changed
+
+- `scripts/run-macos-sandbox.sh` now runs the VM in the background by
+  default: `tart run` is nohup'd to
+  `~/Library/Logs/agent-sandbox/tart-<vm>.log` and the script exits after
+  the summary while the VM keeps running (`tart stop <vm>` to stop it). Pass
+  `--foreground` to keep the terminal attached and block until the VM stops,
+  as before. When the VM is already running, the script now asks whether to
+  restart it instead of silently reusing it.
+
 ## [mac-v1.3.0] - 2026-08-19
 
 ### Added

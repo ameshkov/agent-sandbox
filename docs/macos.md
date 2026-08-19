@@ -62,12 +62,18 @@ settings — opencode config and credentials, SSH and Git dotfiles — into the
 guest once per VM (see [User settings on the
 guest](#user-settings-on-the-guest)), restarts OpenChamber so a fresh copy
 takes effect, and finishes by verifying OpenChamber and offering to open it in
-your browser. Later runs skip straight to starting the VM.
+your browser. The VM runs in the **background** by default: after the summary
+the script exits and the VM keeps running (stop it later with `tart stop
+sandbox-macos`; tart's output goes to
+`~/Library/Logs/agent-sandbox/tart-sandbox-macos.log`). When the VM is
+already running, the script asks whether to restart it or keep it running.
 
 A window with the guest desktop opens and auto-logs in as `admin` (password:
-`admin`); clipboard sharing works out of the box. Pass `--headless` to run
-without a window, `--no-agent` to skip the SSH agent bridge, or `--no-settings`
-to skip the user settings copy.
+`admin`); clipboard sharing works out of the box. Pass `--foreground` to keep
+the terminal attached instead — the script then blocks until the VM stops,
+and Cmd+C in that terminal stops it too. Pass `--headless` to run without a
+window, `--no-agent` to skip the SSH agent bridge, or `--no-settings` to skip
+the user settings copy.
 
 To use the sandbox in fullscreen with a proper (sharp, full-window)
 resolution, set the guest display to its default first: in the guest open
@@ -299,6 +305,10 @@ automated way to pull, run, and wire up the sandbox. Everything it accepts:
 Options:
 
 - `--headless` — run without a window (`tart run --no-graphics`)
+- `--foreground` — keep the terminal attached and block until the VM stops
+  (Cmd+C in the terminal stops it). Default is background: the script exits
+  after the summary and the VM keeps running (`tart stop <vm>` to stop it,
+  tart output in `~/Library/Logs/agent-sandbox/tart-<vm>.log`)
 - `--no-agent` — skip the SSH agent bridge setup
 - `--no-settings` — skip copying the host's user settings into the guest
 

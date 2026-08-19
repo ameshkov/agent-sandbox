@@ -3,14 +3,20 @@
 # run-macos-sandbox.sh — pull (if needed), run, and wire up a macOS sandbox VM.
 #
 # Usage:
-#   ./scripts/run-macos-sandbox.sh [--headless] [--no-agent] [--no-settings]
+#   ./scripts/run-macos-sandbox.sh [--headless] [--foreground] [--no-agent]
+#                                  [--no-settings]
 #
 # What it does:
 #   1. Makes sure the sandbox image is pulled and a working VM exists
 #      (asks before pulling / cloning, see docs/macos.md).
 #   2. Runs the VM with the recommended settings from docs/macos.md
 #      (--no-audio, shared work directory; 8 CPUs / 16 GB / display-refit
-#      applied when the VM is first cloned).
+#      applied when the VM is first cloned). By default the VM runs in the
+#      background: 'tart run' is nohup'd to a log file, the script exits
+#      after the summary, and the VM keeps running (stop it later with
+#      'tart stop'). Pass --foreground to keep the terminal attached and
+#      block until the VM stops instead. When the VM is already running,
+#      the script asks whether to restart it.
 #   3. If the host's SSH_AUTH_SOCK is overridden by a password manager
 #      (Bitwarden, 1Password, ...), bridges the agent into the guest with
 #      socat (see docs/ssh-agent.md). The bridge is persisted inside the
@@ -65,8 +71,13 @@ memory_mb=${SANDBOX_MEMORY_MB:-16384}
 headless=0
 skip_agent=0
 skip_settings=0
+# Run 'tart run' in the background by default (the script exits, the VM keeps
+# running). --foreground sets this to 0: the script blocks until the VM stops
+# and Cmd+C in the terminal stops it too.
+detached=1
 
 tart_pid=
+tart_log=
 bridge_pid=
 vm_ip=
 agent_bridged=0
@@ -270,10 +281,25 @@ launch_vm() {
     cmd "$run_cmd"
 
     # shellcheck disable=SC2086
-    if [ -n "$dir_arg" ]; then
-        tart run $flags "$dir_arg" "$vm" &
+    if [ "$detached" = 1 ]; then
+        # Background: nohup the VM so it survives this script exiting, and
+        # keep its output in a log file. The VM lives inside the 'tart run'
+        # process itself, so it keeps running exactly as long as that process
+        # does — nohup keeps it alive after the script is gone.
+        tart_log="$HOME/Library/Logs/agent-sandbox/tart-$vm.log"
+        mkdir -p "${tart_log%/*}"
+        info "Running the VM in the background (output: $tart_log)."
+        if [ -n "$dir_arg" ]; then
+            nohup tart run $flags "$dir_arg" "$vm" >>"$tart_log" 2>&1 &
+        else
+            nohup tart run $flags "$vm" >>"$tart_log" 2>&1 &
+        fi
     else
-        tart run $flags "$vm" &
+        if [ -n "$dir_arg" ]; then
+            tart run $flags "$dir_arg" "$vm" &
+        else
+            tart run $flags "$vm" &
+        fi
     fi
     tart_pid=$!
 
@@ -668,11 +694,15 @@ print_summary() {
     else
         printf '    %-12s %s\n' 'OpenChamber:' "${c_yellow}not responding (VM IP unavailable)${c_reset}"
     fi
-    # While the VM runs, this script occupies the terminal (it blocks in
-    # 'wait'), so 'tart stop' must be typed in a separate terminal. Cmd+C
-    # works right here: the backgrounded 'tart run' shares the script's
-    # process group, so the terminal's SIGINT reaches and stops the VM too.
-    if [ "$headless" = 1 ]; then
+    # Foreground mode only: while the VM runs, this script occupies the
+    # terminal (it blocks in 'wait'), so 'tart stop' must be typed in a
+    # separate terminal. Cmd+C works right here: the backgrounded 'tart run'
+    # shares the script's process group, so the terminal's SIGINT reaches
+    # and stops the VM too. In background mode the script has already
+    # returned, so the terminal is free — plain 'tart stop' suffices.
+    if [ "$detached" = 1 ]; then
+        stop_hint="run 'tart stop $vm'"
+    elif [ "$headless" = 1 ]; then
         stop_hint="run 'tart stop $vm' in another terminal"
     elif [ -n "$tart_pid" ]; then
         stop_hint="press Cmd+C in this terminal, or run 'tart stop $vm' in another terminal"
@@ -680,6 +710,12 @@ print_summary() {
         stop_hint="run 'tart stop $vm'"
     fi
     printf '    %-12s %s\n' 'Stop:' "$stop_hint"
+    if [ "$detached" = 1 ] && [ -n "$tart_pid" ]; then
+        printf '    %-12s %s\n' 'Background:' "VM keeps running after this script exits (tart log: $tart_log)"
+        if [ "$agent_bridged" = 1 ]; then
+            printf '    %-12s %s\n' 'Bridge:' "host socat listener on TCP $agent_port stays up — kill with: lsof -tiTCP:$agent_port -sTCP:LISTEN | xargs kill"
+        fi
+    fi
 }
 
 # --- main -------------------------------------------------------------------
@@ -690,8 +726,14 @@ Usage: run-macos-sandbox.sh [options]
 
 Pulls (if needed), runs, and wires up a macOS sandbox VM.
 
+By default the VM runs in the background: the script exits after the summary
+and the VM keeps running (stop it later with 'tart stop <vm>'; tart output
+goes to ~/Library/Logs/agent-sandbox/tart-<vm>.log).
+
 Options:
   --headless     Run without a window (tart run --no-graphics)
+  --foreground   Keep the terminal attached and block until the VM stops
+                 (Cmd+C in the terminal stops the VM)
   --no-agent     Skip the SSH agent bridge setup
   --no-settings  Skip copying the host's user settings into the guest
   -h, --help     Show this help
@@ -713,6 +755,7 @@ EOF
 for arg in "$@"; do
     case "$arg" in
         --headless) headless=1 ;;
+        --foreground) detached=0 ;;
         --no-agent) skip_agent=1 ;;
         --no-settings) skip_settings=1 ;;
         -h | --help) usage; exit 0 ;;
@@ -723,14 +766,15 @@ done
 command -v tart >/dev/null 2>&1 ||
     die "tart is not installed — run 'brew install cirruslabs/cli/tart' first."
 
-# Stop the host socat bridge on exit, but only when this script launched the
-# VM itself. When the VM was already running the script exits right after the
-# bridge setup, and the bridge must stay up to serve the guest for the rest of
-# the VM's lifetime (re-running the script is idempotent — see the port check
-# in start_host_bridge). The host bridge is never persisted; the guest side is
-# (see persist_guest_agent).
+# Stop the host socat bridge on exit, but only in foreground mode and only
+# when this script launched the VM itself. In background mode the VM (and its
+# need for the bridge) outlives this script, so the bridge must stay up — and
+# when the VM was already running the script exits right after the bridge
+# setup for the same reason. The host bridge is never persisted; the guest
+# side is (see persist_guest_agent). Re-running the script is idempotent —
+# see the port check in start_host_bridge.
 cleanup() {
-    if [ -n "$bridge_pid" ] && [ -n "$tart_pid" ]; then
+    if [ "$detached" = 0 ] && [ -n "$bridge_pid" ] && [ -n "$tart_pid" ]; then
         kill "$bridge_pid" 2>/dev/null || true
         info "Stopped the host socat bridge (pid $bridge_pid)."
     fi
@@ -753,7 +797,25 @@ ensure_vm
 # 2. Run it with the recommended settings.
 step "Step 2/5: Starting the VM"
 if [ "$(vm_state "$vm")" = running ]; then
-    ok "Sandbox VM '$vm' is already running — skipping 'tart run'."
+    if confirm "VM '$vm' is already running — restart it?" n; then
+        cmd "tart stop $vm"
+        tart stop "$vm" || die "'tart stop $vm' failed."
+        n=0
+        printf '%s' "    Waiting for '$vm' to stop"
+        while [ "$(vm_state "$vm")" = running ] && [ "$n" -lt 60 ]; do
+            printf '.'
+            sleep 2
+            n=$((n + 1))
+        done
+        if [ "$(vm_state "$vm")" = running ]; then
+            die "timed out waiting for '$vm' to stop."
+        fi
+        printf ' %s\n' "${c_green}stopped${c_reset}"
+        sleep 1  # let tart release the VM lock before running it again
+        launch_vm
+    else
+        ok "Keeping the running VM — skipping 'tart run'."
+    fi
 else
     [ "$created" = 1 ] && apply_recommended_settings
     launch_vm
@@ -789,7 +851,7 @@ verify_openchamber || true
 
 print_summary
 
-if [ -n "$tart_pid" ]; then
+if [ -n "$tart_pid" ] && [ "$detached" = 0 ]; then
     if wait "$tart_pid"; then
         info "VM '$vm' has stopped."
     else
