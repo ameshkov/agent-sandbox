@@ -12,6 +12,8 @@ is never removed — changes land there until the next release.
 
 ## [Unreleased]
 
+## [mac-v1.4.0] - 2026-08-19
+
 ### Added
 
 - Sublime Text (current stable build, Homebrew cask `sublime-text`) with the
@@ -164,7 +166,8 @@ Xcode 26.4.1).
 - Visual Studio Code (latest stable) with the `code` CLI on PATH.
 - OpenCode (AI coding agent) via the anomalyco Homebrew tap.
 
-[unreleased]: https://github.com/ameshkov/agent-sandbox/compare/mac-v1.3.0...HEAD
+[unreleased]: https://github.com/ameshkov/agent-sandbox/compare/mac-v1.4.0...HEAD
+[mac-v1.4.0]: https://github.com/ameshkov/agent-sandbox/releases/tag/mac-v1.4.0
 [mac-v1.3.0]: https://github.com/ameshkov/agent-sandbox/releases/tag/mac-v1.3.0
 [mac-v1.2.0]: https://github.com/ameshkov/agent-sandbox/releases/tag/mac-v1.2.0
 [mac-v1.1.0]: https://github.com/ameshkov/agent-sandbox/releases/tag/mac-v1.1.0
