@@ -12,6 +12,8 @@ is never removed — changes land there until the next release.
 
 ## [Unreleased]
 
+## [mac-v1.3.0] - 2026-08-19
+
 ### Added
 
 - `scripts/run-macos-sandbox.sh` now offers to copy the host's user settings
@@ -22,6 +24,11 @@ is never removed — changes land there until the next release.
   guest (`~/.config/agent-sandbox/settings-copied`); bumping the settings
   version in the script re-copies when new settings are added. Skip with
   `--no-settings`.
+- The guest's `~/.ssh/config` now pins `IdentityAgent /tmp/ssh-agent.sock`
+  for all hosts, so `ssh` works through the bridged host agent even where
+  `SSH_AUTH_SOCK` is not exported (`tart exec`, cron, launchd jobs, GUI
+  tools). Applied idempotently on every run; guests set up before this patch
+  get it too.
 
 ### Changed
 
@@ -29,6 +36,8 @@ is never removed — changes land there until the next release.
   and the built images) — the previous 80 GB default was below the ~140 GB
   Cirrus base image disk, and tart can only grow a disk, never shrink it. No
   effect on released images; only relevant when a vars file omits `disk_size`.
+- `scripts/deploy.sh` pushes in 3 MB chunks (`tart push --chunk-size 3`)
+  because GHCR only accepts upload chunks smaller than 4 MB.
 
 ## [mac-v1.2.0] - 2026-08-19
 
@@ -79,7 +88,8 @@ Xcode 26.4.1).
 - Visual Studio Code (latest stable) with the `code` CLI on PATH.
 - OpenCode (AI coding agent) via the anomalyco Homebrew tap.
 
-[unreleased]: https://github.com/ameshkov/agent-sandbox/compare/mac-v1.2.0...HEAD
+[unreleased]: https://github.com/ameshkov/agent-sandbox/compare/mac-v1.3.0...HEAD
+[mac-v1.3.0]: https://github.com/ameshkov/agent-sandbox/releases/tag/mac-v1.3.0
 [mac-v1.2.0]: https://github.com/ameshkov/agent-sandbox/releases/tag/mac-v1.2.0
 [mac-v1.1.0]: https://github.com/ameshkov/agent-sandbox/releases/tag/mac-v1.1.0
 [mac-v1.0.0]: https://github.com/ameshkov/agent-sandbox/releases/tag/mac-v1.0.0

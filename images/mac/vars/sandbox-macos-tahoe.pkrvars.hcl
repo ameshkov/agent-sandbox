@@ -30,4 +30,4 @@ openchamber_ui_password = "sandbox"
 # Semantic version this image is published under (also the GHCR push tag,
 # besides :latest).  For every release: bump it, add a CHANGELOG.md entry,
 # and create the mac-v<version> git tag (./scripts/tag.sh <image>).
-image_version = "1.2.0"
+image_version = "1.3.0"
