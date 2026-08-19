@@ -30,7 +30,7 @@ keep them in sync whenever you change how an image behaves.
 │   ├── deploy.sh                  # ./scripts/deploy.sh [<image>] — push to GHCR
 │   ├── tag.sh                     # ./scripts/tag.sh [<image>]    — create & push the release git tag
 │   ├── lib/macos-settings.sh      # shared: output helpers + user-settings copy logic (runner + sync)
-│   ├── run-macos-sandbox.sh       # user-facing: pull/run a VM + SSH agent bridge + user settings + OpenChamber
+│   ├── run-macos-sandbox.sh       # user-facing: pull/run a VM + SSH agent & Docker bridges + user settings + OpenChamber
 │   └── sync-macos-sandbox.sh      # user-facing: copy host user settings into the guest on demand
 ├── docs/                          # User-facing, per host OS setup guides
 │   ├── macos.md                   # macOS (Apple Silicon) — pull & run, details
@@ -67,7 +67,10 @@ keep them in sync whenever you change how an image behaves.
      `node_version` from the vars file as the default), `python@<python_version>`
      (also from the vars file), `ruby` + CLI
      utilities (`brew_formulas` variable — includes `socat` for SSH agent
-     sharing, see [docs/ssh-agent.md](docs/ssh-agent.md)); unversioned
+     sharing, see [docs/ssh-agent.md](docs/ssh-agent.md), and the Docker CLI
+     with `docker compose`/`docker buildx` plugins — client only, the guest
+     can't run a local container engine, see
+     [docs/macos.md](docs/macos.md)); unversioned
      `python`/`pip` aliases;
    - Visual Studio Code (latest stable, from
      `update.code.visualstudio.com`) with the `code` CLI on PATH;

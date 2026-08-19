@@ -28,6 +28,22 @@ is never removed — changes land there until the next release.
   the guest on demand (no VM restart needed), updates the versioned marker
   so the runner won't re-offer the copy, and restarts OpenChamber. Requires
   a running VM; pass `--yes` to skip the confirmation prompt.
+- Docker CLI (`docker` formula) with the `docker compose` and `docker buildx`
+  plugins (Homebrew `docker-compose`/`docker-buildx`, discovered via
+  `cliPluginsExtraDirs` in `~/.docker/config.json`). Client only: the sandbox
+  is a macOS VM, and Apple's Virtualization.framework doesn't support nested
+  virtualization for macOS guests, so no container engine (Docker Desktop,
+  Colima, ...) can run inside it — `docs/macos.md` explains how to point the
+  CLI at a remote engine, e.g. the host's Docker Desktop over SSH.
+- `scripts/run-macos-sandbox.sh` now bridges the host's Docker engine into
+  the guest, mirroring the SSH agent bridge: it detects an engine socket on
+  the host (Docker Desktop, Colima, OrbStack, `/var/run/docker.sock`), serves
+  it over a host-side `socat` TCP listener for the current run, persists a
+  guest-side `socat` in the guest's `~/.zprofile` that recreates
+  `~/.docker/run/docker.sock` on every login, and creates the docker context
+  `host` in the guest so `docker`/`docker compose`/`docker buildx` use the
+  host engine. `--no-docker` skips the bridge; `SANDBOX_DOCKER_PORT`
+  overrides the bridge port (default `4101`).
 
 ### Changed
 

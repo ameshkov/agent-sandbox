@@ -23,7 +23,13 @@
 #      guest (~/.zprofile + socat auto-restart, survives guest reboots); the
 #      host-side socat is only started for this run and is never persisted
 #      in the host's shell profile.
-#   4. Offers to copy the host's user settings into the guest — the global
+#   4. If the host runs a Docker engine (Docker Desktop, Colima, OrbStack,
+#      ... — anything with a Unix socket), bridges its socket into the guest
+#      the same way: a host-side socat for this run, and a guest-side socat
+#      plus a docker context 'host' persisted inside the guest, so `docker`
+#      and `docker compose` in the guest just work against the host engine
+#      (see docs/macos.md, "Docker (remote engine)"). --no-docker skips.
+#   5. Offers to copy the host's user settings into the guest — the global
 #      opencode config (json, tui, agents, commands, modes, plugins, skills,
 #      tools, themes) + auth, the Copilot CLI config + skills
 #      (~/.copilot/config.json, ~/.copilot/skills/), the VS Code extensions
@@ -36,7 +42,7 @@
 #      OpenChamber is restarted after a copy so it picks up the new
 #      settings. The same copy can be triggered on demand with
 #      ./scripts/sync-macos-sandbox.sh.
-#   5. Verifies that OpenChamber is up and offers to open it in the browser.
+#   6. Verifies that OpenChamber is up and offers to open it in the browser.
 #
 # Output: colored, step-by-step status with a summary block at the end.
 # Colors are used only when the output is a terminal — piped/redirected
@@ -50,6 +56,7 @@
 #                              the mount ( /Volumes/dev )
 #   SANDBOX_MOUNT_NAME         mount name inside the guest (dev)
 #   SANDBOX_AGENT_PORT         TCP port for the SSH agent bridge (4100)
+#   SANDBOX_DOCKER_PORT        TCP port for the Docker engine bridge (4101)
 #   SANDBOX_OPENCHAMBER_PORT   guest port of OpenChamber (3000)
 #   SANDBOX_CPU_COUNT          CPUs for a freshly cloned VM (8)
 #   SANDBOX_MEMORY_MB          RAM for a freshly cloned VM, in MB (16384)
@@ -57,7 +64,7 @@
 #   NO_COLOR                   disable colored output (any non-empty value)
 #
 # Requires tart (brew install cirruslabs/cli/tart); socat on the host
-# (brew install socat) only when an SSH agent bridge is needed.
+# (brew install socat) only when an SSH agent or Docker bridge is needed.
 
 set -eu
 
@@ -70,6 +77,7 @@ vm=${SANDBOX_VM:-sandbox-macos}
 work_dir=${SANDBOX_WORK_DIR:-/Volumes/dev}
 mount_name=${SANDBOX_MOUNT_NAME:-dev}
 agent_port=${SANDBOX_AGENT_PORT:-4100}
+docker_port=${SANDBOX_DOCKER_PORT:-4101}
 openchamber_port=${SANDBOX_OPENCHAMBER_PORT:-3000}
 cpu_count=${SANDBOX_CPU_COUNT:-8}
 memory_mb=${SANDBOX_MEMORY_MB:-16384}
@@ -77,6 +85,7 @@ memory_mb=${SANDBOX_MEMORY_MB:-16384}
 headless=0
 skip_agent=0
 skip_settings=0
+skip_docker=0
 # Run 'tart run' in the background by default (the script exits, the VM keeps
 # running). --foreground sets this to 0: the script blocks until the VM stops
 # and Cmd+C in the terminal stops it too.
@@ -85,9 +94,14 @@ detached=1
 tart_pid=
 tart_log=
 bridge_pid=
+docker_bridge_pid=
 vm_ip=
 agent_bridged=0
 guest_bridge_up=0
+docker_bridged=0
+docker_bridge_up=0
+docker_engine_up=0
+docker_server_version=
 openchamber_up=0
 settings_state=
 
@@ -252,19 +266,25 @@ launch_vm() {
     die "timed out waiting for '$vm' to boot."
 }
 
-# --- step 3: SSH agent bridge (docs/ssh-agent.md) ----------------------------
+# --- step 3: SSH agent + Docker bridges (docs/ssh-agent.md, docs/macos.md) ---
+
+# Makes sure socat is installed on the host, offering to install it via brew.
+ensure_host_socat() {
+    if command -v socat >/dev/null 2>&1; then
+        return 0
+    fi
+    warn "socat is not installed on the host."
+    if confirm "Install it with 'brew install socat' now?" y; then
+        brew install socat || return 1
+    else
+        return 1
+    fi
+}
 
 start_host_bridge() {
     sock="$1"
 
-    if ! command -v socat >/dev/null 2>&1; then
-        warn "socat is not installed on the host."
-        if confirm "Install it with 'brew install socat' now?" y; then
-            brew install socat || return 1
-        else
-            return 1
-        fi
-    fi
+    ensure_host_socat || return 1
 
     if lsof -nP -iTCP:"$agent_port" -sTCP:LISTEN >/dev/null 2>&1; then
         ok "A listener is already bound to TCP port $agent_port — assuming the bridge is up."
@@ -420,6 +440,224 @@ setup_ssh_agent() {
     fi
 }
 
+# --- step 3 (cont.): Docker engine bridge ------------------------------------
+#
+# The sandbox image ships the docker CLI but no engine (the guest can't run
+# one — no nested virtualization for macOS guests, see docs/macos.md "Docker
+# (remote engine)"). This bridges the host's engine socket into the guest
+# exactly like the SSH agent bridge above: a host-side socat turns the engine
+# socket into a TCP port on Tart's VM network for this run, and a guest-side
+# socat (persisted in ~/.zprofile, auto-restarted on login) turns it back
+# into a Unix socket at ~/.docker/run/docker.sock. A docker context 'host'
+# pointing at that socket is created and made the default in the guest, so
+# every docker invocation — shells, opencode, OpenChamber — hits the host
+# engine.
+
+# Prints the path of a Docker engine socket on the host, or nothing. Looks for
+# the engines the sandbox supports: Docker Desktop (4.30+ keeps the socket at
+# ~/.docker/run/docker.sock), Colima, OrbStack, and the legacy /var/run path.
+find_host_docker_socket() {
+    for sock in \
+        "$HOME/.docker/run/docker.sock" \
+        "$HOME/.colima/default/docker.sock" \
+        "$HOME/.orbstack/run/docker.sock" \
+        "/var/run/docker.sock"; do
+        if [ -S "$sock" ]; then
+            printf '%s\n' "$sock"
+            return 0
+        fi
+    done
+    return 1
+}
+
+start_host_docker_bridge() {
+    sock="$1"
+
+    ensure_host_socat || return 1
+
+    if lsof -nP -iTCP:"$docker_port" -sTCP:LISTEN >/dev/null 2>&1; then
+        ok "A listener is already bound to TCP port $docker_port — assuming the Docker bridge is up."
+        return 0
+    fi
+
+    gw=$(tart ip "$vm" | awk -F. '{print $1"."$2"."$3".1"}')
+    if [ -z "$gw" ]; then
+        warn "could not determine the host gateway address ('tart ip $vm' failed)."
+        return 1
+    fi
+
+    cmd "socat TCP-LISTEN:$docker_port,reuseaddr,fork,bind=$gw -> $sock"
+    socat TCP-LISTEN:"$docker_port",reuseaddr,fork,bind="$gw" UNIX-CONNECT:"$sock" &
+    docker_bridge_pid=$!
+    sleep 1
+    if kill -0 "$docker_bridge_pid" 2>/dev/null; then
+        ok "Host Docker bridge is up (pid $docker_bridge_pid)."
+        return 0
+    fi
+    warn "host Docker bridge exited immediately — check the engine socket path."
+    docker_bridge_pid=
+    return 1
+}
+
+# Persist the guest-side Docker bridge in the guest's ~/.zprofile: a socat
+# auto-restart that recreates ~/.docker/run/docker.sock on every login (the
+# socket is rebuilt after reboots; /tmp would be cleared, ~/.docker survives).
+# Idempotent — does nothing when the marker is already present.
+persist_guest_docker() {
+    if ! tart exec -i "$vm" sh -s "$docker_port" 2>/dev/null <<'GUEST_DOCKER_ZPROFILE'
+port=$1
+if ! grep -qF '# Docker bridge to the host' "$HOME/.zprofile" 2>/dev/null; then
+    {
+        printf '\n%s\n' '# Docker bridge to the host (host engine via socat, see docs/macos.md)'
+        printf '%s\n' \
+            'if ! pgrep -f "UNIX-LISTEN:$HOME/.docker/run/docker.sock" >/dev/null 2>&1 && command -v socat >/dev/null 2>&1; then' \
+            '    mkdir -p "$HOME/.docker/run"' \
+            "    HOST_GW=\$(netstat -nr | awk '/default/{print \$2; exit}')" \
+            "    nohup socat UNIX-LISTEN:\"\$HOME/.docker/run/docker.sock\",fork,unlink-early,mode=600 TCP:\"\$HOST_GW\":$port >/dev/null 2>&1 &" \
+            'fi'
+    } >> "$HOME/.zprofile"
+fi
+GUEST_DOCKER_ZPROFILE
+    then
+        warn "could not update the guest's ~/.zprofile (Docker bridge)."
+    fi
+}
+
+# Returns 0 when the guest Docker bridge is already persisted in the guest's
+# ~/.zprofile.
+guest_docker_installed() {
+    tart exec "$vm" sh -c 'grep -qF "# Docker bridge to the host" "$HOME/.zprofile" 2>/dev/null' 2>/dev/null
+}
+
+# Start the guest bridge for this boot (survives the tart exec session) and
+# report whether it is up.
+ensure_guest_docker_bridge() {
+    docker_guest_status=
+    if ! docker_guest_status=$(tart exec -i "$vm" sh -s "$docker_port" 2>/dev/null <<'GUEST_DOCKER_BRIDGE'
+port=$1
+export PATH="/opt/homebrew/bin:$PATH"
+mkdir -p "$HOME/.docker/run"
+sock="$HOME/.docker/run/docker.sock"
+if ! pgrep -f "UNIX-LISTEN:$sock" >/dev/null 2>&1; then
+    HOST_GW=$(netstat -nr | awk '/default/{print $2; exit}')
+    nohup socat UNIX-LISTEN:"$sock",fork,unlink-early,mode=600 \
+        TCP:"$HOST_GW":$port >/dev/null 2>&1 &
+fi
+sleep 1
+if pgrep -f "UNIX-LISTEN:$sock" >/dev/null 2>&1; then
+    echo docker-bridge-up
+else
+    echo docker-bridge-failed
+fi
+GUEST_DOCKER_BRIDGE
+); then
+        docker_guest_status=docker-bridge-failed
+    fi
+
+    case "$docker_guest_status" in
+        docker-bridge-up)
+            docker_bridge_up=1
+            ok "Guest Docker bridge is up: ~/.docker/run/docker.sock -> host TCP $docker_port"
+            ;;
+        *)
+            warn "guest Docker bridge did not start — is socat present in the guest?"
+            ;;
+    esac
+}
+
+# Point the guest's docker CLI at the bridged socket: create (or update) the
+# 'host' context and make it the default. Contexts live in the guest's
+# ~/.docker/config.json, so this survives reboots and applies to every docker
+# invocation, not just login shells.
+ensure_guest_docker_context() {
+    if ! tart exec -i "$vm" sh -s 2>/dev/null <<'GUEST_DOCKER_CONTEXT'
+export PATH="/opt/homebrew/bin:$PATH"
+sock="$HOME/.docker/run/docker.sock"
+if docker context inspect host >/dev/null 2>&1; then
+    docker context update host --docker "host=unix://$sock" >/dev/null 2>&1
+else
+    docker context create host --docker "host=unix://$sock" >/dev/null 2>&1
+fi
+docker context use host >/dev/null 2>&1 || exit 1
+# Validate the context (its exit code is this script's exit code) without
+# leaking the raw inspect output into the runner's console.
+docker context inspect host --format '{{.Name}} {{.Endpoints.docker.Host}}' >/dev/null
+GUEST_DOCKER_CONTEXT
+    then
+        # The `if !` above: this branch runs when tart exec fails.
+        warn "could not set up the guest docker context — is the docker CLI in the image?"
+        warn "images built before the Docker CLI landed lack it; pull a current image and re-clone."
+    else
+        ok "Guest docker context 'host' -> ~/.docker/run/docker.sock (default)."
+    fi
+}
+
+# End-to-end check: can the guest's docker CLI reach the host engine through
+# the bridge? Prints the engine's server version, or 'unreachable'. Retries
+# briefly — Docker Desktop may still be starting its VM.
+verify_guest_docker() {
+    if ! tart exec -i "$vm" sh -s 2>/dev/null <<'GUEST_DOCKER_VERIFY'
+export PATH="/opt/homebrew/bin:$PATH"
+n=0
+while [ "$n" -lt 15 ]; do
+    v=$(docker info --format '{{.ServerVersion}}' 2>/dev/null) && { printf '%s\n' "$v"; exit 0; }
+    n=$((n + 1))
+    sleep 1
+done
+echo unreachable
+GUEST_DOCKER_VERIFY
+    then
+        printf '%s\n' unreachable
+    fi
+}
+
+setup_docker_bridge() {
+    sock=
+    if ! sock=$(find_host_docker_socket); then
+        sock=
+    fi
+    if [ -z "$sock" ]; then
+        info "No Docker engine socket found on the host (Docker Desktop, Colima, OrbStack)."
+        info "Start an engine on the host and re-run to bridge it into the guest."
+        return 0
+    fi
+
+    ok "Host Docker engine socket found: $sock"
+    info "Bridging it into '$vm' on TCP port $docker_port."
+
+    if ! start_host_docker_bridge "$sock"; then
+        warn "skipping the Docker bridge."
+        return 0
+    fi
+    docker_bridged=1
+
+    # The guest side is persisted inside the guest (~/.zprofile + docker
+    # context) — only offer to set it up when it isn't already there. Either
+    # way, make sure the bridge runs and the context is set for this boot.
+    if guest_docker_installed; then
+        info "Guest Docker bridge is already set up in the guest's ~/.zprofile."
+        ensure_guest_docker_bridge
+        ensure_guest_docker_context
+    elif confirm "Set up the Docker bridge inside the guest too (guest socat + docker context 'host')?" y; then
+        persist_guest_docker
+        ensure_guest_docker_bridge
+        ensure_guest_docker_context
+    else
+        info "Guest Docker bridge not configured — docker in the guest will not reach the host engine."
+    fi
+
+    if [ "$docker_bridge_up" = 1 ]; then
+        docker_server_version=$(verify_guest_docker)
+        if [ -n "$docker_server_version" ] && [ "$docker_server_version" != unreachable ]; then
+            docker_engine_up=1
+            ok "Docker engine is reachable from the guest (server version $docker_server_version)."
+        else
+            warn "Docker engine not reachable from the guest yet — is it running on the host?"
+            warn "The bridge reconnects on its own once it is; re-run this script to re-check."
+        fi
+    fi
+}
+
 # --- step 4: user settings ----------------------------------------------------
 #
 # Copies the host's user settings into the guest: opencode config, skills,
@@ -529,6 +767,17 @@ print_summary() {
     else
         printf '    %-12s %s\n' 'SSH agent:' 'not bridged'
     fi
+    if [ "$docker_bridged" = 1 ]; then
+        if [ "$docker_engine_up" = 1 ]; then
+            printf '    %-12s %s\n' 'Docker:' "${c_green}host engine (v$docker_server_version) -> TCP $docker_port -> guest (context 'host')${c_reset}"
+        elif [ "$docker_bridge_up" = 1 ]; then
+            printf '    %-12s %s\n' 'Docker:' "${c_yellow}bridge up, engine not reachable in the guest — is Docker running on the host?${c_reset}"
+        else
+            printf '    %-12s %s\n' 'Docker:' "${c_yellow}host bridge up (TCP $docker_port), guest bridge not running${c_reset}"
+        fi
+    else
+        printf '    %-12s %s\n' 'Docker:' 'not bridged'
+    fi
     case "$settings_state" in
         copied)
             printf '    %-12s %s\n' 'Settings:' "${c_green}copied into the guest (version $settings_version)${c_reset}"
@@ -577,6 +826,9 @@ print_summary() {
         if [ "$agent_bridged" = 1 ]; then
             printf '    %-12s %s\n' 'Bridge:' "host socat listener on TCP $agent_port stays up — kill with: lsof -tiTCP:$agent_port -sTCP:LISTEN | xargs kill"
         fi
+        if [ "$docker_bridged" = 1 ]; then
+            printf '    %-12s %s\n' 'Bridge:' "host Docker socat listener on TCP $docker_port stays up — kill with: lsof -tiTCP:$docker_port -sTCP:LISTEN | xargs kill"
+        fi
     fi
 }
 
@@ -597,6 +849,7 @@ Options:
   --foreground   Keep the terminal attached and block until the VM stops
                  (Cmd+C in the terminal stops the VM)
   --no-agent     Skip the SSH agent bridge setup
+  --no-docker    Skip the Docker engine bridge setup
   --no-settings  Skip copying the host's user settings into the guest
   -h, --help     Show this help
 
@@ -606,6 +859,7 @@ Environment:
   SANDBOX_WORK_DIR           host dir to share ( /Volumes/dev ; empty = no share)
   SANDBOX_MOUNT_NAME         mount name inside the guest (dev)
   SANDBOX_AGENT_PORT         TCP port for the SSH agent bridge (4100)
+  SANDBOX_DOCKER_PORT        TCP port for the Docker engine bridge (4101)
   SANDBOX_OPENCHAMBER_PORT   guest port of OpenChamber (3000)
   SANDBOX_CPU_COUNT          CPUs for a freshly cloned VM (8)
   SANDBOX_MEMORY_MB          RAM for a freshly cloned VM, in MB (16384)
@@ -619,6 +873,7 @@ for arg in "$@"; do
         --headless) headless=1 ;;
         --foreground) detached=0 ;;
         --no-agent) skip_agent=1 ;;
+        --no-docker) skip_docker=1 ;;
         --no-settings) skip_settings=1 ;;
         -h | --help) usage; exit 0 ;;
         *) echo "Unknown option: $arg" >&2; usage >&2; exit 1 ;;
@@ -628,14 +883,19 @@ done
 command -v tart >/dev/null 2>&1 ||
     die "tart is not installed — run 'brew install cirruslabs/cli/tart' first."
 
-# Stop the host socat bridge on exit, but only in foreground mode and only
-# when this script launched the VM itself. In background mode the VM (and its
-# need for the bridge) outlives this script, so the bridge must stay up — and
-# when the VM was already running the script exits right after the bridge
-# setup for the same reason. The host bridge is never persisted; the guest
-# side is (see persist_guest_agent). Re-running the script is idempotent —
-# see the port check in start_host_bridge.
+# Stop the host socat bridges (SSH agent + Docker) on exit, but only in
+# foreground mode and only when this script launched the VM itself. In
+# background mode the VM (and its need for the bridges) outlives this script,
+# so the bridges must stay up — and when the VM was already running the script
+# exits right after the bridge setup for the same reason. The host bridges are
+# never persisted; the guest sides are (see persist_guest_agent and
+# persist_guest_docker). Re-running the script is idempotent — see the port
+# checks in start_host_bridge / start_host_docker_bridge.
 cleanup() {
+    if [ "$detached" = 0 ] && [ -n "$docker_bridge_pid" ] && [ -n "$tart_pid" ]; then
+        kill "$docker_bridge_pid" 2>/dev/null || true
+        info "Stopped the host Docker bridge (pid $docker_bridge_pid)."
+    fi
     if [ "$detached" = 0 ] && [ -n "$bridge_pid" ] && [ -n "$tart_pid" ]; then
         kill "$bridge_pid" 2>/dev/null || true
         info "Stopped the host socat bridge (pid $bridge_pid)."
@@ -683,13 +943,18 @@ else
     launch_vm
 fi
 
-# 3. SSH agent bridge (host bridge per run; the guest side is persisted
-#    inside the guest's ~/.zprofile).
-step "Step 3/5: SSH agent bridge"
+# 3. Host bridges: SSH agent + Docker engine (host side per run; the guest
+#    sides are persisted inside the guest — ~/.zprofile, docker context).
+step "Step 3/5: Host bridges (SSH agent, Docker)"
 if [ "$skip_agent" = 1 ]; then
     info "Skipping SSH agent bridge setup (--no-agent)."
 else
     setup_ssh_agent
+fi
+if [ "$skip_docker" = 1 ]; then
+    info "Skipping Docker bridge setup (--no-docker)."
+else
+    setup_docker_bridge
 fi
 
 # 4. User settings (opencode config + auth, Copilot config + skills, VS Code

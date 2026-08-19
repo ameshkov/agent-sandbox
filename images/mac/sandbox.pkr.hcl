@@ -91,6 +91,10 @@ variable "brew_formulas" {
     # The required programming languages (Python is installed separately by
     # the toolchain provisioner, pinned via python_version)
     "ruby",
+    # Docker CLI + plugins (client only — the sandbox is a macOS VM and cannot
+    # run a local container engine, see docs/macos.md "Docker (remote engine)";
+    # the compose/buildx plugins are wired up in the provisioner below)
+    "docker", "docker-compose", "docker-buildx",
   ]
 }
 
@@ -361,6 +365,46 @@ END
     ]
   }
 
+  # Docker CLI — client only. The sandbox is a macOS VM, and Apple's
+  # Virtualization.framework does not support nested virtualization for macOS
+  # guests (only Linux guests on M3+ with macOS 15+), so no container engine
+  # (Docker Desktop, Colima, ...) can run inside it. The CLI is meant to be
+  # pointed at a remote engine — e.g. the host's Docker Desktop over SSH; see
+  # docs/macos.md "Docker (remote engine)". The brew docker-compose and
+  # docker-buildx formulas install the compose/buildx plugins into
+  # $HOMEBREW_PREFIX/lib/docker/cli-plugins; the CLI only discovers them via
+  # cliPluginsExtraDirs in ~/.docker/config.json.
+  provisioner "shell" {
+    inline = [<<-END
+set -e -x
+source ~/.zprofile
+
+# Wire Homebrew's cli-plugins dir into the docker CLI config so `docker
+# compose` and `docker buildx` are found. docker preserves this key when the
+# user later runs `docker context use ...` (the file never pre-exists in a
+# fresh image; the jq branch is only defensive).
+mkdir -p ~/.docker
+if [ -f ~/.docker/config.json ]; then
+    jq '.cliPluginsExtraDirs += ["/opt/homebrew/lib/docker/cli-plugins"] | .cliPluginsExtraDirs |= unique' \
+        ~/.docker/config.json > /tmp/docker-config.json
+    mv /tmp/docker-config.json ~/.docker/config.json
+else
+    cat > ~/.docker/config.json <<'DOCKER'
+{
+  "cliPluginsExtraDirs": [
+    "/opt/homebrew/lib/docker/cli-plugins"
+  ]
+}
+DOCKER
+fi
+
+docker --version
+docker compose version
+docker buildx version
+END
+    ]
+  }
+
   # Final verification and cleanup
   provisioner "shell" {
     inline = [<<-END
@@ -387,6 +431,9 @@ subl --version
 opencode --version
 openchamber --version
 defaults read "/Applications/OpenChamber.app/Contents/Info.plist" CFBundleShortVersionString
+docker --version
+docker compose version
+docker buildx version
 echo "========================================"
 END
     ]

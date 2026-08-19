@@ -64,14 +64,17 @@ a working VM, applies the recommended settings (8 CPUs / 16 GB, 1280x800
 display-refit), starts the VM in the **background** (stop it later with `tart
 stop sandbox-macos`), shares your work directory, bridges a password
 manager's SSH agent when one is detected (see
-[docs/ssh-agent.md](ssh-agent.md)), and copies your user settings — opencode,
-Copilot, SSH and Git dotfiles — into the guest once per VM (see [User
-settings on the guest](#user-settings-on-the-guest)).
+[docs/ssh-agent.md](ssh-agent.md)), bridges the host's Docker engine into the
+guest when one is running — so `docker` inside the VM just works against it
+(see [Docker (remote engine)](#docker-remote-engine)) — and copies your user
+settings — opencode, Copilot, SSH and Git dotfiles — into the guest once per
+VM (see [User settings on the guest](#user-settings-on-the-guest)).
 
 A window opens and auto-logs in as `admin` (`admin`); clipboard sharing
 works. Pass `--foreground` to keep the terminal attached (Cmd+C stops the
 VM), `--headless` to run without a window, `--no-agent` to skip the SSH agent
-bridge, or `--no-settings` to skip the settings copy.
+bridge, `--no-docker` to skip the Docker bridge, or `--no-settings` to skip
+the settings copy.
 
 To use the sandbox in fullscreen with a proper (sharp, full-window)
 resolution, set the guest display to its default first: in the guest open
@@ -174,6 +177,7 @@ with Tart. The default image ships the following software:
 | OpenCode | latest (AI coding agent) |
 | OpenChamber | latest (web UI for OpenCode, auto-started on port 3000) |
 | OpenChamber desktop app | latest (native macOS app, `/Applications/OpenChamber.app`) |
+| Docker CLI | latest (`docker` + `docker compose` / `docker buildx` plugins; client only — no local engine, see [Docker (remote engine)](#docker-remote-engine)) |
 | CLI tools | `git`, `gh`, `jq`, `ripgrep`, `coreutils`, `curl`, `wget`, `socat`, `bash` |
 
 Verify the toolchain from the guest Terminal (or over SSH:
@@ -193,6 +197,9 @@ subl --version
 opencode --version
 openchamber --version
 defaults read "/Applications/OpenChamber.app/Contents/Info.plist" CFBundleShortVersionString
+docker --version
+docker compose version
+docker buildx version
 ```
 
 ### OpenChamber from the host
@@ -259,6 +266,75 @@ Notes:
   nothing installs without your say-so.
 - The desktop app targets the guest desktop, so it is of limited use in a
   headless VM — the web UI remains the remote-friendly surface (see above).
+
+### Docker (remote engine)
+
+The image ships the **Docker CLI** (`docker`, via Homebrew) with the `docker
+compose` and `docker buildx` plugins already wired into the CLI config — but
+no local engine. A container engine on macOS is itself a Linux VM, and macOS
+guests cannot nest VMs: Apple's Virtualization.framework supports nested
+virtualization only for **Linux** guests (M3+ chips, macOS 15+), so Docker
+Desktop, Colima and similar fail their hypervisor check inside the sandbox.
+The CLI works as-is against any remote engine.
+
+**The runner wires the host's engine into the guest automatically.**
+`run-macos-sandbox.sh` looks for a Docker engine socket on the host (Docker
+Desktop at `~/.docker/run/docker.sock`, Colima, OrbStack, or
+`/var/run/docker.sock`); when it finds one, it bridges it into the guest the
+same way as the SSH agent: a host-side `socat` for the current run, and a
+guest-side `socat` (persisted in `~/.zprofile`, recreated on every login)
+that serves the socket at `~/.docker/run/docker.sock`. A docker context
+named `host` is created in the guest and made the default, so `docker`,
+`docker compose`, `docker buildx` — from a terminal or from the coding agent
+— all hit the host engine:
+
+```bash
+# inside the guest — the runner already set up the context
+docker context show          # host
+docker run --rm hello-world
+```
+
+Notes:
+
+- The host engine must be running when the runner bridges it (the socket only
+  exists then). If Docker Desktop isn't started yet, the runner skips the
+  bridge — start the engine and re-run the script (or just run it again; the
+  setup is idempotent).
+- The bridge is per-boot: the host-side listener lives for the current run
+  (in background mode it stays up until killed, see the runner's summary),
+  and the guest side recreates its socket at every login. If the guest is
+  rebooted while the host listener is still up, docker keeps working; after a
+  host reboot, re-run the script.
+- Pass `--no-docker` to skip the bridge. `SANDBOX_DOCKER_PORT` overrides the
+  bridge port (default `4101`).
+- The listener binds only to the VM network gateway address, so it is not
+  exposed to your LAN — same trust model as the SSH agent bridge: the sandbox
+  can use your host's Docker engine (and, via the agent bridge, your SSH
+  keys).
+
+**Manual setup** — when you'd rather point the CLI at an engine the runner
+doesn't detect, e.g. the host's Docker Desktop over SSH instead of a socket
+(the bridged SSH agent covers authentication, see
+[docs/ssh-agent.md](ssh-agent.md)):
+
+```bash
+# inside the guest — use the host's Docker engine over SSH
+docker context create host --docker "host=ssh://<host-user>@<host-ip>"
+docker context use host
+docker run --rm hello-world
+```
+
+- `<host-user>` is your macOS host user name; `<host-ip>` is the VM's NAT
+  gateway — usually `192.168.64.1` (check with `route -n get default` in the
+  guest).
+- The host must run Docker Desktop with Remote Login (SSH) enabled, and your
+  SSH key must be authorized on the host (`~/.ssh/authorized_keys`) — the
+  bridged agent presents it.
+- Any other remote engine works the same way: `docker context create <name>
+  --docker "host=ssh://user@host"` or `--docker
+  "host=tcp://<host>:2376"` (TLS-protected).
+- No engine is needed for image inspection: `docker manifest inspect alpine`
+  works offline.
 
 ### The one-VM, many-projects workflow in depth
 
@@ -408,6 +484,7 @@ Options:
   after the summary and the VM keeps running (`tart stop <vm>` to stop it,
   tart output in `~/Library/Logs/agent-sandbox/tart-<vm>.log`)
 - `--no-agent` — skip the SSH agent bridge setup
+- `--no-docker` — skip the Docker engine bridge setup
 - `--no-settings` — skip copying the host's user settings into the guest
 
 Environment variables (defaults in parentheses):
@@ -419,6 +496,7 @@ Environment variables (defaults in parentheses):
 | `SANDBOX_WORK_DIR` | `/Volumes/dev` | Host directory shared into the guest; empty disables the mount |
 | `SANDBOX_MOUNT_NAME` | `dev` | Mount name inside the guest (appears at `/Volumes/My Shared Files/<name>`) |
 | `SANDBOX_AGENT_PORT` | `4100` | TCP port for the SSH agent bridge |
+| `SANDBOX_DOCKER_PORT` | `4101` | TCP port for the Docker engine bridge |
 | `SANDBOX_OPENCHAMBER_PORT` | `3000` | Guest port of OpenChamber |
 | `SANDBOX_CPU_COUNT` | `8` | CPUs for a freshly cloned VM |
 | `SANDBOX_MEMORY_MB` | `16384` | RAM for a freshly cloned VM, in MB |

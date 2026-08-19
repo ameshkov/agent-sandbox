@@ -20,9 +20,10 @@ recipes; it is the authoritative build/release guide.
   root themselves, so run them from anywhere.
 - `scripts/run-macos-sandbox.sh` — user-facing runner: pulls/clones the sandbox
   if needed, runs it with the recommended settings, bridges the host's SSH
-  agent into the guest (see `docs/ssh-agent.md`), copies the host's user
-  settings into the guest once per VM (versioned marker inside the guest, see
-  `docs/macos.md`), and verifies OpenChamber.
+  agent into the guest (see `docs/ssh-agent.md`) and the host's Docker engine
+  into the guest when one is running (see `docs/macos.md`), copies the host's
+  user settings into the guest once per VM (versioned marker inside the guest,
+  see `docs/macos.md`), and verifies OpenChamber.
 - `scripts/sync-macos-sandbox.sh` — user-facing: copies the host's user
   settings (opencode config/agents/skills/commands/plugins, Copilot
   config/skills, SSH/Git dotfiles)
