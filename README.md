@@ -1,7 +1,7 @@
 # agent-sandbox
 
 Local sandbox virtual machines for AI coding agents. A pre-built image with the
-full toolchain (macOS, Xcode, Homebrew, Node, Python, Ruby, VS Code, OpenCode)
+full toolchain (macOS, Xcode, Homebrew, Node, Python, Ruby, VS Code, OpenCode, OpenChamber)
 runs on your Mac via [Tart](https://tart.run/). Your code stays on the host —
 you share a working directory into the VM and let a coding agent work on it in
 an isolated sandbox.
