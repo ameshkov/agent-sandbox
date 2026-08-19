@@ -23,8 +23,9 @@ variable "xcode_version" {
 
 variable "disk_size" {
   type    = number
-  default = 80
-  # VM disk size in GB.
+  default = 160
+  # VM disk size in GB. Must be >= the Cirrus base image disk (140 GB): tart
+  # can only grow a disk, never shrink it.
 }
 
 variable "cpu_count" {

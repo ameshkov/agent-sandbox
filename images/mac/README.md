@@ -17,7 +17,7 @@ Each image is a single macOS version; the image name is fixed per version
 
 ## Versioning
 
-Images are published with semantic version tags (`:1.0.0`, `:latest`). The
+Images are published with semantic version tags (`:1.2.0`, `:latest`). The
 current version lives in the image's vars file (`image_version`); every release
 bumps it, adds a [CHANGELOG.md](CHANGELOG.md) entry, and tags the release
 commit `mac-v<version>` (e.g. `mac-v1.2.0`, created with

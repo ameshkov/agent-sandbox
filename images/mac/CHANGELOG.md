@@ -12,6 +12,13 @@ is never removed — changes land there until the next release.
 
 ## [Unreleased]
 
+### Changed
+
+- The template's `disk_size` default is now 160 GB (matching the vars files
+  and the built images) — the previous 80 GB default was below the ~140 GB
+  Cirrus base image disk, and tart can only grow a disk, never shrink it. No
+  effect on released images; only relevant when a vars file omits `disk_size`.
+
 ## [mac-v1.2.0] - 2026-08-19
 
 ### Added

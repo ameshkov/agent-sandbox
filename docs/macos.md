@@ -15,7 +15,7 @@
 > 4. [Use the sandbox](#4-use-the-sandbox)
 >
 > Everything below the **Details** divider is optional reading: what's inside
-> the image, how to configure the VM, and troubleshooting.
+> the image and how to configure the VM.
 
 ## Quick setup
 
@@ -23,8 +23,7 @@
 
 - An Apple Silicon Mac (M1 or newer). macOS guests cannot run on Intel Macs.
 - macOS 13 (Ventura) or newer on the host.
-- ~150 GB of free disk space (the image is large; see
-  [Troubleshooting](#troubleshooting)).
+- ~150 GB of free disk space (the image is large).
 
 **Default account**
 
@@ -58,7 +57,7 @@ cloning a working VM from it, then applies the recommended settings (8 CPUs /
 16 GB RAM, 1280x800 display-refit). It then starts the VM with `--no-audio`
 (audio-isolated from the host) and your work directory shared, bridges a
 password manager's SSH agent into the guest when one is detected on the host
-(see [Sharing the SSH agent](#sharing-the-ssh-agent)), and finishes by
+(see [docs/ssh-agent.md](ssh-agent.md)), and finishes by
 verifying OpenChamber and offering to open it in your browser. Later runs skip
 straight to starting the VM.
 
@@ -152,7 +151,8 @@ with Tart. The default image ships the following software:
 | OpenChamber | latest (web UI for OpenCode, auto-started on port 3000) |
 | CLI tools | `git`, `gh`, `jq`, `ripgrep`, `coreutils`, `curl`, `wget`, `socat`, `bash` |
 
-Verify the toolchain from the guest Terminal (or SSH, see below):
+Verify the toolchain from the guest Terminal (or over SSH:
+`ssh admin@$(tart ip <vm-name>)`, password `admin`):
 
 ```bash
 xcodebuild -version
@@ -238,196 +238,6 @@ Notes:
   button). If the display doesn't resize on its own, open **System Settings →
   Displays** inside the guest and confirm **Resolution: Default for display** —
   that kicks the auto-resize in.
-
-### Running the VM
-
-**With graphics (default)**
-
-```bash
-tart run --no-audio <vm-name>
-```
-
-Useful options:
-
-- `tart set <vm-name> --display 1280x800 --display-refit` — set the guest
-  resolution (run while the VM is stopped; see
-  [Display setup](#display-setup)). Default is `1024x768`.
-- `tart set <vm-name> --cpu 8 --memory 16384` — give the VM more resources.
-  Defaults are 4 CPUs / 8 GB.
-- `tart run --dir=... <vm-name>` — see
-  [Sharing the development directory](#sharing-the-development-directory).
-
-**Without graphics (headless)**
-
-```bash
-tart run --no-graphics --no-audio <vm-name>
-```
-
-The VM runs in the background. Interact with it over SSH:
-
-```bash
-ssh admin@$(tart ip <vm-name>)
-# password: admin
-```
-
-or run single commands (add `-t` for interactive/TUI programs like `opencode`):
-
-```bash
-tart exec <vm-name> xcodebuild -version
-tart exec -t <vm-name> opencode
-```
-
-**With VNC (screen sharing)**
-
-Prefer a graphical session but no Tart window? Screen Sharing supports
-copy/paste and drag-and-drop:
-
-```bash
-tart run --vnc --no-audio <vm-name>
-```
-
-Then connect from the host with Screen Sharing (Finder → Go → Connect to
-Server → `vnc://<ip>`), where `<ip>` is `tart ip <vm-name>`. Screen Sharing is
-already enabled inside the image.
-
-### Audio
-
-The sandbox runs with **no audio sharing** with the host (`--no-audio`): the
-guest can't record from the host's microphone and can't play sound through the
-host's speakers. This is on purpose — a sandboxed agent should have no way to
-listen to or emit audio on your machine. Run the VM with `--no-audio` on every
-start (all three modes above already include it; save the command in a shell
-alias or a `run-sandbox.sh` script, see
-[Sharing the development directory](#sharing-the-development-directory)). If
-you ever need audio in the VM, just drop the flag.
-
-### Sharing the development directory
-
-Mount a host directory into the guest with `--dir`:
-
-```bash
-tart run --dir=work:~/dev/my-project <vm-name>
-```
-
-In the guest the directory appears at `/Volumes/My Shared Files/work`.
-
-- The first part (`work`) is the mount name, the second is the host path.
-- Repeat `--dir` to share several directories.
-- Append `:ro` to mount read-only:
-  `tart run --dir=work:~/dev/my-project:ro <vm-name>`.
-- `--dir` must be passed on every `tart run` invocation — save your run
-  command in a shell script or alias.
-- Inside the guest the shared directory can be remounted anywhere, e.g.
-  `sudo mount_virtiofs com.apple.virtio-fs.automount ~/workspace` (then it
-  appears at `~/workspace/work`).
-
-### Sharing the clipboard
-
-- **GUI mode**: clipboard sharing between host and guest is **enabled by
-  default** (powered by the Tart Guest Agent, pre-installed in the image).
-  Disable it with `tart run --no-clipboard <vm-name>` if you ever need to.
-- **VNC / Screen Sharing**: copy/paste works as well.
-- **Headless without VNC**: no clipboard; use a shared directory or `tart
-  exec` instead.
-
-### Passing files to the VM
-
-1. **Shared directory** (recommended for code): mount with `--dir`, see
-   above.
-2. **scp over SSH** (one-off files):
-
-   ```bash
-   scp ./my-file.txt admin@$(tart ip <vm-name>):
-   # password: admin
-   ```
-
-   (in both directions — from the guest, `scp` back to the host works too).
-3. **`tart exec` with stdin** (no SSH needed):
-
-   ```bash
-   cat ./my-file.txt | tart exec -i <vm-name> sh -c 'cat > my-file.txt'
-   ```
-
-4. **Drag and drop** into the VM via Screen Sharing (`tart run --vnc`).
-
-### Sharing the SSH agent
-
-The coding agent often needs SSH access (`git push`, etc.) and your keys may
-live in a password manager on the host (Bitwarden, 1Password, KeePassXC, ...).
-The agent socket can't cross a directory mount — Unix sockets are kernel
-objects, not files — so the guest gets its own socket backed by a bridge to
-the host. The full guide is [docs/ssh-agent.md](ssh-agent.md); the short
-version (Bitwarden example; the socket path differs per manager):
-
-Host:
-
-```bash
-GW=$(tart ip sandbox | awk -F. '{print $1"."$2"."$3".1"}')
-socat TCP-LISTEN:4100,reuseaddr,fork,bind="$GW" \
-    UNIX-CONNECT:"$HOME/Library/Containers/com.bitwarden.desktop/Data/.bitwarden-ssh-agent.sock"
-```
-
-Guest:
-
-```bash
-HOST_GW=$(netstat -nr | awk '/default/{print $2; exit}')
-socat UNIX-LISTEN:/tmp/ssh-agent.sock,fork,unlink-early,mode=600 \
-    TCP:"$HOST_GW":4100 &
-export SSH_AUTH_SOCK=/tmp/ssh-agent.sock   # add to ~/.zprofile
-```
-
-`socat` is included in the sandbox image; on the host, install it once with
-`brew install socat`.
-
-### Managing VMs
-
-| Task | Command |
-|------|---------|
-| List VMs | `tart list` |
-| Stop a VM | `tart stop <vm-name>` |
-| Delete a VM | `tart delete <vm-name>` |
-| Rename a VM | `tart rename <vm-name> <new-name>` |
-| Clone a VM (CoW, cheap) | `tart clone <source-vm> <new-vm>` |
-| Suspend / resume | `tart suspend <vm-name>`, then `tart run <vm-name>` |
-| Resize the disk | `tart set <vm-name> --disk-size 160` (see [FAQ](https://tart.run/faq/#disk-resizing) for macOS specifics) |
-| Back up a VM | `tart export <vm-name> my-sandbox.tvm`, restore with `tart import my-sandbox.tvm <vm-name>` |
-
-### Troubleshooting
-
-- **Pulling the image fails or asks for authentication.** The images are
-  public and pull without any login. If you still hit an auth error (or need
-  to publish images), create a GitHub personal access token with
-  `read:packages` (and `write:packages` to publish) —
-  [create one](https://github.com/settings/tokens/new?scopes=read:packages,write:packages&description=agent-sandbox).
-- **The image is huge.** The base macOS image with Xcode is ~50 GB and the
-  sandbox VM itself takes another ~80 GB of disk. `tart list` shows what you
-  have; `tart prune` removes OCI/IPSW caches.
-- **"Local Network" permission pop-up** (macOS 15+ host): Packer or other
-  tools connecting to the VM may trigger it. To allow all private address
-  ranges once and for all:
-
-  ```bash
-  sudo defaults write com.apple.network.local-network AllowedEthernetLocalNetworkAddresses -array "10.0.0.0/8" "172.16.0.0/12" "192.168.0.0/16"
-  sudo defaults write com.apple.network.local-network AllowedWiFiLocalNetworkAddresses -array "10.0.0.0/8" "172.16.0.0/12" "192.168.0.0/16"
-  ```
-
-  ...and reboot the host.
-- **Headless VM won't start** with errors about `login.keychain` (macOS 15+
-  host): our images enable auto-login, which creates an unlocked keychain at
-  first boot. If you built your own image without it, log in via the GUI or
-  Screen Sharing at least once.
-- **Can't find the VM's IP**: make sure the VM is running, then
-  `tart ip <vm-name>`.
-- **Connecting to host services from the VM**: with the default NAT network
-  the host is reachable at the default gateway IP — from inside the guest run
-  `netstat -nr | awk '/default/{print $2; exit}'`.
-- **The VM feels slow**: check `tart set <vm-name> --cpu`/`--memory`; the
-  default image is configured for 4 CPUs / 8 GB.
-- **Black bars in fullscreen / display doesn't resize**: on macOS 13 hosts
-  automatic display reconfiguration isn't available — set the display size to
-  match your screen's aspect ratio (see [Display setup](#display-setup)). On
-  macOS 14+ hosts, open **System Settings → Displays** inside the guest and
-  select **Resolution: Default for display**.
 
 ### Runner script reference
 

@@ -44,23 +44,45 @@ recipes; it is the authoritative build/release guide.
   or a missing `[<tag>]` CHANGELOG entry. Run after committing a release,
   before `build.sh` + `deploy.sh`.
 
+## Releases & tags
+
+- Version source of truth: `image_version` in the image's vars file; every
+  release bumps it. Git tags are repo-wide, so a release tag is prefixed with
+  the platform: `<platform>-v<version>` (e.g. `mac-v1.2.0`). This is separate
+  from the GHCR push tags, which are `<image>:<image_version>` + `:latest`.
+- Every version bump creates a tag: bump `image_version`, add the CHANGELOG
+  entry, commit, then `./scripts/tag.sh <image>`. `tag.sh` enforces the rules:
+  it refuses to tag a dirty working tree (so the tag always points at the
+  release commit, never at uncommitted changes), refuses a changelog without a
+  `[<tag>]` entry, and never overwrites an existing tag. The tag is annotated
+  and pushed to origin.
+- CHANGELOG format (`images/mac/CHANGELOG.md`, mirrored for new platforms):
+  - Always keep `## [Unreleased]` on top — never remove it; changes land
+    there between releases.
+  - A release heading is the tag name: `## [mac-v1.2.0] - <date>` (Keep a
+    Changelog / semver).
+  - At the bottom: `[unreleased]` → compare URL against the newest tag, and
+    one `[mac-vX.Y.Z]` → `releases/tag/mac-vX.Y.Z` per release. Update both
+    in the same change as the entry.
+- Release sequence: bump + changelog entry → commit → `./scripts/tag.sh
+  <image>` → `./scripts/build.sh <image>` → `./scripts/deploy.sh <image>`.
+  The full guide is in DEVELOPMENT.md → "Releasing a new image version".
+
 ## Conventions & gotchas
 
 - Image name = vars file name = VM name = `sandbox-macos-<macos-version>`.
   The Xcode version is **not** part of the name (it only selects the base
   image). Never introduce a separate naming scheme.
 - Every release: bump `image_version` in the vars file, add a CHANGELOG entry,
-  commit, create the release tag (`./scripts/tag.sh <image>`, e.g.
-  `mac-v1.2.0`), then `build.sh` + `deploy.sh`. Keep them in sync.
+  commit, create the release tag, then `build.sh` + `deploy.sh` — see
+  "Releases & tags" above. Keep them in sync.
 - Any change to an image — the Packer template, its vars file, or the
   provisioner scripts — must be recorded in `images/mac/CHANGELOG.md`, not
   just released versions. Update the changelog in the same change as the
   image itself; never land an image change without a corresponding entry.
 - Build prerequisites: Apple Silicon host (Tart VMs can't run on Intel), Tart
   + Packer via Homebrew, ~150 GB free disk; the first build pulls the ~50 GB
-  base image. `PACKER_LOG=1` for verbose output. On macOS 15+ hosts the
-  "Local Network" permission popup can interrupt builds (workaround in
-  `docs/macos.md` Troubleshooting).
+  base image. `PACKER_LOG=1` for verbose output.
 - SSH provisioning credentials are fixed by the Cirrus base images:
   `admin`/`admin`.
 - `scripts/deploy.sh` maps the `images/` platform dir to the GHCR path

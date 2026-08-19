@@ -18,7 +18,7 @@ Pick the guide for your operating system:
 | Linux | [Coming soon](docs/linux.md) |
 | Windows | [Coming soon](docs/windows.md) |
 
-The [macOS guide](docs/macos.md) starts with a short, six-step quick setup and
+The [macOS guide](docs/macos.md) starts with a short, four-step quick setup and
 is all you need to have a sandbox with a coding agent running.
 
 ## Documentation

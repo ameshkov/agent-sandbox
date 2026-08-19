@@ -16,9 +16,9 @@ Each supported platform has a directory under `images/` containing:
 3. **Variables files** (`vars/*.pkrvars.hcl`) — one file per image (macOS
    version): the OS version, disk size and the image's semantic version.
 
-The running side of a recipe (how to run the VM, share directories, clipboard,
-etc.) lives in the per-OS user guides under [docs/](docs/) — keep them in sync
-whenever you change how an image behaves.
+The running side of a recipe (how to run the VM, share directories, the SSH
+agent bridge, etc.) lives in the per-OS user guides under [docs/](docs/) —
+keep them in sync whenever you change how an image behaves.
 
 ## Repository layout
 
@@ -107,9 +107,6 @@ Notes:
   leaves the VM in `~/.tart/vms/`). Delete it first:
   `tart delete sandbox-macos-tahoe`.
 - Set `PACKER_LOG=1` for verbose Packer output.
-- On macOS 15+ hosts the "Local Network" permission pop-up may interrupt the
-  build — see the workaround in [docs/macos.md](docs/macos.md)
-  (Troubleshooting).
 
 ### Adding a new macOS version
 
