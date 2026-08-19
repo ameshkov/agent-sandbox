@@ -3,7 +3,7 @@
 # run-macos-sandbox.sh — pull (if needed), run, and wire up a macOS sandbox VM.
 #
 # Usage:
-#   ./scripts/run-macos-sandbox.sh [--headless] [--no-agent]
+#   ./scripts/run-macos-sandbox.sh [--headless] [--no-agent] [--no-settings]
 #
 # What it does:
 #   1. Makes sure the sandbox image is pulled and a working VM exists
@@ -17,7 +17,14 @@
 #      guest (~/.zprofile + socat auto-restart, survives guest reboots); the
 #      host-side socat is only started for this run and is never persisted
 #      in the host's shell profile.
-#   4. Verifies that OpenChamber is up and offers to open it in the browser.
+#   4. Offers to copy the host's user settings into the guest — opencode
+#      config + auth, ~/.ssh/allowed_signers, ~/.ssh/known_hosts,
+#      ~/.ssh/*.sh, ~/.gitconfig (see docs/macos.md). Runs once per guest:
+#      a versioned marker inside the guest tracks what was copied, and
+#      bumping the settings version below re-copies when settings change.
+#      OpenChamber is restarted after a copy so it picks up the new
+#      settings.
+#   5. Verifies that OpenChamber is up and offers to open it in the browser.
 #
 # Output: colored, step-by-step status with a summary block at the end.
 # Colors are used only when the output is a terminal — piped/redirected
@@ -57,6 +64,7 @@ memory_mb=${SANDBOX_MEMORY_MB:-16384}
 
 headless=0
 skip_agent=0
+skip_settings=0
 
 tart_pid=
 bridge_pid=
@@ -64,6 +72,12 @@ vm_ip=
 agent_bridged=0
 guest_bridge_up=0
 openchamber_up=0
+settings_state=
+
+# Version of the user settings copied into the guest (step 4). Bump this when
+# new files are added to collect_settings_files: guests whose marker is older
+# than this are offered the copy again.
+settings_version=1
 
 # --- output helpers ----------------------------------------------------------
 #
@@ -455,7 +469,119 @@ setup_ssh_agent() {
     fi
 }
 
-# --- step 4: OpenChamber -----------------------------------------------------
+# --- step 4: user settings ----------------------------------------------------
+#
+# Copies the host's user settings into the guest: opencode config + auth,
+# ~/.ssh/allowed_signers, ~/.ssh/known_hosts, ~/.ssh/*.sh and ~/.gitconfig.
+# Runs once per guest — a versioned marker file inside the guest
+# (~/.config/agent-sandbox/settings-copied) records which settings version
+# was copied; guests with an older marker are offered the copy again, so
+# bumping $settings_version re-runs the step when new settings are added.
+
+# Returns 0 when the guest already has settings of the current version.
+guest_settings_installed() {
+    tart exec -i "$vm" sh -s "$settings_version" <<'GUEST_SETTINGS_STATUS' 2>/dev/null
+version=$1
+marker="$HOME/.config/agent-sandbox/settings-copied"
+if [ -f "$marker" ] && [ "$(cat "$marker" 2>/dev/null)" -ge "$version" ] 2>/dev/null; then
+    exit 0
+fi
+exit 1
+GUEST_SETTINGS_STATUS
+}
+
+# Prints the host's user settings files, one per line, as paths relative to
+# $HOME (tarable with -C "$HOME" and displayed with $HOME/). Only files that
+# actually exist are listed.
+collect_settings_files() {
+    for f in \
+        ".config/opencode/opencode.json" \
+        ".config/opencode/opencode.jsonc" \
+        ".local/share/opencode/auth.json" \
+        ".ssh/allowed_signers" \
+        ".ssh/known_hosts" \
+        ".gitconfig"; do
+        [ -f "$HOME/$f" ] && printf '%s\n' "$f"
+    done
+    # Shell scripts in ~/.ssh (helpers for signing, host config, ...).
+    for f in "$HOME"/.ssh/*.sh; do
+        [ -f "$f" ] && printf '%s\n' "${f#"$HOME"/}"
+    done
+    return 0
+}
+
+setup_user_settings() {
+    if guest_settings_installed; then
+        ok "User settings are already in the guest (version $settings_version) — skipping."
+        settings_state=uptodate
+        return 0
+    fi
+
+    settings_list=$(collect_settings_files)
+    if [ -z "$settings_list" ]; then
+        info "No user settings found on the host (opencode config/auth, ~/.ssh, ~/.gitconfig) — nothing to copy."
+        settings_state=none
+        return 0
+    fi
+
+    info "Found on the host — will copy into the guest's home directory:"
+    printf '%s\n' "$settings_list" | while IFS= read -r f; do
+        info "  $HOME/$f"
+    done
+    if ! confirm "Copy these user settings into the guest?" y; then
+        info "Skipped — re-run the script to copy them later."
+        settings_state=declined
+        return 0
+    fi
+
+    # Ship the files as a tar stream over `tart exec` stdin (no password
+    # needed, file modes preserved). The .ssh dir may not exist in the guest
+    # yet — tar creates it, then tighten it to 700 like ssh expects.
+    if ! printf '%s\n' "$settings_list" | tar -C "$HOME" -cf - -T - |
+        tart exec -i "$vm" sh -c 'tar -C "$HOME" -xf - || exit 1; chmod 700 "$HOME/.ssh" 2>/dev/null || true'; then
+        warn "could not copy the user settings into the guest."
+        settings_state=failed
+        return 1
+    fi
+
+    # Record the version that was copied, so the step runs only once (until
+    # $settings_version is bumped).
+    if ! tart exec -i "$vm" sh -s "$settings_version" <<'GUEST_SETTINGS_MARKER'
+version=$1
+mkdir -p "$HOME/.config/agent-sandbox"
+printf '%s\n' "$version" > "$HOME/.config/agent-sandbox/settings-copied"
+GUEST_SETTINGS_MARKER
+    then
+        warn "settings were copied, but the version marker could not be written — they will be offered again next run."
+        settings_state=failed
+        return 1
+    fi
+
+    count=$(printf '%s\n' "$settings_list" | wc -l | tr -d ' ')
+    settings_state=copied
+    ok "Copied $count file(s) into the guest."
+}
+
+# OpenChamber runs the opencode CLI under the hood (LaunchAgent
+# dev.openchamber.web), so it holds the settings it started with. Restart it
+# after a copy so a fresh opencode config and auth take effect without a
+# guest reboot or manual 'openchamber restart'. Non-fatal: if it isn't up yet
+# (still starting at login), verify_openchamber below still waits for it.
+restart_openchamber() {
+    # The openchamber CLI is npm-global via nvm, so it is only on PATH in
+    # login shells — source ~/.zprofile first, like the image provisioners do.
+    if ! tart exec -i "$vm" sh -s 2>/dev/null <<'GUEST_OC_RESTART'
+. "$HOME/.zprofile" 2>/dev/null || true
+exec openchamber restart
+GUEST_OC_RESTART
+    then
+        warn "could not restart OpenChamber — it will pick up the new settings on its next start."
+        return 1
+    fi
+    ok "Restarted OpenChamber so it picks up the new user settings."
+}
+
+# --- step 5: OpenChamber -----------------------------------------------------
 
 verify_openchamber() {
     n=0
@@ -515,6 +641,26 @@ print_summary() {
     else
         printf '    %-12s %s\n' 'SSH agent:' 'not bridged'
     fi
+    case "$settings_state" in
+        copied)
+            printf '    %-12s %s\n' 'Settings:' "${c_green}copied into the guest (version $settings_version)${c_reset}"
+            ;;
+        uptodate)
+            printf '    %-12s %s\n' 'Settings:' "already in the guest (version $settings_version)"
+            ;;
+        skipped)
+            printf '    %-12s %s\n' 'Settings:' 'not copied (--no-settings)'
+            ;;
+        none)
+            printf '    %-12s %s\n' 'Settings:' 'nothing to copy on the host'
+            ;;
+        failed)
+            printf '    %-12s %s\n' 'Settings:' "${c_yellow}copy failed — re-run the script to retry${c_reset}"
+            ;;
+        *)
+            printf '    %-12s %s\n' 'Settings:' 'not copied'
+            ;;
+    esac
     if [ "$openchamber_up" = 1 ]; then
         printf '    %-12s %s\n' 'OpenChamber:' "${c_green}http://$ip_str:$openchamber_port (password: sandbox)${c_reset}"
     elif [ -n "$ip_str" ]; then
@@ -547,6 +693,7 @@ Pulls (if needed), runs, and wires up a macOS sandbox VM.
 Options:
   --headless     Run without a window (tart run --no-graphics)
   --no-agent     Skip the SSH agent bridge setup
+  --no-settings  Skip copying the host's user settings into the guest
   -h, --help     Show this help
 
 Environment:
@@ -567,6 +714,7 @@ for arg in "$@"; do
     case "$arg" in
         --headless) headless=1 ;;
         --no-agent) skip_agent=1 ;;
+        --no-settings) skip_settings=1 ;;
         -h | --help) usage; exit 0 ;;
         *) echo "Unknown option: $arg" >&2; usage >&2; exit 1 ;;
     esac
@@ -599,11 +747,11 @@ title "macOS sandbox: $vm (image: $image, $mode mode)"
 
 # 1. Make sure the sandbox is pulled and a working VM exists.
 created=0
-step "Step 1/4: Sandbox image and working VM"
+step "Step 1/5: Sandbox image and working VM"
 ensure_vm
 
 # 2. Run it with the recommended settings.
-step "Step 2/4: Starting the VM"
+step "Step 2/5: Starting the VM"
 if [ "$(vm_state "$vm")" = running ]; then
     ok "Sandbox VM '$vm' is already running — skipping 'tart run'."
 else
@@ -613,15 +761,30 @@ fi
 
 # 3. SSH agent bridge (host bridge per run; the guest side is persisted
 #    inside the guest's ~/.zprofile).
-step "Step 3/4: SSH agent bridge"
+step "Step 3/5: SSH agent bridge"
 if [ "$skip_agent" = 1 ]; then
     info "Skipping SSH agent bridge setup (--no-agent)."
 else
     setup_ssh_agent
 fi
 
-# 4. Verify OpenChamber and offer to open it.
-step "Step 4/4: OpenChamber"
+# 4. User settings (opencode config + auth, SSH/Git dotfiles) — copied once
+#    per guest, tracked by a versioned marker inside the guest.
+step "Step 4/5: User settings"
+if [ "$skip_settings" = 1 ]; then
+    info "Skipping user settings copy (--no-settings)."
+    settings_state=skipped
+else
+    setup_user_settings
+    # OpenChamber wraps the opencode CLI — restart it so a fresh copy of the
+    # settings takes effect without rebooting the guest.
+    if [ "$settings_state" = copied ]; then
+        restart_openchamber
+    fi
+fi
+
+# 5. Verify OpenChamber and offer to open it.
+step "Step 5/5: OpenChamber"
 verify_openchamber || true
 
 print_summary

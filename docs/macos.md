@@ -57,13 +57,17 @@ cloning a working VM from it, then applies the recommended settings (8 CPUs /
 16 GB RAM, 1280x800 display-refit). It then starts the VM with `--no-audio`
 (audio-isolated from the host) and your work directory shared, bridges a
 password manager's SSH agent into the guest when one is detected on the host
-(see [docs/ssh-agent.md](ssh-agent.md)), and finishes by
-verifying OpenChamber and offering to open it in your browser. Later runs skip
-straight to starting the VM.
+(see [docs/ssh-agent.md](ssh-agent.md)), offers to copy your host's user
+settings — opencode config and credentials, SSH and Git dotfiles — into the
+guest once per VM (see [User settings on the
+guest](#user-settings-on-the-guest)), restarts OpenChamber so a fresh copy
+takes effect, and finishes by verifying OpenChamber and offering to open it in
+your browser. Later runs skip straight to starting the VM.
 
 A window with the guest desktop opens and auto-logs in as `admin` (password:
 `admin`); clipboard sharing works out of the box. Pass `--headless` to run
-without a window, or `--no-agent` to skip the SSH agent bridge.
+without a window, `--no-agent` to skip the SSH agent bridge, or `--no-settings`
+to skip the user settings copy.
 
 To use the sandbox in fullscreen with a proper (sharp, full-window)
 resolution, set the guest display to its default first: in the guest open
@@ -226,6 +230,46 @@ Notes:
 - If the sandbox gets messy: `tart stop sandbox && tart delete sandbox`, then
   re-clone from the pristine image. All your code stays safe on the host.
 
+### User settings on the guest
+
+On first run — and again whenever the settings change — the runner offers to
+copy your host's user settings into the guest, so the agent works with your
+credentials and preferences out of the box. What it copies:
+
+| Source (host) | Destination (guest) | Why |
+|---|---|---|
+| `~/.config/opencode/opencode.json` (or `.jsonc`) | same path | OpenCode configuration (models, agents, permissions, ...) |
+| `~/.local/share/opencode/auth.json` | same path | OpenCode provider credentials — no `opencode auth login` needed in the guest |
+| `~/.ssh/allowed_signers` | same path | SSH signing verification |
+| `~/.ssh/known_hosts` | same path | SSH host keys you already trust |
+| `~/.ssh/*.sh` | same path | SSH helper scripts (e.g. for signing) |
+| `~/.gitconfig` | same path | Git identity, aliases, signing config |
+
+The step runs **once per VM**: after copying, a versioned marker file inside
+the guest (`~/.config/agent-sandbox/settings-copied`) records the settings
+version that was copied, and later runs skip the step. When new settings are
+added to the script (and its `settings_version` is bumped), the step runs
+again and copies the additional files. Each time it runs it asks for
+confirmation and lists what it will copy. To force a re-copy, delete the
+marker and re-run:
+
+```bash
+tart exec sandbox rm ~/.config/agent-sandbox/settings-copied
+./scripts/run-macos-sandbox.sh
+```
+
+Notes:
+
+- Only files that exist on the host are copied.
+- After a copy, OpenChamber is restarted automatically (`openchamber restart`
+  inside the guest) so it picks up the new opencode config and credentials —
+  it wraps the opencode CLI and keeps the settings it started with otherwise.
+- SSH **keys are not copied** — authentication goes through the bridged SSH
+  agent (see [docs/ssh-agent.md](ssh-agent.md)).
+- The guest's `~/.ssh/config` is not touched here — it is managed by the SSH
+  agent bridge setup (`IdentityAgent`), see [docs/ssh-agent.md](ssh-agent.md).
+- Pass `--no-settings` to skip the step for a run.
+
 ### Display setup
 
 - The resolution is set with `tart set <vm-name> --display <WxH>` (VM stopped).
@@ -256,6 +300,7 @@ Options:
 
 - `--headless` — run without a window (`tart run --no-graphics`)
 - `--no-agent` — skip the SSH agent bridge setup
+- `--no-settings` — skip copying the host's user settings into the guest
 
 Environment variables (defaults in parentheses):
 

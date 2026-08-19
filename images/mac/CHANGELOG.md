@@ -12,6 +12,17 @@ is never removed — changes land there until the next release.
 
 ## [Unreleased]
 
+### Added
+
+- `scripts/run-macos-sandbox.sh` now offers to copy the host's user settings
+  into the guest — opencode config (`~/.config/opencode/opencode.json` /
+  `.jsonc`) and auth (`~/.local/share/opencode/auth.json`), plus
+  `~/.ssh/allowed_signers`, `~/.ssh/known_hosts`, `~/.ssh/*.sh` and
+  `~/.gitconfig` — once per VM, tracked by a versioned marker inside the
+  guest (`~/.config/agent-sandbox/settings-copied`); bumping the settings
+  version in the script re-copies when new settings are added. Skip with
+  `--no-settings`.
+
 ### Changed
 
 - The template's `disk_size` default is now 160 GB (matching the vars files

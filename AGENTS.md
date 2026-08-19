@@ -20,7 +20,9 @@ recipes; it is the authoritative build/release guide.
   root themselves, so run them from anywhere.
 - `scripts/run-macos-sandbox.sh` — user-facing runner: pulls/clones the sandbox
   if needed, runs it with the recommended settings, bridges the host's SSH
-  agent into the guest (see `docs/ssh-agent.md`), and verifies OpenChamber.
+  agent into the guest (see `docs/ssh-agent.md`), copies the host's user
+  settings into the guest once per VM (versioned marker inside the guest, see
+  `docs/macos.md`), and verifies OpenChamber.
 - `docs/` — user guides. Only `macos.md` and `ssh-agent.md` are real;
   `linux.md` / `windows.md` are placeholders (only macOS host → macOS guest is
   supported today).

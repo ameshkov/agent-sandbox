@@ -85,7 +85,10 @@ deploy_image() {
     echo "Pushing image: $image_name"
     echo "Registry: $registry_path:$image_version and :latest"
 
+    # Chunked uploads (in MB): GHCR only supports chunks smaller than 4MB,
+    # so 3MB keeps us under the limit.
     tart push "$image_name" \
+        --chunk-size 3 \
         "$registry_path:$image_version" \
         "$registry_path:latest"
 }

@@ -29,7 +29,7 @@ keep them in sync whenever you change how an image behaves.
 │   ├── build.sh                   # ./scripts/build.sh [<image>]  — packer init + build
 │   ├── deploy.sh                  # ./scripts/deploy.sh [<image>] — push to GHCR
 │   ├── tag.sh                     # ./scripts/tag.sh [<image>]    — create & push the release git tag
-│   └── run-macos-sandbox.sh       # user-facing: pull/run a VM + SSH agent bridge + OpenChamber
+│   └── run-macos-sandbox.sh       # user-facing: pull/run a VM + SSH agent bridge + user settings + OpenChamber
 ├── docs/                          # User-facing, per host OS setup guides
 │   ├── macos.md                   # macOS (Apple Silicon) — pull & run, details
 │   ├── linux.md                   # placeholder (not supported yet)
