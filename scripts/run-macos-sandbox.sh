@@ -23,13 +23,19 @@
 #      guest (~/.zprofile + socat auto-restart, survives guest reboots); the
 #      host-side socat is only started for this run and is never persisted
 #      in the host's shell profile.
-#   4. Offers to copy the host's user settings into the guest — opencode
-#      config + auth, ~/.ssh/allowed_signers, ~/.ssh/known_hosts,
-#      ~/.ssh/*.sh, ~/.gitconfig (see docs/macos.md). Runs once per guest:
-#      a versioned marker inside the guest tracks what was copied, and
-#      bumping the settings version below re-copies when settings change.
+#   4. Offers to copy the host's user settings into the guest — the global
+#      opencode config (json, tui, agents, commands, modes, plugins, skills,
+#      tools, themes) + auth, the Copilot CLI config + skills
+#      (~/.copilot/config.json, ~/.copilot/skills/), the VS Code extensions
+#      (~/.vscode/extensions) and user config (settings.json, keybindings,
+#      snippets), ~/.ssh/allowed_signers, ~/.ssh/known_hosts,
+#      ~/.ssh/*.sh, ~/.gitconfig (see docs/macos.md).
+#      Runs once per guest: a versioned marker inside the guest tracks what
+#      was copied, and bumping the settings version (in
+#      scripts/lib/macos-settings.sh) re-copies when settings change.
 #      OpenChamber is restarted after a copy so it picks up the new
-#      settings.
+#      settings. The same copy can be triggered on demand with
+#      ./scripts/sync-macos-sandbox.sh.
 #   5. Verifies that OpenChamber is up and offers to open it in the browser.
 #
 # Output: colored, step-by-step status with a summary block at the end.
@@ -85,90 +91,9 @@ guest_bridge_up=0
 openchamber_up=0
 settings_state=
 
-# Version of the user settings copied into the guest (step 4). Bump this when
-# new files are added to collect_settings_files: guests whose marker is older
-# than this are offered the copy again.
-settings_version=1
-
-# --- output helpers ----------------------------------------------------------
-#
-# Colors are used only when the respective stream is a terminal and NO_COLOR
-# is unset, so piped/redirected output and logs stay plain. Everything falls
-# back to plain text in that case.
-
-c_bold=''
-c_dim=''
-c_green=''
-c_yellow=''
-c_blue=''
-c_reset=''
-ce_bold=''
-ce_red=''
-ce_yellow=''
-ce_reset=''
-
-if [ -t 1 ] && [ -z "${NO_COLOR:-}" ]; then
-    c_bold=$(printf '\033[1m')
-    c_dim=$(printf '\033[2m')
-    c_green=$(printf '\033[32m')
-    c_yellow=$(printf '\033[33m')
-    c_blue=$(printf '\033[34m')
-    c_reset=$(printf '\033[0m')
-fi
-if [ -t 2 ] && [ -z "${NO_COLOR:-}" ]; then
-    ce_bold=$(printf '\033[1m')
-    ce_red=$(printf '\033[31m')
-    ce_yellow=$(printf '\033[33m')
-    ce_reset=$(printf '\033[0m')
-fi
-
-die() {
-    printf '%s\n' "${ce_bold}${ce_red}run-macos-sandbox.sh: $*${ce_reset}" >&2
-    exit 1
-}
-
-warn() {
-    printf '%s\n' "${ce_bold}${ce_yellow}run-macos-sandbox.sh: warning: $*${ce_reset}" >&2
-}
-
-title() { printf '%s\n' "${c_bold}$*${c_reset}"; }
-step()  { printf '%s\n' "${c_bold}${c_blue}==> $*${c_reset}"; }
-info()  { printf '%s\n' "    $*"; }
-cmd()   { printf '%s\n' "${c_dim}    $*${c_reset}"; }
-ok()    { printf '%s\n' "${c_green}    $*${c_reset}"; }
-
-# $1 prompt, $2 default (y or n); returns 0 if the user answered yes.
-confirm() {
-    prompt="$1"
-    default="${2:-n}"
-    if [ "$default" = y ]; then hint='Y/n'; else hint='y/N'; fi
-    printf '%s%s%s [%s] ' "${c_bold}" "$prompt" "${c_reset}" "$hint"
-    if [ ! -t 0 ]; then
-        # Non-interactive: nothing will echo the newline, so end the line
-        # ourselves instead of leaving the prompt dangling on it.
-        printf '\n'
-    fi
-    answer=
-    IFS= read -r answer || return 1
-    case "$answer" in
-        y | Y | yes | YES) return 0 ;;
-        '')
-            if [ "$default" = y ]; then return 0; fi
-            return 1
-            ;;
-    esac
-    return 1
-}
-
-# Returns 0 and prints the VM name if it exists in `tart list`.
-vm_exists() {
-    tart list | awk -v name="$1" '$2 == name { found = 1 } END { exit !found }'
-}
-
-# Prints the state (running/stopped) of the given VM, if it exists.
-vm_state() {
-    tart list | awk -v name="$1" '$2 == name { print $NF; exit }'
-}
+# Shared helpers (colors, confirm, ...) and user-settings logic — also used
+# by sync-macos-sandbox.sh. Keep the settings copy logic in the lib, not here.
+. "$repo_root/scripts/lib/macos-settings.sh"
 
 # Prints the path of the host's SSH agent socket when it is overridden, or
 # nothing when the stock macOS agent (or no agent at all) is in use.
@@ -497,44 +422,18 @@ setup_ssh_agent() {
 
 # --- step 4: user settings ----------------------------------------------------
 #
-# Copies the host's user settings into the guest: opencode config + auth,
-# ~/.ssh/allowed_signers, ~/.ssh/known_hosts, ~/.ssh/*.sh and ~/.gitconfig.
-# Runs once per guest — a versioned marker file inside the guest
+# Copies the host's user settings into the guest: opencode config, skills,
+# commands and auth, Copilot config + skills (~/.copilot), VS Code extensions
+# (~/.vscode/extensions) and user config (settings.json/keybindings/snippets
+# under ~/Library/Application Support/Code/User/), ~/.ssh/allowed_signers,
+# ~/.ssh/known_hosts, ~/.ssh/*.sh and ~/.gitconfig. The copy logic lives in
+# scripts/lib/macos-settings.sh (shared with sync-macos-sandbox.sh); this
+# section is the runner's flow
+# around it. Runs once per guest — a versioned marker file inside the guest
 # (~/.config/agent-sandbox/settings-copied) records which settings version
 # was copied; guests with an older marker are offered the copy again, so
-# bumping $settings_version re-runs the step when new settings are added.
-
-# Returns 0 when the guest already has settings of the current version.
-guest_settings_installed() {
-    tart exec -i "$vm" sh -s "$settings_version" <<'GUEST_SETTINGS_STATUS' 2>/dev/null
-version=$1
-marker="$HOME/.config/agent-sandbox/settings-copied"
-if [ -f "$marker" ] && [ "$(cat "$marker" 2>/dev/null)" -ge "$version" ] 2>/dev/null; then
-    exit 0
-fi
-exit 1
-GUEST_SETTINGS_STATUS
-}
-
-# Prints the host's user settings files, one per line, as paths relative to
-# $HOME (tarable with -C "$HOME" and displayed with $HOME/). Only files that
-# actually exist are listed.
-collect_settings_files() {
-    for f in \
-        ".config/opencode/opencode.json" \
-        ".config/opencode/opencode.jsonc" \
-        ".local/share/opencode/auth.json" \
-        ".ssh/allowed_signers" \
-        ".ssh/known_hosts" \
-        ".gitconfig"; do
-        [ -f "$HOME/$f" ] && printf '%s\n' "$f"
-    done
-    # Shell scripts in ~/.ssh (helpers for signing, host config, ...).
-    for f in "$HOME"/.ssh/*.sh; do
-        [ -f "$f" ] && printf '%s\n' "${f#"$HOME"/}"
-    done
-    return 0
-}
+# bumping $settings_version in the lib re-runs the step when new settings
+# are added.
 
 setup_user_settings() {
     if guest_settings_installed; then
@@ -545,7 +444,7 @@ setup_user_settings() {
 
     settings_list=$(collect_settings_files)
     if [ -z "$settings_list" ]; then
-        info "No user settings found on the host (opencode config/auth, ~/.ssh, ~/.gitconfig) — nothing to copy."
+        info "No user settings found on the host (opencode config and auth, Copilot config, VS Code config and extensions, ~/.ssh, ~/.gitconfig) — nothing to copy."
         settings_state=none
         return 0
     fi
@@ -560,51 +459,14 @@ setup_user_settings() {
         return 0
     fi
 
-    # Ship the files as a tar stream over `tart exec` stdin (no password
-    # needed, file modes preserved). The .ssh dir may not exist in the guest
-    # yet — tar creates it, then tighten it to 700 like ssh expects.
-    if ! printf '%s\n' "$settings_list" | tar -C "$HOME" -cf - -T - |
-        tart exec -i "$vm" sh -c 'tar -C "$HOME" -xf - || exit 1; chmod 700 "$HOME/.ssh" 2>/dev/null || true'; then
-        warn "could not copy the user settings into the guest."
-        settings_state=failed
-        return 1
-    fi
-
-    # Record the version that was copied, so the step runs only once (until
-    # $settings_version is bumped).
-    if ! tart exec -i "$vm" sh -s "$settings_version" <<'GUEST_SETTINGS_MARKER'
-version=$1
-mkdir -p "$HOME/.config/agent-sandbox"
-printf '%s\n' "$version" > "$HOME/.config/agent-sandbox/settings-copied"
-GUEST_SETTINGS_MARKER
-    then
-        warn "settings were copied, but the version marker could not be written — they will be offered again next run."
+    if ! printf '%s\n' "$settings_list" | copy_settings_to_guest; then
         settings_state=failed
         return 1
     fi
 
     count=$(printf '%s\n' "$settings_list" | wc -l | tr -d ' ')
     settings_state=copied
-    ok "Copied $count file(s) into the guest."
-}
-
-# OpenChamber runs the opencode CLI under the hood (LaunchAgent
-# dev.openchamber.web), so it holds the settings it started with. Restart it
-# after a copy so a fresh opencode config and auth take effect without a
-# guest reboot or manual 'openchamber restart'. Non-fatal: if it isn't up yet
-# (still starting at login), verify_openchamber below still waits for it.
-restart_openchamber() {
-    # The openchamber CLI is npm-global via nvm, so it is only on PATH in
-    # login shells — source ~/.zprofile first, like the image provisioners do.
-    if ! tart exec -i "$vm" sh -s 2>/dev/null <<'GUEST_OC_RESTART'
-. "$HOME/.zprofile" 2>/dev/null || true
-exec openchamber restart
-GUEST_OC_RESTART
-    then
-        warn "could not restart OpenChamber — it will pick up the new settings on its next start."
-        return 1
-    fi
-    ok "Restarted OpenChamber so it picks up the new user settings."
+    ok "Copied $count item(s) into the guest."
 }
 
 # --- step 5: OpenChamber -----------------------------------------------------
@@ -830,8 +692,9 @@ else
     setup_ssh_agent
 fi
 
-# 4. User settings (opencode config + auth, SSH/Git dotfiles) — copied once
-#    per guest, tracked by a versioned marker inside the guest.
+# 4. User settings (opencode config + auth, Copilot config + skills, VS Code
+#    config + extensions, SSH/Git dotfiles) — copied once per guest, tracked
+#    by a versioned marker inside the guest.
 step "Step 4/5: User settings"
 if [ "$skip_settings" = 1 ]; then
     info "Skipping user settings copy (--no-settings)."

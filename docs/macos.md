@@ -3,7 +3,8 @@
 > **What you'll get.** A local sandbox virtual machine: a macOS guest with a
 > full coding toolchain and an AI coding agent (OpenCode) pre-installed, plus
 > the OpenChamber web UI to run and supervise agent sessions from your host
-> browser, running on your Apple Silicon Mac. Your code stays on your host —
+> browser and the OpenChamber desktop app inside the guest, running on your
+> Apple Silicon Mac. Your code stays on your host —
 > you share a working directory into the VM and run the agent on it from
 > inside the sandbox.
 >
@@ -52,28 +53,25 @@ and run steps. From the repo root:
 ./scripts/run-macos-sandbox.sh
 ```
 
-On first use it asks before pulling the image (~50 GB, one-time) and before
-cloning a working VM from it, then applies the recommended settings (8 CPUs /
-16 GB RAM, 1280x800 display-refit). It then starts the VM with `--no-audio`
-(audio-isolated from the host) and your work directory shared, bridges a
-password manager's SSH agent into the guest when one is detected on the host
-(see [docs/ssh-agent.md](ssh-agent.md)), offers to copy your host's user
-settings — opencode config and credentials, SSH and Git dotfiles — into the
-guest once per VM (see [User settings on the
-guest](#user-settings-on-the-guest)), restarts OpenChamber so a fresh copy
-takes effect, and finishes by verifying OpenChamber and offering to open it in
-your browser. The VM runs in the **background** by default: after the summary
-the script exits and the VM keeps running (stop it later with `tart stop
-sandbox-macos`; tart's output goes to
-`~/Library/Logs/agent-sandbox/tart-sandbox-macos.log`). When the VM is
-already running, the script asks whether to restart it or keep it running.
+Share a specific workspace instead of the default `/Volumes/dev`:
 
-A window with the guest desktop opens and auto-logs in as `admin` (password:
-`admin`); clipboard sharing works out of the box. Pass `--foreground` to keep
-the terminal attached instead — the script then blocks until the VM stops,
-and Cmd+C in that terminal stops it too. Pass `--headless` to run without a
-window, `--no-agent` to skip the SSH agent bridge, or `--no-settings` to skip
-the user settings copy.
+```bash
+SANDBOX_WORK_DIR=/path/to/your/workspace ./scripts/run-macos-sandbox.sh
+```
+
+On first use it asks before pulling the image (~50 GB, one-time) and cloning
+a working VM, applies the recommended settings (8 CPUs / 16 GB, 1280x800
+display-refit), starts the VM in the **background** (stop it later with `tart
+stop sandbox-macos`), shares your work directory, bridges a password
+manager's SSH agent when one is detected (see
+[docs/ssh-agent.md](ssh-agent.md)), and copies your user settings — opencode,
+Copilot, SSH and Git dotfiles — into the guest once per VM (see [User
+settings on the guest](#user-settings-on-the-guest)).
+
+A window opens and auto-logs in as `admin` (`admin`); clipboard sharing
+works. Pass `--foreground` to keep the terminal attached (Cmd+C stops the
+VM), `--headless` to run without a window, `--no-agent` to skip the SSH agent
+bridge, or `--no-settings` to skip the settings copy.
 
 To use the sandbox in fullscreen with a proper (sharp, full-window)
 resolution, set the guest display to its default first: in the guest open
@@ -103,6 +101,12 @@ SANDBOX_VM=my-project SANDBOX_WORK_DIR="$HOME/dev/my-project" ./scripts/run-maco
 
 ### 3. Configure the environment
 
+If you already have opencode configured on this Mac, you're likely done:
+`run-macos-sandbox.sh` syncs your local settings (config, provider
+credentials, skills, ...) into the guest, so the agent is ready to work right
+away. Only configure it here if you haven't used opencode on the host, or
+want a different provider in the sandbox.
+
 The coding agent (OpenCode) needs an LLM provider before it can work. In the
 VM's Terminal, add yours:
 
@@ -122,12 +126,16 @@ openchamber restart
 
 ### 4. Use the sandbox
 
-Everything is set up now — two ways to use it:
+Everything is set up now — use it from the host or inside the VM:
 
 - **Browser UI (OpenChamber)**: on the host, open `http://<sandbox-ip>:3000/`
   (the IP is `tart ip <vm-name>`; default password: `sandbox`) and start or
   supervise agent sessions from your browser — see
-  [OpenChamber from the host](#openchamber-from-the-host).
+  [OpenChamber from the host](#openchamber-from-the-host). You can also use
+  your local OpenChamber macOS app and connect it to the sandboxed instance.
+- **Desktop app (OpenChamber)**: inside the VM's desktop, launch
+  **OpenChamber** from Launchpad — the native macOS app (see
+  [OpenChamber desktop app](#openchamber-desktop-app)).
 - **Terminal (OpenCode)**: in the VM's Terminal, open the shared work
   directory and start the agent:
 
@@ -160,10 +168,12 @@ with Tart. The default image ships the following software:
 | Python | 3.14 (`python`, `python3`, `pip`, `pip3` aliases) |
 | Ruby | latest (brew) |
 | Visual Studio Code | latest (+ `code` CLI) |
+| Sublime Text | latest (stable, + `subl` CLI) |
 | Google Chrome | latest (universal) |
 | Firefox | latest (universal) |
 | OpenCode | latest (AI coding agent) |
 | OpenChamber | latest (web UI for OpenCode, auto-started on port 3000) |
+| OpenChamber desktop app | latest (native macOS app, `/Applications/OpenChamber.app`) |
 | CLI tools | `git`, `gh`, `jq`, `ripgrep`, `coreutils`, `curl`, `wget`, `socat`, `bash` |
 
 Verify the toolchain from the guest Terminal (or over SSH:
@@ -177,10 +187,12 @@ nvm --version
 python3 --version
 ruby --version
 code --version
+subl --version
 "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --version
 "/Applications/Firefox.app/Contents/MacOS/firefox" --version
 opencode --version
 openchamber --version
+defaults read "/Applications/OpenChamber.app/Contents/Info.plist" CFBundleShortVersionString
 ```
 
 ### OpenChamber from the host
@@ -219,6 +231,35 @@ Notes:
 - Headless (`tart run --no-graphics`) works too — auto-login still brings up
   the session that hosts the LaunchAgent.
 
+### OpenChamber desktop app
+
+The image also ships the native OpenChamber macOS app
+(`/Applications/OpenChamber.app`, installed via the `openchamber` Homebrew
+cask). It is the day-to-day UI for working inside the guest desktop: launch
+**OpenChamber** from Launchpad (or `open -a OpenChamber` in the guest
+Terminal). Like the web UI, it runs on top of OpenCode — the app bundles its
+own OpenCode CLI and, by default, manages its own server, so its sessions are
+separate from the web UI service above.
+
+To make the desktop app share the sandbox's server (same sessions as the
+browser UI and the host), pair it with the service on port 3000:
+
+```bash
+# inside the guest
+openchamber connect-url --port 3000 --server http://127.0.0.1:3000 --name sandbox
+```
+
+Then, in the app, import the printed link under **Settings → Remote
+Instances → Other OpenChamber servers → Import Link**. The app reconnects on
+its own after restarts.
+
+Notes:
+
+- The app checks for updates against GitHub releases and offers them in-app —
+  nothing installs without your say-so.
+- The desktop app targets the guest desktop, so it is of limited use in a
+  headless VM — the web UI remains the remote-friendly surface (see above).
+
 ### The one-VM, many-projects workflow in depth
 
 A sandbox VM accumulates useful state (installed tools, agent config, shell
@@ -244,8 +285,23 @@ credentials and preferences out of the box. What it copies:
 
 | Source (host) | Destination (guest) | Why |
 |---|---|---|
-| `~/.config/opencode/opencode.json` (or `.jsonc`) | same path | OpenCode configuration (models, agents, permissions, ...) |
+| `~/.config/opencode/opencode.json` (or `.jsonc`) | same path | OpenCode configuration (models, providers, permissions, MCP servers, npm plugins, agents/commands defined in JSON, ...) |
+| `~/.config/opencode/tui.json` (or `.jsonc`) | same path | TUI preferences (theme, keybinds, notifications, ...) |
+| `~/.config/opencode/agents/` | same path | Your custom OpenCode agents (markdown agent definitions) |
+| `~/.config/opencode/commands/` | same path | Your custom OpenCode slash-commands |
+| `~/.config/opencode/modes/` | same path | Custom focus modes |
+| `~/.config/opencode/plugins/` | same path | Local OpenCode plugins (npm plugins come via `opencode.json` and auto-install) |
+| `~/.config/opencode/skills/` | same path | Your global OpenCode skills (skill folders with `SKILL.md`) |
+| `~/.config/opencode/tools/` | same path | Custom tool definitions |
+| `~/.config/opencode/themes/` | same path | Custom UI themes |
+| `~/.config/opencode/package.json` (+ lockfiles) | same path | Dependencies of local plugins — OpenCode runs `bun install` at startup |
 | `~/.local/share/opencode/auth.json` | same path | OpenCode provider credentials — no `opencode auth login` needed in the guest |
+| `~/.copilot/config.json` | same path | Copilot CLI settings (`~/.copilot` is where Copilot keeps its config) |
+| `~/.copilot/skills/` | same path | Your Copilot skills (e.g. `gh/SKILL.md`), like the opencode ones |
+| `~/.vscode/extensions/` | same path | Installed VS Code extensions — no reinstall in the guest |
+| `~/Library/Application Support/Code/User/settings.json` | same path | VS Code settings, including per-extension settings (`github.copilot.*`, ...) |
+| `~/Library/Application Support/Code/User/keybindings.json` | same path | Custom keyboard shortcuts |
+| `~/Library/Application Support/Code/User/snippets/` | same path | User code snippets |
 | `~/.ssh/allowed_signers` | same path | SSH signing verification |
 | `~/.ssh/known_hosts` | same path | SSH host keys you already trust |
 | `~/.ssh/*.sh` | same path | SSH helper scripts (e.g. for signing) |
@@ -264,14 +320,56 @@ tart exec sandbox rm ~/.config/agent-sandbox/settings-copied
 ./scripts/run-macos-sandbox.sh
 ```
 
+To re-sync the settings **without** restarting the VM — e.g. after editing
+`~/.config/opencode/opencode.json`, adding a skill or command, or updating
+your Git identity — run the sync script from the repo root:
+
+```bash
+./scripts/sync-macos-sandbox.sh
+```
+
+It copies exactly the same files as the runner (both share the same code),
+asks for confirmation unless you pass `--yes`, and restarts OpenChamber so
+the new settings take effect. The VM must be running — start it with
+`./scripts/run-macos-sandbox.sh` first if it isn't. A sync also updates the
+guest's version marker, so the runner won't re-offer the copy on its next
+run.
+
 Notes:
 
 - Only files that exist on the host are copied.
+- `.gitconfig` is adjusted for the guest, where the user differs (the image's
+  `admin` vs. your host login): paths under the host's home directory are
+  rewritten to `~` — git expands `~` for path-like keys (e.g.
+  `gpg.ssh.allowedsignersfile`) and the shell does for `core.sshCommand`, and
+  both resolve to the guest's home where the files actually land. A
+  `program = ~/...` value (e.g. a `gpg.ssh.program` signing wrapper) is
+  dropped instead — git execs program values verbatim, without `~` expansion,
+  and the wrapper is a host-only workaround anyway: the guest signs commits
+  through the bridged SSH agent (`SSH_AUTH_SOCK` set by the bridge in the
+  guest's `~/.zprofile`) with the default `ssh-keygen`.
+- Skills and commands that live in a project's `.opencode/` directory are
+  **not** copied — they come into the guest automatically through the shared
+  work directory. Only the global `~/.config/opencode` ones are synced.
+- npm plugins (the `plugin` key in `opencode.json`) are **not** copied —
+  OpenCode installs them automatically at startup in the guest
+  (`~/.cache/opencode/node_modules/`), so the 60+ MB of `node_modules` on the
+  host stays on the host.
 - After a copy, OpenChamber is restarted automatically (`openchamber restart`
   inside the guest) so it picks up the new opencode config and credentials —
   it wraps the opencode CLI and keeps the settings it started with otherwise.
 - SSH **keys are not copied** — authentication goes through the bridged SSH
   agent (see [docs/ssh-agent.md](ssh-agent.md)).
+- VS Code **extensions are copied** (`~/.vscode/extensions/`), so there's no
+  need to reinstall them in the guest. Extension *auth* is a different story:
+  it lives in the macOS **Keychain**, which never travels with a file sync —
+  Copilot, GitHub, and any other extension that stored a token in the keychain
+  will ask you to sign in once inside the guest.
+- VS Code **extension state is not copied**: the per-workspace and
+  machine-specific folders under `.../Code/User/` — `globalStorage/`,
+  `workspaceStorage/`, `History/` — are host-local caches (DBs, absolute
+  paths, sessions) and are deliberately left out; only the user-authored
+  `settings.json`, `keybindings.json` and `snippets/` travel.
 - The guest's `~/.ssh/config` is not touched here — it is managed by the SSH
   agent bridge setup (`IdentityAgent`), see [docs/ssh-agent.md](ssh-agent.md).
 - Pass `--no-settings` to skip the step for a run.

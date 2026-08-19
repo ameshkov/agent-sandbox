@@ -269,6 +269,22 @@ END
     ]
   }
 
+  # Sublime Text — the text editor (Homebrew cask, current stable build).
+  # The cask also links the `subl` CLI into the Homebrew bin dir.
+  provisioner "shell" {
+    inline = [<<-END
+set -e -x
+source ~/.zprofile
+brew install --cask sublime-text
+
+# Drop the quarantine attribute so the app launches without Gatekeeper prompts
+sudo xattr -dr com.apple.quarantine "/Applications/Sublime Text.app" || true
+
+"/Applications/Sublime Text.app/Contents/SharedSupport/bin/subl" --version
+END
+    ]
+  }
+
   # OpenCode — the AI coding agent
   provisioner "shell" {
     inline = [<<-END
@@ -277,6 +293,29 @@ source ~/.zprofile
 # The recommended Homebrew tap, see https://opencode.ai/docs/
 brew install anomalyco/tap/opencode
 opencode --version
+END
+    ]
+  }
+
+  # OpenChamber — the native macOS desktop app (https://openchamber.dev),
+  # installed alongside the web UI below. Distributed as the `openchamber`
+  # Homebrew cask (the arm64 build on Apple Silicon); the cask pins the DMG
+  # checksum and stays in sync with the GitHub releases. The app bundles its
+  # own OpenCode CLI and manages its own server by default — the sandbox's
+  # web UI service on port 3000 below remains the main server; docs/macos.md
+  # explains how to pair the app with it so both share sessions.
+  provisioner "shell" {
+    inline = [<<-END
+set -e -x
+source ~/.zprofile
+brew install --cask openchamber
+
+# Drop the quarantine attribute so the app launches without Gatekeeper
+# prompts (same choice as the browsers above)
+sudo xattr -dr com.apple.quarantine "/Applications/OpenChamber.app" || true
+
+test -d "/Applications/OpenChamber.app"
+defaults read "/Applications/OpenChamber.app/Contents/Info.plist" CFBundleShortVersionString
 END
     ]
   }
@@ -342,10 +381,12 @@ ruby --version
 git --version
 gh --version | head -1
 code --version | head -1
+subl --version
 "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --version
 "/Applications/Firefox.app/Contents/MacOS/firefox" --version
 opencode --version
 openchamber --version
+defaults read "/Applications/OpenChamber.app/Contents/Info.plist" CFBundleShortVersionString
 echo "========================================"
 END
     ]

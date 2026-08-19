@@ -23,6 +23,14 @@ recipes; it is the authoritative build/release guide.
   agent into the guest (see `docs/ssh-agent.md`), copies the host's user
   settings into the guest once per VM (versioned marker inside the guest, see
   `docs/macos.md`), and verifies OpenChamber.
+- `scripts/sync-macos-sandbox.sh` — user-facing: copies the host's user
+  settings (opencode config/agents/skills/commands/plugins, Copilot
+  config/skills, SSH/Git dotfiles)
+  into the guest on demand and restarts OpenChamber; requires a running VM.
+- `scripts/lib/macos-settings.sh` — shared code for the two scripts above:
+  output helpers, VM helpers, and the user-settings copy logic
+  (`collect_settings_files`, marker, OpenChamber restart). Keep the settings
+  logic here, not in the scripts.
 - `docs/` — user guides. Only `macos.md` and `ssh-agent.md` are real;
   `linux.md` / `windows.md` are placeholders (only macOS host → macOS guest is
   supported today).

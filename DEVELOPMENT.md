@@ -29,7 +29,9 @@ keep them in sync whenever you change how an image behaves.
 │   ├── build.sh                   # ./scripts/build.sh [<image>]  — packer init + build
 │   ├── deploy.sh                  # ./scripts/deploy.sh [<image>] — push to GHCR
 │   ├── tag.sh                     # ./scripts/tag.sh [<image>]    — create & push the release git tag
-│   └── run-macos-sandbox.sh       # user-facing: pull/run a VM + SSH agent bridge + user settings + OpenChamber
+│   ├── lib/macos-settings.sh      # shared: output helpers + user-settings copy logic (runner + sync)
+│   ├── run-macos-sandbox.sh       # user-facing: pull/run a VM + SSH agent bridge + user settings + OpenChamber
+│   └── sync-macos-sandbox.sh      # user-facing: copy host user settings into the guest on demand
 ├── docs/                          # User-facing, per host OS setup guides
 │   ├── macos.md                   # macOS (Apple Silicon) — pull & run, details
 │   ├── linux.md                   # placeholder (not supported yet)
@@ -69,10 +71,15 @@ keep them in sync whenever you change how an image behaves.
      `python`/`pip` aliases;
    - Visual Studio Code (latest stable, from
      `update.code.visualstudio.com`) with the `code` CLI on PATH;
+   - Sublime Text (latest stable, Homebrew cask `sublime-text`) with the
+     `subl` CLI on PATH;
    - Google Chrome and Mozilla Firefox (latest stable universal macOS
      builds, via Homebrew casks; quarantine is stripped with `xattr` so they
      launch without Gatekeeper prompts);
    - OpenCode (`brew install anomalyco/tap/opencode`);
+   - OpenChamber desktop app (`brew install --cask openchamber`) — the
+     native macOS app for the guest desktop; quarantine stripped so it
+     launches without Gatekeeper prompts;
    - OpenChamber (`npm install -g @openchamber/web`) — web UI for OpenCode;
      installed as a login service (LaunchAgent) listening on `0.0.0.0:3000`,
      reachable from the host at `http://<vm-ip>:3000` (see

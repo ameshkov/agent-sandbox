@@ -12,8 +12,58 @@ is never removed — changes land there until the next release.
 
 ## [Unreleased]
 
+### Added
+
+- Sublime Text (current stable build, Homebrew cask `sublime-text`) with the
+  `subl` CLI; the quarantine attribute is stripped so it launches without
+  Gatekeeper prompts.
+- The OpenChamber native macOS desktop app
+  (`/Applications/OpenChamber.app`, Homebrew cask `openchamber`), installed
+  alongside the web UI for working inside the guest desktop; the quarantine
+  attribute is stripped so it launches without Gatekeeper prompts. The app
+  bundles its own OpenCode CLI and manages its own server by default —
+  `docs/macos.md` explains how to pair it with the web UI service on port
+  3000 so both share sessions.
+- New `scripts/sync-macos-sandbox.sh`: copies the host's user settings into
+  the guest on demand (no VM restart needed), updates the versioned marker
+  so the runner won't re-offer the copy, and restarts OpenChamber. Requires
+  a running VM; pass `--yes` to skip the confirmation prompt.
+
 ### Changed
 
+- The user-settings copy now sanitizes `.gitconfig` for the guest, where the
+  user differs (the image's `admin` vs. the host login): paths under the
+  host's home directory are rewritten to `~` (git expands `~` for path-like
+  keys and the shell does for `core.sshCommand`), and `program = ~/...`
+  values are dropped — git execs program values verbatim, and the
+  `gpg.ssh.program` signing wrapper is a host-only workaround; the guest
+  signs through the bridged SSH agent instead. The settings version was
+  bumped so existing guests are offered the re-copy once.
+- The user-settings copy (runner and the new sync script) now covers the
+  whole global opencode config directory: `opencode.json`/`.jsonc`,
+  `tui.json`/`.jsonc`, and the `agents/`, `commands/`, `modes/`, `plugins/`,
+  `skills/`, `tools/` and `themes/` directories, plus the config dir's
+  `package.json`/lockfiles for local plugin dependencies (npm plugins are
+  auto-installed by opencode at startup, so `node_modules` stays on the
+  host). The settings version was bumped so existing guests are offered the
+  re-copy once. The copy logic was extracted into
+  `scripts/lib/macos-settings.sh`, shared by `scripts/run-macos-sandbox.sh`
+  and `scripts/sync-macos-sandbox.sh`.
+- The user-settings copy now includes the Copilot CLI config and skills
+  (`~/.copilot/config.json` and `~/.copilot/skills/`); machine-specific
+  `~/.copilot/logs`/`ide` are skipped. Copilot auth is not copied — it lives
+  in the macOS Keychain, so the guest signs in once. The settings version
+  was bumped so existing guests are offered the re-copy once.
+- The user-settings copy now includes the installed VS Code extensions
+  (`~/.vscode/extensions/`), so they don't have to be reinstalled in the
+  guest, and the user-authored VS Code config (`settings.json`,
+  `keybindings.json` and `snippets/` under
+  `~/Library/Application Support/Code/User/`), which carries per-extension
+  settings. Extension auth and machine-specific state are not copied —
+  keychain-stored tokens (Copilot, GitHub, ...) don't travel with files, so
+  those extensions ask to sign in once in the guest, and the `globalStorage`/
+  `workspaceStorage` caches stay on the host. The settings version was bumped
+  so existing guests are offered the re-copy once.
 - `scripts/run-macos-sandbox.sh` now runs the VM in the background by
   default: `tart run` is nohup'd to
   `~/Library/Logs/agent-sandbox/tart-<vm>.log` and the script exits after
