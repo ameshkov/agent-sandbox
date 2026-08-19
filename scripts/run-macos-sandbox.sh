@@ -358,6 +358,30 @@ guest_bridge_installed() {
     tart exec "$vm" sh -c 'grep -qF "# SSH agent bridge to the host" "$HOME/.zprofile" 2>/dev/null' 2>/dev/null
 }
 
+# Point the guest's ssh(1) at the bridged agent socket via ~/.ssh/config
+# (IdentityAgent), so authentication works even where SSH_AUTH_SOCK is not
+# exported (tart exec, cron, launchd jobs, GUI tools, ...). Separate from the
+# ~/.zprofile export, so guests set up before this patch get it too.
+# Idempotent — does nothing when the marker is already present.
+ensure_guest_ssh_config() {
+    if ! tart exec -i "$vm" sh -s 2>/dev/null <<'GUEST_SSHCONFIG'
+if ! grep -qF '# SSH agent bridge to the host' "$HOME/.ssh/config" 2>/dev/null; then
+    mkdir -p "$HOME/.ssh"
+    chmod 700 "$HOME/.ssh"
+    {
+        printf '\n%s\n' '# SSH agent bridge to the host (see docs/ssh-agent.md)'
+        printf '%s\n' \
+            'Host *' \
+            '    IdentityAgent /tmp/ssh-agent.sock'
+    } >> "$HOME/.ssh/config"
+    chmod 600 "$HOME/.ssh/config"
+fi
+GUEST_SSHCONFIG
+    then
+        warn "could not update the guest's ~/.ssh/config."
+    fi
+}
+
 # Start the guest bridge for this boot (survives the tart exec session) and
 # report whether it is up.
 ensure_guest_bridge() {
@@ -421,9 +445,11 @@ setup_ssh_agent() {
     if guest_bridge_installed; then
         info "Guest bridge is already set up in the guest's ~/.zprofile."
         ensure_guest_bridge
-    elif confirm "Set up the bridge inside the guest too (guest socat + ~/.zprofile)?" y; then
+        ensure_guest_ssh_config
+    elif confirm "Set up the bridge inside the guest too (guest socat + ~/.zprofile + ~/.ssh/config)?" y; then
         persist_guest_agent
         ensure_guest_bridge
+        ensure_guest_ssh_config
     else
         info "Guest bridge not configured — to do it manually, run the guest commands from docs/ssh-agent.md."
     fi

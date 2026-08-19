@@ -72,10 +72,15 @@ HOST_GW=$(netstat -nr | awk '/default/{print $2; exit}')     # the host = defaul
 socat UNIX-LISTEN:/tmp/ssh-agent.sock,fork,unlink-early,mode=600 \
     TCP:"$HOST_GW":4100 &
 export SSH_AUTH_SOCK=/tmp/ssh-agent.sock   # add to ~/.zprofile so every shell gets it
+printf 'Host *\n    IdentityAgent /tmp/ssh-agent.sock\n' >> ~/.ssh/config
 ```
 
 `HOST_GW` is the authoritative address the guest uses to reach the host — no
 hardcoding, and it stays correct on any network layout.
+
+The `IdentityAgent` line in `~/.ssh/config` makes `ssh(1)` reach the bridged
+socket directly, so authentication keeps working even where `SSH_AUTH_SOCK` is
+not exported (cron jobs, launchd agents, GUI tools, `tart exec` commands).
 
 ### Verify
 
@@ -86,16 +91,19 @@ ssh -T git@github.com         # or whatever server you actually use
 
 ### Making it persistent
 
-- **Guest**: put the `export` in `~/.zprofile`; run the guest `socat` as a
-  background job or a LaunchAgent (a LaunchAgent survives reboots — `/tmp` is
-  cleared per boot, so the socket must be recreated after every boot).
+- **Guest**: put the `export` in `~/.zprofile`; add the `IdentityAgent` line
+  to `~/.ssh/config`; run the guest `socat` as a background job or a
+  LaunchAgent (a LaunchAgent survives reboots — `/tmp` is cleared per boot, so
+  the socket must be recreated after every boot).
 - **Host**: keep the `socat` line in your `run-sandbox.sh` next to `tart run`,
   or run it as a LaunchAgent. One host-side listener can serve all your
   sandboxes. The repo's [`scripts/run-macos-sandbox.sh`](../scripts/run-macos-sandbox.sh)
   automates the whole flow: it detects the host agent socket and starts the
   host bridge for the current run (nothing is written to the host's shell
   profile), then sets up the guest bridge and persists it in the guest's
-  `~/.zprofile`, so it survives guest reboots.
+  `~/.zprofile` and `~/.ssh/config` (the `IdentityAgent` patch), so it
+  survives guest reboots.
 
 Tip: with the bridge in place, even `tart exec` commands can use the agent,
-e.g. `tart exec sandbox env SSH_AUTH_SOCK=/tmp/ssh-agent.sock git push`.
+e.g. `tart exec sandbox git push` — the `~/.ssh/config` `IdentityAgent` patch
+removes the need for an explicit `SSH_AUTH_SOCK` there.

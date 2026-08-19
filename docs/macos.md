@@ -65,6 +65,11 @@ A window with the guest desktop opens and auto-logs in as `admin` (password:
 `admin`); clipboard sharing works out of the box. Pass `--headless` to run
 without a window, or `--no-agent` to skip the SSH agent bridge.
 
+To use the sandbox in fullscreen with a proper (sharp, full-window)
+resolution, set the guest display to its default first: in the guest open
+**System Settings → Displays → Advanced…** and select **Default for display**
+— see [Display setup](#display-setup).
+
 This follows the recommended **one VM, many projects** workflow: keep **one**
 sandbox VM and share your whole working directory into it, so your code stays
 on the host while the toolchain and agent live in the VM and are reused across
@@ -235,9 +240,12 @@ Notes:
   black bars in fullscreen unless the display size matches your screen's aspect
   ratio.
 - Enter fullscreen with **View → Enter Full Screen** (or **⌃⌘F** / the green
-  button). If the display doesn't resize on its own, open **System Settings →
-  Displays** inside the guest and confirm **Resolution: Default for display** —
-  that kicks the auto-resize in.
+  button). If the display doesn't resize on its own, fix it from inside the
+  guest: open **System Settings → Displays**, click **Advanced…** (bottom of
+  the pane), and under "Display resolution" select **Default for display**
+  (the default setting). That kicks the auto-resize in — fullscreen then fills
+  the whole screen with a sharp, correct resolution instead of a scaled-up or
+  blurry picture.
 
 ### Runner script reference
 
