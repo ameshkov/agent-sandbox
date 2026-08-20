@@ -14,6 +14,10 @@ is never removed — changes land there until the next release.
 
 ### Changed
 
+- Windowed runs of `scripts/run-macos-sandbox.sh` now pass Tart's
+  `--capture-system-keys` flag by default, so system shortcuts (Cmd+Space,
+  Cmd+Tab, ...) go to the guest while the VM window is focused instead of
+  being handled by the host. Headless runs are unaffected.
 - The user-settings copy now includes the mcp-compress-router settings
   (`~/Library/Application Support/mcp-compress-router/`): the MCP server
   config (`mcp.json`) with its endpoints and credentials, the stored

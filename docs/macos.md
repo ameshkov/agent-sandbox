@@ -60,26 +60,32 @@ SANDBOX_WORK_DIR=/path/to/your/workspace ./scripts/run-macos-sandbox.sh
 ```
 
 On first use it asks before pulling the image (~50 GB, one-time) and cloning
-a working VM, applies the recommended settings (8 CPUs / 16 GB, 1280x800
-display-refit), starts the VM in the **background** (stop it later with `tart
-stop sandbox-macos`), shares your work directory, bridges a password
-manager's SSH agent when one is detected (see
-[docs/ssh-agent.md](ssh-agent.md)), bridges the host's Docker engine into the
-guest when one is running — so `docker` inside the VM just works against it
-(see [Docker (remote engine)](#docker-remote-engine)) — and copies your user
-settings — opencode, Copilot, SSH and Git dotfiles — into the guest once per
-VM (see [User settings on the guest](#user-settings-on-the-guest)).
+a working VM, then starts it in the background with the recommended settings
+(8 CPUs / 16 GB) and your work directory shared. When detected, it also
+bridges your SSH agent (see [docs/ssh-agent.md](ssh-agent.md)) and Docker
+engine (see [Docker (remote engine)](#docker-remote-engine)) into the guest,
+and copies your user settings in once per VM (see
+[User settings on the guest](#user-settings-on-the-guest)).
 
 A window opens and auto-logs in as `admin` (`admin`); clipboard sharing
 works. Pass `--foreground` to keep the terminal attached (Cmd+C stops the
-VM), `--headless` to run without a window, `--no-agent` to skip the SSH agent
-bridge, `--no-docker` to skip the Docker bridge, or `--no-settings` to skip
-the settings copy.
+VM), `--headless` to run without a window, `--no-agent` to skip the SSH
+agent bridge, `--no-docker` to skip the Docker bridge, or `--no-settings` to
+skip the settings copy.
 
-To use the sandbox in fullscreen with a proper (sharp, full-window)
-resolution, set the guest display to its default first: in the guest open
-**System Settings → Displays → Advanced…** and select **Default for display**
-— see [Display setup](#display-setup).
+> [!NOTE]
+> While the VM window is focused, system shortcuts — Cmd+Space (Spotlight),
+> Cmd+Tab (app switcher), ... — go to the guest, not the host (on by default
+> for windowed runs). One exception: switching input sources (^+Space by
+> default) may stay on the host — macOS intercepts it at the system level,
+> below the VM window. To switch input sources inside the guest, bind it to
+> a combination that is unbound on the host (System Settings → Keyboard →
+> Keyboard Shortcuts → Input Sources, e.g. Cmd+Option+Space).
+>
+> [!TIP]
+> For a sharp, full-window resolution in fullscreen, first set the guest
+> display to its default: **System Settings → Displays → Advanced…** →
+> **Default for display**.
 
 This follows the recommended **one VM, many projects** workflow: keep **one**
 sandbox VM and share your whole working directory into it, so your code stays
@@ -449,62 +455,29 @@ SANDBOX_VM=my-project ./scripts/sync-macos-sandbox.sh --yes
 Notes:
 
 - Only files that exist on the host are copied.
-- `.gitconfig` is adjusted for the guest, where the user differs (the image's
-  `admin` vs. your host login): paths under the host's home directory are
-  rewritten to `~` — git expands `~` for path-like keys (e.g.
-  `gpg.ssh.allowedsignersfile`) and the shell does for `core.sshCommand`, and
-  both resolve to the guest's home where the files actually land. A
-  `program = ~/...` value (e.g. a `gpg.ssh.program` signing wrapper) is
-  dropped instead — git execs program values verbatim, without `~` expansion,
-  and the wrapper is a host-only workaround anyway: the guest signs commits
-  through the bridged SSH agent (`SSH_AUTH_SOCK` set by the bridge in the
-  guest's `~/.zprofile`) with the default `ssh-keygen`.
-- Skills and commands that live in a project's `.opencode/` directory are
-  **not** copied — they come into the guest automatically through the shared
-  work directory. Only the global `~/.config/opencode` ones are synced.
+- `.gitconfig` is adjusted for the guest (`admin`): paths under the host's
+  home are rewritten to `~`, and a host-only signing wrapper
+  (`gpg.ssh.program`) is dropped — the guest signs through the bridged SSH
+  agent anyway.
+- Skills and commands in a project's `.opencode/` directory are **not**
+  copied — they come into the guest via the shared work directory; only the
+  global `~/.config/opencode` ones are synced.
 - npm plugins (the `plugin` key in `opencode.json`) are **not** copied —
-  OpenCode installs them automatically at startup in the guest
-  (`~/.cache/opencode/node_modules/`), so the 60+ MB of `node_modules` on the
-  host stays on the host.
-- After a copy, OpenChamber is restarted automatically (`openchamber restart`
-  inside the guest) so it picks up the new opencode config and credentials —
-  it wraps the opencode CLI and keeps the settings it started with otherwise.
+  OpenCode installs them automatically at startup in the guest.
+- After a copy, OpenChamber is restarted automatically so it picks up the new
+  config and credentials.
 - SSH **keys are not copied** — authentication goes through the bridged SSH
   agent (see [docs/ssh-agent.md](ssh-agent.md)).
-- VS Code **extensions are copied** (`~/.vscode/extensions/`), so there's no
-  need to reinstall them in the guest. Extension *auth* is a different story:
-  it lives in the macOS **Keychain**, which never travels with a file sync —
-  Copilot, GitHub, and any other extension that stored a token in the keychain
-  will ask you to sign in once inside the guest.
-- VS Code **extension state is not copied**: the per-workspace and
-  machine-specific folders under `.../Code/User/` — `globalStorage/`,
-  `workspaceStorage/`, `History/` — are host-local caches (DBs, absolute
-  paths, sessions) and are deliberately left out; only the user-authored
-  `settings.json`, `keybindings.json` and `snippets/` travel.
+- VS Code **extensions are copied** — no reinstall in the guest. Extension
+  *auth* is a different story: it lives in the macOS **Keychain** and doesn't
+  travel with the sync, so Copilot, GitHub, and similar will ask you to sign
+  in once inside the guest.
+- VS Code **extension state is not copied** — `globalStorage/`,
+  `workspaceStorage/` and `History/` are host-local caches and stay behind;
+  only `settings.json`, `keybindings.json` and `snippets/` travel.
 - The guest's `~/.ssh/config` is not touched here — it is managed by the SSH
   agent bridge setup (`IdentityAgent`), see [docs/ssh-agent.md](ssh-agent.md).
 - Pass `--no-settings` to skip the step for a run.
-
-### Display setup
-
-- The resolution is set with `tart set <vm-name> --display <WxH>` (VM stopped).
-  Sizes are in **points (pt)** for macOS guests — a `1920x1080` display is
-  *larger* than most laptop screens, and the Tart window can't shrink below the
-  configured resolution, which breaks fullscreen. Start small (e.g. `1280x800`)
-  and let the display grow with the window.
-- `--display-refit` enables automatic display reconfiguration: the guest
-  resolution follows the window size, so a fullscreen window fills the screen
-  and stays sharp. It requires a **macOS 14+ host**. On macOS 13 hosts it does
-  nothing — the fixed resolution is just scaled to the window, and you get
-  black bars in fullscreen unless the display size matches your screen's aspect
-  ratio.
-- Enter fullscreen with **View → Enter Full Screen** (or **⌃⌘F** / the green
-  button). If the display doesn't resize on its own, fix it from inside the
-  guest: open **System Settings → Displays**, click **Advanced…** (bottom of
-  the pane), and under "Display resolution" select **Default for display**
-  (the default setting). That kicks the auto-resize in — fullscreen then fills
-  the whole screen with a sharp, correct resolution instead of a scaled-up or
-  blurry picture.
 
 ### Runner script reference
 
@@ -513,7 +486,8 @@ automated way to pull, run, and wire up the sandbox. Everything it accepts:
 
 Options:
 
-- `--headless` — run without a window (`tart run --no-graphics`)
+- `--headless` — run without a window (`tart run --no-graphics`; system
+  shortcuts are only captured into the guest in windowed runs)
 - `--foreground` — keep the terminal attached and block until the VM stops
   (Cmd+C in the terminal stops it). Default is background: the script exits
   after the summary and the VM keeps running (`tart stop <vm>` to stop it,

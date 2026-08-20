@@ -4,7 +4,7 @@
 #
 # Usage:
 #   ./scripts/run-macos-sandbox.sh [--headless] [--foreground] [--no-agent]
-#                                  [--no-settings]
+#                                  [--no-docker] [--no-settings]
 #
 # What it does:
 #   1. Makes sure the sandbox image is pulled and a working VM exists
@@ -15,8 +15,10 @@
 #      background: 'tart run' is nohup'd to a log file, the script exits
 #      after the summary, and the VM keeps running (stop it later with
 #      'tart stop'). Pass --foreground to keep the terminal attached and
-#      block until the VM stops instead. When the VM is already running,
-#      the script asks whether to restart it.
+#      block until the VM stops instead. Windowed runs capture system
+#      shortcuts (Cmd+Space, Cmd+Tab, ...) into the guest by default, so
+#      Spotlight and the app switcher work inside the VM. When the VM is
+#      already running, the script asks whether to restart it.
 #   3. If the host's SSH_AUTH_SOCK is overridden by a password manager
 #      (Bitwarden, 1Password, ...), bridges the agent into the guest with
 #      socat (see docs/ssh-agent.md). The bridge is persisted inside the
@@ -210,7 +212,10 @@ launch_vm() {
     if [ "$headless" = 1 ]; then
         flags='--no-graphics --no-audio'
     else
-        flags='--no-audio'
+        # Capture system shortcuts into the guest by default: while the VM
+        # window is focused, Cmd+Space, Cmd+Tab, etc. trigger Spotlight and
+        # the app switcher inside the guest instead of on the host.
+        flags='--capture-system-keys --no-audio'
     fi
     if [ -n "$dir_arg" ]; then
         run_cmd="tart run $flags $dir_arg $vm"
@@ -757,6 +762,9 @@ print_summary() {
         printf '    %-12s %s\n' 'Shared dir:' "$work_dir (in the guest: /Volumes/My Shared Files/$mount_name)"
     else
         printf '    %-12s %s\n' 'Shared dir:' 'not shared'
+    fi
+    if [ "$headless" = 0 ]; then
+        printf '    %-12s %s\n' 'Keys:' 'system shortcuts go to the guest while the window is focused'
     fi
     if [ "$agent_bridged" = 1 ]; then
         if [ "$guest_bridge_up" = 1 ]; then
