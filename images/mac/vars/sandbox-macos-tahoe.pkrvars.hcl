@@ -36,4 +36,4 @@ openchamber_port = 4000
 # Semantic version this image is published under (also the GHCR push tag,
 # besides :latest).  For every release: bump it, add a CHANGELOG.md entry,
 # and create the mac-v<version> git tag (./scripts/tag.sh <image>).
-image_version = "1.4.0"
+image_version = "1.5.0"
