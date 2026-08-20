@@ -23,9 +23,15 @@ memory_gb = 8
 ssh_username = "admin"
 ssh_password = "admin"
 
-# OpenChamber web UI password (host access: http://<vm-ip>:3000, see
+# OpenChamber web UI password (host access: http://<vm-ip>:4000, see
 # docs/macos.md). OpenChamber refuses to serve on the network without it.
 openchamber_ui_password = "sandbox"
+
+# TCP port the OpenChamber web UI listens on inside the guest (host access:
+# http://<vm-ip>:4000). 4000 — not the Vite dev-server default 3000 — so
+# frontend dev servers don't collide with it. Keep
+# scripts/run-macos-sandbox.sh's SANDBOX_OPENCHAMBER_PORT in sync.
+openchamber_port = 4000
 
 # Semantic version this image is published under (also the GHCR push tag,
 # besides :latest).  For every release: bump it, add a CHANGELOG.md entry,

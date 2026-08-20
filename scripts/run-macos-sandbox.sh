@@ -59,7 +59,7 @@
 #   SANDBOX_MOUNT_NAME         mount name inside the guest (dev)
 #   SANDBOX_AGENT_PORT         TCP port for the SSH agent bridge (4100)
 #   SANDBOX_DOCKER_PORT        TCP port for the Docker engine bridge (4101)
-#   SANDBOX_OPENCHAMBER_PORT   guest port of OpenChamber (3000)
+#   SANDBOX_OPENCHAMBER_PORT   guest port of OpenChamber (4000)
 #   SANDBOX_CPU_COUNT          CPUs for a freshly cloned VM (8)
 #   SANDBOX_MEMORY_MB          RAM for a freshly cloned VM, in MB (16384)
 #   GHCR_OWNER                 GHCR owner for pulls (default: from git remote)
@@ -80,7 +80,7 @@ work_dir=${SANDBOX_WORK_DIR:-/Volumes/dev}
 mount_name=${SANDBOX_MOUNT_NAME:-dev}
 agent_port=${SANDBOX_AGENT_PORT:-4100}
 docker_port=${SANDBOX_DOCKER_PORT:-4101}
-openchamber_port=${SANDBOX_OPENCHAMBER_PORT:-3000}
+openchamber_port=${SANDBOX_OPENCHAMBER_PORT:-4000}
 cpu_count=${SANDBOX_CPU_COUNT:-8}
 memory_mb=${SANDBOX_MEMORY_MB:-16384}
 
@@ -868,7 +868,7 @@ Environment:
   SANDBOX_MOUNT_NAME         mount name inside the guest (dev)
   SANDBOX_AGENT_PORT         TCP port for the SSH agent bridge (4100)
   SANDBOX_DOCKER_PORT        TCP port for the Docker engine bridge (4101)
-  SANDBOX_OPENCHAMBER_PORT   guest port of OpenChamber (3000)
+  SANDBOX_OPENCHAMBER_PORT   guest port of OpenChamber (4000)
   SANDBOX_CPU_COUNT          CPUs for a freshly cloned VM (8)
   SANDBOX_MEMORY_MB          RAM for a freshly cloned VM, in MB (16384)
   GHCR_OWNER                 GHCR owner for pulls (git remote)

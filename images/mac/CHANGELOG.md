@@ -24,6 +24,11 @@ is never removed — changes land there until the next release.
   credentials, and the tool-schema cache, so the guest's opencode sessions
   can use the same MCP servers. The settings version was bumped so existing
   guests are offered the re-copy once.
+- The OpenChamber web UI now listens on port 4000 instead of 3000 — 3000 is
+  the default Vite dev-server port, so frontend dev servers in the guest no
+  longer collide with it. The guest port is now a Packer variable
+  (`openchamber_port` in the vars file), and the runner's
+  `SANDBOX_OPENCHAMBER_PORT` default was bumped to match.
 
 ## [mac-v1.4.0] - 2026-08-19
 

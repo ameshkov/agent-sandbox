@@ -84,8 +84,8 @@ keep them in sync whenever you change how an image behaves.
      native macOS app for the guest desktop; quarantine stripped so it
      launches without Gatekeeper prompts;
    - OpenChamber (`npm install -g @openchamber/web`) — web UI for OpenCode;
-     installed as a login service (LaunchAgent) listening on `0.0.0.0:3000`,
-     reachable from the host at `http://<vm-ip>:3000` (see
+     installed as a login service (LaunchAgent) listening on `0.0.0.0:4000`,
+     reachable from the host at `http://<vm-ip>:4000` (see
      [docs/macos.md](docs/macos.md)). The build pins the absolute `opencode`
      path into the service via `OPENCODE_BINARY` (the `startup enable`
      environment snapshot);
@@ -163,7 +163,7 @@ version" below.
 | `memory_gb` | number | `8` | RAM of the VM in GB |
 | `ssh_username` | string | `admin` | SSH user used for provisioning (fixed in the Cirrus Labs base images) |
 | `ssh_password` | string | `admin` | SSH password used for provisioning (fixed in the Cirrus Labs base images) |
-| `openchamber_ui_password` | string | `sandbox` | Password protecting the OpenChamber web UI; required because the server binds to `0.0.0.0` (host access: `http://<vm-ip>:3000`, see [docs/macos.md](docs/macos.md)) |
+| `openchamber_ui_password` | string | `sandbox` | Password protecting the OpenChamber web UI; required because the server binds to `0.0.0.0` (host access: `http://<vm-ip>:4000`, see [docs/macos.md](docs/macos.md)) |
 | `brew_formulas` | list(string) | core toolchain | Installed by `brew install` in every image |
 | `extra_brew_formulas` | list(string) | `[]` | Image-specific additions to `brew_formulas` |
 

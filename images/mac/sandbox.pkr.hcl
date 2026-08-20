@@ -57,7 +57,17 @@ variable "openchamber_ui_password" {
   default = "sandbox"
   # Password protecting the OpenChamber web UI. OpenChamber refuses to bind
   # the server to a network interface without a UI password; the sandbox
-  # listens on 0.0.0.0:3000 so the host can reach it (see docs/macos.md).
+  # listens on 0.0.0.0:<openchamber_port> so the host can reach it (see
+  # docs/macos.md).
+}
+
+variable "openchamber_port" {
+  type    = number
+  default = 4000
+  # TCP port the OpenChamber web UI listens on inside the guest. Not 3000 —
+  # that is the default Vite dev-server port and would collide with frontend
+  # dev servers in the guest. scripts/run-macos-sandbox.sh's
+  # SANDBOX_OPENCHAMBER_PORT default must stay in sync with this.
 }
 
 variable "image_version" {
@@ -306,7 +316,7 @@ END
   # Homebrew cask (the arm64 build on Apple Silicon); the cask pins the DMG
   # checksum and stays in sync with the GitHub releases. The app bundles its
   # own OpenCode CLI and manages its own server by default — the sandbox's
-  # web UI service on port 3000 below remains the main server; docs/macos.md
+  # web UI service on port 4000 below remains the main server; docs/macos.md
   # explains how to pair the app with it so both share sessions.
   provisioner "shell" {
     inline = [<<-END
@@ -327,8 +337,9 @@ END
   # OpenChamber — web UI for OpenCode (https://openchamber.dev). Installed via
   # npm (requires Node.js 22+, the image ships 26 via nvm, and the opencode
   # CLI on PATH). Registered as a login service (LaunchAgent
-  # dev.openchamber.web) that listens on 0.0.0.0:3000, so the host can open
-  # the UI at http://$(tart ip <vm>):3000 — see docs/macos.md.
+  # dev.openchamber.web) that listens on 0.0.0.0:${var.openchamber_port}, so
+  # the host can open the UI at http://$(tart ip <vm>):${var.openchamber_port}
+  # — see docs/macos.md.
   provisioner "shell" {
     inline = [<<-END
 set -e -x
@@ -350,14 +361,14 @@ echo "OpenChamber will run opencode at: $OPENCODE_BINARY"
 # During image builds the admin user may not have a GUI login session yet
 # (auto-login applies on the next boot), so a failed immediate start is OK:
 # the plist is installed and RunAtLoad starts the service at first login.
-openchamber startup enable --port 3000 --lan --ui-password "${var.openchamber_ui_password}" \
+openchamber startup enable --port ${var.openchamber_port} --lan --ui-password "${var.openchamber_ui_password}" \
     || echo "WARNING: OpenChamber service installed but not started yet (expected during image builds); it will start at first login"
 
 openchamber startup status
 
 # Health check if the service already came up during the build.
-if curl -fsS --max-time 5 http://127.0.0.1:3000/health >/dev/null 2>&1; then
-    echo "OpenChamber: OK (http://127.0.0.1:3000/health)"
+if curl -fsS --max-time 5 http://127.0.0.1:${var.openchamber_port}/health >/dev/null 2>&1; then
+    echo "OpenChamber: OK (http://127.0.0.1:${var.openchamber_port}/health)"
 else
     echo "WARNING: OpenChamber not reachable yet; it will start at first login"
 fi

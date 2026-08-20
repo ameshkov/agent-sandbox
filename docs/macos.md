@@ -137,7 +137,7 @@ openchamber restart
 
 Everything is set up now — use it from the host or inside the VM:
 
-- **Browser UI (OpenChamber)**: on the host, open `http://<sandbox-ip>:3000/`
+- **Browser UI (OpenChamber)**: on the host, open `http://<sandbox-ip>:4000/`
   (the IP is `tart ip <vm-name>`; default password: `sandbox`) and start or
   supervise agent sessions from your browser — see
   [OpenChamber from the host](#openchamber-from-the-host). You can also use
@@ -210,7 +210,7 @@ with Tart. The default image ships the following software:
 | Google Chrome | latest (universal) |
 | Firefox | latest (universal) |
 | OpenCode | latest (AI coding agent) |
-| OpenChamber | latest (web UI for OpenCode, auto-started on port 3000) |
+| OpenChamber | latest (web UI for OpenCode, auto-started on port 4000) |
 | OpenChamber desktop app | latest (native macOS app, `/Applications/OpenChamber.app`) |
 | Docker CLI | latest (`docker` + `docker compose` / `docker buildx` plugins; client only — no local engine, see [Docker (remote engine)](#docker-remote-engine)) |
 | CLI tools | `git`, `gh`, `jq`, `ripgrep`, `coreutils`, `curl`, `wget`, `socat`, `bash` |
@@ -242,11 +242,11 @@ docker buildx version
 [OpenChamber](https://openchamber.dev) is the web UI for OpenCode: start
 sessions, supervise them, review changes — all from your host browser. It is
 installed in the image and starts automatically at login (LaunchAgent
-`dev.openchamber.web`), listening on `0.0.0.0:3000` inside the VM. With the VM
+`dev.openchamber.web`), listening on `0.0.0.0:4000` inside the VM. With the VM
 running, open it from the host:
 
 ```bash
-open "http://$(tart ip <vm-name>):3000"
+open "http://$(tart ip <vm-name>):4000"
 ```
 
 The default UI password is `sandbox` — the same convention as the `admin`
@@ -254,7 +254,7 @@ account. To change it, run inside the guest:
 
 ```bash
 openchamber startup disable
-OPENCODE_BINARY="$(command -v opencode)" openchamber startup enable --port 3000 --lan --ui-password 'your-password'
+OPENCODE_BINARY="$(command -v opencode)" openchamber startup enable --port 4000 --lan --ui-password 'your-password'
 ```
 
 (`startup enable` snapshots the current environment into the LaunchAgent, so
@@ -284,11 +284,11 @@ own OpenCode CLI and, by default, manages its own server, so its sessions are
 separate from the web UI service above.
 
 To make the desktop app share the sandbox's server (same sessions as the
-browser UI and the host), pair it with the service on port 3000:
+browser UI and the host), pair it with the service on port 4000:
 
 ```bash
 # inside the guest
-openchamber connect-url --port 3000 --server http://127.0.0.1:3000 --name sandbox
+openchamber connect-url --port 4000 --server http://127.0.0.1:4000 --name sandbox
 ```
 
 Then, in the app, import the printed link under **Settings → Remote
@@ -331,6 +331,12 @@ docker run --rm hello-world
 
 Notes:
 
+- Containers run on the **host engine**, so published ports are bound on the
+  host, not in the guest. From inside the guest they are reachable at the
+  NAT gateway — `192.168.64.1`, *not* `localhost`:
+  `docker run -d -p 8080:80 nginx` then `curl http://192.168.64.1:8080`.
+  From the host itself, the same port is `http://localhost:8080` as usual.
+  Verify the gateway with `route -n get default` inside the guest.
 - The host engine must be running when the runner bridges it (the socket only
   exists then). If Docker Desktop isn't started yet, the runner skips the
   bridge — start the engine and re-run the script (or just run it again; the
@@ -506,7 +512,7 @@ Environment variables (defaults in parentheses):
 | `SANDBOX_MOUNT_NAME` | `dev` | Mount name inside the guest (appears at `/Volumes/My Shared Files/<name>`) |
 | `SANDBOX_AGENT_PORT` | `4100` | TCP port for the SSH agent bridge |
 | `SANDBOX_DOCKER_PORT` | `4101` | TCP port for the Docker engine bridge |
-| `SANDBOX_OPENCHAMBER_PORT` | `3000` | Guest port of OpenChamber |
+| `SANDBOX_OPENCHAMBER_PORT` | `4000` | Guest port of OpenChamber |
 | `SANDBOX_CPU_COUNT` | `8` | CPUs for a freshly cloned VM |
 | `SANDBOX_MEMORY_MB` | `16384` | RAM for a freshly cloned VM, in MB |
 | `GHCR_OWNER` | from the git remote | GHCR owner used when pulling the image |
