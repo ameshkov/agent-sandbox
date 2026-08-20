@@ -12,6 +12,15 @@ is never removed — changes land there until the next release.
 
 ## [Unreleased]
 
+### Changed
+
+- The user-settings copy now includes the mcp-compress-router settings
+  (`~/Library/Application Support/mcp-compress-router/`): the MCP server
+  config (`mcp.json`) with its endpoints and credentials, the stored
+  credentials, and the tool-schema cache, so the guest's opencode sessions
+  can use the same MCP servers. The settings version was bumped so existing
+  guests are offered the re-copy once.
+
 ## [mac-v1.4.0] - 2026-08-19
 
 ### Added

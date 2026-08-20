@@ -105,7 +105,9 @@ vm_state() {
 # config + skills (~/.copilot/config.json, ~/.copilot/skills/), the VS Code
 # extensions (~/.vscode/extensions) and user config (settings.json,
 # keybindings.json, snippets/ under
-# ~/Library/Application Support/Code/User/), ~/.ssh/allowed_signers,
+# ~/Library/Application Support/Code/User/), the mcp-compress-router settings
+# (MCP server config, credentials and tool-schema cache under
+# ~/Library/Application Support/mcp-compress-router/), ~/.ssh/allowed_signers,
 # ~/.ssh/known_hosts, ~/.ssh/*.sh and ~/.gitconfig.
 # run-macos-sandbox.sh runs this once per guest — a versioned marker file
 # inside the guest (~/.config/agent-sandbox/settings-copied) records which
@@ -118,13 +120,13 @@ vm_state() {
 # files are added to collect_settings_files, or when the copy logic changes
 # (e.g. the .gitconfig sanitization in copy_settings_to_guest below): guests
 # whose marker is older than this are offered the copy again.
-settings_version=6
+settings_version=7
 
 # Prints the host's user settings files, one per line, as paths relative to
 # $HOME (tarable with -C "$HOME" and displayed with $HOME/). Only entries
 # that actually exist are listed; directories (opencode agents/commands/
 # modes/plugins/skills/tools/themes, copilot skills, VS Code extensions and
-# snippets) are copied whole.
+# snippets, mcp-compress-router) are copied whole.
 collect_settings_files() {
     for f in \
         ".config/opencode/opencode.json" \
@@ -148,6 +150,7 @@ collect_settings_files() {
         "Library/Application Support/Code/User/settings.json" \
         "Library/Application Support/Code/User/keybindings.json" \
         "Library/Application Support/Code/User/snippets" \
+        "Library/Application Support/mcp-compress-router" \
         ".ssh/allowed_signers" \
         ".ssh/known_hosts" \
         ".gitconfig"; do

@@ -54,6 +54,9 @@ recipes; it is the authoritative build/release guide.
   git tag `<platform>-v<version>` (e.g. `mac-v1.2.0`); fails on a dirty tree
   or a missing `[<tag>]` CHANGELOG entry. Run after committing a release,
   before `build.sh` + `deploy.sh`.
+- Verify Markdown: `npx --yes markdownlint-cli2@0.23.2 .` — lints every
+  `*.md` file in the repo against `.markdownlint-cli2.yaml` (repo root); pass
+  `--fix` to auto-fix what can be fixed automatically.
 
 ## Releases & tags
 
@@ -68,13 +71,13 @@ recipes; it is the authoritative build/release guide.
   `[<tag>]` entry, and never overwrites an existing tag. The tag is annotated
   and pushed to origin.
 - CHANGELOG format (`images/mac/CHANGELOG.md`, mirrored for new platforms):
-  - Always keep `## [Unreleased]` on top — never remove it; changes land
-    there between releases.
-  - A release heading is the tag name: `## [mac-v1.2.0] - <date>` (Keep a
-    Changelog / semver).
-  - At the bottom: `[unreleased]` → compare URL against the newest tag, and
-    one `[mac-vX.Y.Z]` → `releases/tag/mac-vX.Y.Z` per release. Update both
-    in the same change as the entry.
+    - Always keep `## [Unreleased]` on top — never remove it; changes land
+      there between releases.
+    - A release heading is the tag name: `## [mac-v1.2.0] - <date>` (Keep a
+      Changelog / semver).
+    - At the bottom: `[unreleased]` → compare URL against the newest tag, and
+      one `[mac-vX.Y.Z]` → `releases/tag/mac-vX.Y.Z` per release. Update both
+      in the same change as the entry.
 - Release sequence: bump + changelog entry → commit → `./scripts/tag.sh
   <image>` → `./scripts/build.sh <image>` → `./scripts/deploy.sh <image>`.
   The full guide is in DEVELOPMENT.md → "Releasing a new image version".
@@ -91,9 +94,9 @@ recipes; it is the authoritative build/release guide.
   provisioner scripts — must be recorded in `images/mac/CHANGELOG.md`, not
   just released versions. Update the changelog in the same change as the
   image itself; never land an image change without a corresponding entry.
-- Build prerequisites: Apple Silicon host (Tart VMs can't run on Intel), Tart
-  + Packer via Homebrew, ~150 GB free disk; the first build pulls the ~50 GB
-  base image. `PACKER_LOG=1` for verbose output.
+- Build prerequisites: Apple Silicon host (Tart VMs can't run on Intel),
+  Tart + Packer via Homebrew, ~150 GB free disk; the first build pulls the
+  ~50 GB base image. `PACKER_LOG=1` for verbose output.
 - SSH provisioning credentials are fixed by the Cirrus base images:
   `admin`/`admin`.
 - `scripts/deploy.sh` maps the `images/` platform dir to the GHCR path
@@ -107,3 +110,45 @@ recipes; it is the authoritative build/release guide.
 - There is no automated verification: the only end-to-end check is a full
   image build (~1 hr). Use `packer validate` and review the provisioner shell
   scripts (`set -e -x` inline blocks) carefully before running a build.
+- Every Markdown file must pass markdownlint before landing — run
+  `npx --yes markdownlint-cli2@0.23.2 .` from the repo root and fix all
+  findings, see the "Markdown Formatting" section below. The config is
+  `.markdownlint-cli2.yaml` at the repo root.
+
+## Markdown Formatting
+
+All Markdown files MUST follow these formatting rules:
+
+- **Line length**: Keep lines at most 80 characters. This is not a hard
+  lint gate, but SHOULD be followed for readability. Lines inside fenced
+  code blocks are exempt from this limit.
+- **Unordered lists**: Use dashes (`-`) for bullet points. Indent nested
+  list items by 4 spaces.
+- **Emphasis**: Use asterisks (`*`) for emphasis (`*italic*`,
+  `**bold**`). Do NOT use underscores.
+- **Headings**: Duplicate heading names are allowed only among sibling
+  headings (same parent level). Avoid duplicates across different levels.
+- **Inline HTML**: Avoid raw HTML in Markdown. The only allowed elements
+  are `<a>`, `<p>`, `<details>`, `<summary>`, and `<img>`.
+- **Trailing spaces**: Do NOT leave trailing whitespace on any line. Do
+  NOT use two-space line breaks — use a blank line instead.
+- **Bare URLs**: Bare URLs are permitted and do not need to be wrapped
+  in angle brackets.
+- **Table formatting**: Align table columns with padding when the table
+  fits within 80 characters. If the table exceeds 80 characters or
+  triggers an MD060 linter warning, switch to a compact format using
+  single spaces only. This applies to the separator row as well — it
+  should be written as `| --- |`, not `|--|`.
+
+  Example of correct layout:
+
+  ```markdown
+  | Col1 | Col2 |
+  | --- | --- |
+  | Value1 | Value2 |
+  ```
+
+  Do NOT use extra padding or alignment characters beyond single spaces.
+
+**Rationale**: Uniform Markdown formatting improves readability for both
+humans and AI agents that consume project documentation.

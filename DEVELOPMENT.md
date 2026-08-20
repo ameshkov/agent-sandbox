@@ -128,10 +128,12 @@ To add a new one:
    [Cirrus Labs package list](https://github.com/orgs/cirruslabs/packages?tab=packages&q=macos-)
    (e.g. `macos-sequoia-xcode:15.4`).
 2. Copy the latest vars file:
+
    ```bash
    cp images/mac/vars/sandbox-macos-tahoe.pkrvars.hcl \
       images/mac/vars/sandbox-macos-sequoia.pkrvars.hcl
    ```
+
 3. Edit the new vars file: set `macos_version` / `xcode_version` /
    `node_version` / `python_version` / `disk_size`, set `image_version` to
    `1.0.0`, and add image-specific brew formulas to `extra_brew_formulas` if
@@ -150,7 +152,7 @@ version" below.
 ### Template variables
 
 | Variable | Type | Default | Description |
-|----------|------|---------|-------------|
+| --- | --- | --- | --- |
 | `macos_version` | string | — | Cirrus base image macOS version, e.g. `tahoe`; part of the image name (`sandbox-macos-<macos_version>`) |
 | `xcode_version` | string | — | Cirrus base image Xcode tag, e.g. `26.4.1` (selects the base image only; not part of the image name) |
 | `node_version` | string | — | Node.js version installed via nvm and set as the default, e.g. `26` |
@@ -195,9 +197,11 @@ can be overridden with the `GHCR_OWNER` env var.
    moves to the new tag) in the same change.
 4. Commit the release — the working tree must be clean before tagging.
 5. Create and push the release tag:
+
    ```bash
    ./scripts/tag.sh <image-name>
    ```
+
    `tag.sh` reads `image_version` from the vars file, verifies the working
    tree is clean and that the `[<tag>]` entry exists in the changelog, and
    creates an annotated `<platform>-v<version>` tag on the release commit

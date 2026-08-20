@@ -13,7 +13,7 @@ an isolated sandbox.
 Pick the guide for your operating system:
 
 | Operating system | Guide |
-|------------------|-------|
+| --- | --- |
 | macOS (Apple Silicon) | [Set up your macOS sandbox](docs/macos.md) |
 | Linux | [Coming soon](docs/linux.md) |
 | Windows | [Coming soon](docs/windows.md) |

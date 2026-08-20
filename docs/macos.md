@@ -20,19 +20,19 @@
 
 ## Quick setup
 
-**Prerequisites**
+### Prerequisites
 
 - An Apple Silicon Mac (M1 or newer). macOS guests cannot run on Intel Macs.
 - macOS 13 (Ventura) or newer on the host.
 - ~150 GB of free disk space (the image is large).
 
-**Default account**
+### Default account
 
 Every sandbox VM has a single local user. The image auto-logs in as this user
 on boot, and the same credentials are used for SSH and Screen Sharing:
 
 | User | Password |
-|------|----------|
+| --- | --- |
 | `admin` | `admin` |
 
 ### 1. Install Tart
@@ -92,7 +92,7 @@ Two environment variables cover most needs (the full list is in [Runner script
 reference](#runner-script-reference)):
 
 | Variable | Default | What it does |
-|----------|---------|--------------|
+| --- | --- | --- |
 | `SANDBOX_WORK_DIR` | `/Volumes/dev` | Host directory shared into the guest; empty disables the mount |
 | `SANDBOX_VM` | `sandbox-macos` | Name of the working VM — set it to run several sandboxes side by side |
 
@@ -151,6 +151,35 @@ All your host projects are inside — `cd` into whichever folder you're working
 on and the agent sees your code. That's it — you are running an AI coding agent
 in an isolated sandbox, with your code safely on the host.
 
+### Everyday commands
+
+- **Force-sync your host settings into the sandbox** — opencode config and
+  auth, Copilot config and skills, VS Code config and extensions,
+  mcp-compress-router, `~/.ssh` and `~/.gitconfig` (the same set as on first
+  run). The VM must be running; from the repo root:
+
+  ```bash
+  ./scripts/sync-macos-sandbox.sh --yes
+  ```
+
+  The sync script always copies everything (unlike the runner, which only
+  offers the copy when the settings version changed), so this is the command
+  to re-sync after editing a config on the host. `--yes` skips the
+  confirmation prompt. It restarts OpenChamber so the new settings take
+  effect, and updates the guest's settings marker — see
+  [User settings on the guest](#user-settings-on-the-guest) for details.
+
+- **Stop the sandbox** — graceful shutdown of the guest, up to 30 seconds:
+
+  ```bash
+  tart stop sandbox-macos
+  ```
+
+  `sandbox-macos` is the default working VM name (override with
+  `SANDBOX_VM`). If the guest hangs, `tart stop` force-terminates it after
+  the timeout (pass `--timeout <seconds>` to wait longer). Start it again
+  with `./scripts/run-macos-sandbox.sh`.
+
 ---
 
 ## Details
@@ -162,7 +191,7 @@ The images are built with [Packer](https://www.packer.io/) + the
 with Tart. The default image ships the following software:
 
 | Software | Version (default image) |
-|----------|-------------------------|
+| --- | --- |
 | macOS | 26 (Tahoe) |
 | Xcode | 26.4.1 (+ Command Line Tools) |
 | Homebrew | latest |
@@ -360,7 +389,7 @@ copy your host's user settings into the guest, so the agent works with your
 credentials and preferences out of the box. What it copies:
 
 | Source (host) | Destination (guest) | Why |
-|---|---|---|
+| --- | --- | --- |
 | `~/.config/opencode/opencode.json` (or `.jsonc`) | same path | OpenCode configuration (models, providers, permissions, MCP servers, npm plugins, agents/commands defined in JSON, ...) |
 | `~/.config/opencode/tui.json` (or `.jsonc`) | same path | TUI preferences (theme, keybinds, notifications, ...) |
 | `~/.config/opencode/agents/` | same path | Your custom OpenCode agents (markdown agent definitions) |
@@ -378,6 +407,7 @@ credentials and preferences out of the box. What it copies:
 | `~/Library/Application Support/Code/User/settings.json` | same path | VS Code settings, including per-extension settings (`github.copilot.*`, ...) |
 | `~/Library/Application Support/Code/User/keybindings.json` | same path | Custom keyboard shortcuts |
 | `~/Library/Application Support/Code/User/snippets/` | same path | User code snippets |
+| `~/Library/Application Support/mcp-compress-router/` | same path | mcp-compress-router settings: the MCP server config (`mcp.json`) with its endpoints and credentials, plus the stored credentials and tool-schema cache |
 | `~/.ssh/allowed_signers` | same path | SSH signing verification |
 | `~/.ssh/known_hosts` | same path | SSH host keys you already trust |
 | `~/.ssh/*.sh` | same path | SSH helper scripts (e.g. for signing) |
@@ -409,7 +439,12 @@ asks for confirmation unless you pass `--yes`, and restarts OpenChamber so
 the new settings take effect. The VM must be running — start it with
 `./scripts/run-macos-sandbox.sh` first if it isn't. A sync also updates the
 guest's version marker, so the runner won't re-offer the copy on its next
-run.
+run. Like the runner, the script honors `SANDBOX_VM` (default
+`sandbox-macos`) — use it to sync a non-default sandbox:
+
+```bash
+SANDBOX_VM=my-project ./scripts/sync-macos-sandbox.sh --yes
+```
 
 Notes:
 
@@ -490,7 +525,7 @@ Options:
 Environment variables (defaults in parentheses):
 
 | Variable | Default | What it does |
-|----------|---------|--------------|
+| --- | --- | --- |
 | `SANDBOX_IMAGE` | `sandbox-macos-tahoe` | Pristine image VM to pull and clone from |
 | `SANDBOX_VM` | `sandbox-macos` | Name of the working VM |
 | `SANDBOX_WORK_DIR` | `/Volumes/dev` | Host directory shared into the guest; empty disables the mount |

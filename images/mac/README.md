@@ -12,7 +12,7 @@ Each image is a single macOS version; the image name is fixed per version
 (`sandbox-macos-<macos-version>`) and does not include the Xcode version:
 
 | Image | macOS |
-|-------|-------|
+| --- | --- |
 | `sandbox-macos-tahoe` | 26 (Tahoe) |
 
 ## Versioning

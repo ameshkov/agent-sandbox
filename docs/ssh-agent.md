@@ -30,7 +30,7 @@ transport to the host.
 
 ## Recommended: socat socket bridge
 
-```
+```text
  guest (sandbox VM)                          host (your Mac)
  ─────────────────                           ─────────────────
  git / ssh / opencode
