@@ -47,7 +47,7 @@ recipes; it is the authoritative build/release guide.
 - Fast HCL check without a build (from `images/mac/`):
   `packer validate -var-file=vars/<image>.pkrvars.hcl sandbox.pkr.hcl`.
 - Publish: `./scripts/deploy.sh <image>` — pushes `<version>` + `:latest` to
-  `ghcr.io/<owner>/agent-sandbox/macos/<image>`; needs a one-time
+  `ghcr.io/<owner>/<image>`; needs a one-time
   `tart login ghcr.io` with `packages:write`. Owner comes from the git remote,
   override with `GHCR_OWNER`.
 - Tag a release: `./scripts/tag.sh <image>` — creates and pushes the annotated
@@ -99,10 +99,10 @@ recipes; it is the authoritative build/release guide.
   ~50 GB base image. `PACKER_LOG=1` for verbose output.
 - SSH provisioning credentials are fixed by the Cirrus base images:
   `admin`/`admin`.
-- `scripts/deploy.sh` maps the `images/` platform dir to the GHCR path
-  (`mac` → `macos`) in `registry_platform()` — extend that map when a new
-  platform lands, and mirror the `mac` layout (template + `vars/` + README +
-  CHANGELOG).
+- `scripts/deploy.sh` pushes images flat as `ghcr.io/<owner>/<image>` — the
+  platform is part of the image name (`sandbox-macos-…`, `sandbox-linux-…`),
+  so no path mapping is needed; mirror the `mac` layout (template + `vars/` +
+  README + CHANGELOG) when a new platform lands.
 - Docs are part of the deliverable and must stay in sync with the template:
   the "What's in the image" table in `docs/macos.md`, the layout tree in
   `DEVELOPMENT.md`, and `images/mac/README.md` all describe the image — change

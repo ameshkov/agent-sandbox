@@ -156,7 +156,7 @@ pull_image() {
     fi
     [ -n "$owner" ] || die "no GHCR owner — cannot pull. Set GHCR_OWNER, e.g. GHCR_OWNER=my-org."
 
-    registry="ghcr.io/$owner/agent-sandbox/macos/$image"
+    registry="ghcr.io/$owner/$image"
     info "Pulling $registry:latest (one-time, ~50 GB download)..."
     tart pull "$registry:latest" || die "pull failed — check your network connection (public GHCR images pull without a login)."
 }

@@ -185,6 +185,15 @@ tart login ghcr.io
 is taken from the git remote (`git@github.com:<owner>/agent-sandbox.git`) and
 can be overridden with the `GHCR_OWNER` env var.
 
+The first push of an image creates a new GHCR package, and GitHub does
+**not** link it to this repository automatically. After the first
+`deploy.sh` run, open the package settings page
+(`https://github.com/users/<owner>/packages/container/<image>/settings`)
+and link it to `agent-sandbox`; until then it does not show up on the
+repository's Packages tab. New packages are also **private** by default —
+change the visibility to public on the same page if the images should be
+pullable by anyone.
+
 ### Releasing a new image version
 
 1. Make the image changes in `images/mac/sandbox.pkr.hcl` (and/or

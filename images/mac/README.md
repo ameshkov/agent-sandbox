@@ -49,9 +49,10 @@ remove it first with `tart delete <image-name>`.
 ## Publishing
 
 Images are published to GHCR under
-`ghcr.io/<owner>/agent-sandbox/macos/<image>:<version>` — build locally with
-`./scripts/build.sh`, then push with `./scripts/deploy.sh`. The version tag is
-the image's `image_version` from its vars file:
+`ghcr.io/<owner>/<image>:<version>` (the package name equals the image
+name, e.g. `sandbox-macos-tahoe`) — build locally with `./scripts/build.sh`,
+then push with `./scripts/deploy.sh`. The version tag is the image's
+`image_version` from its vars file:
 
 ```bash
 # One-time: authenticate against GHCR with a token that has `packages:write`

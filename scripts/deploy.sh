@@ -7,8 +7,8 @@
 #   ./scripts/deploy.sh <image>     # push just one image (e.g. sandbox-macos-tahoe)
 #
 # Each image is pushed under
-#   ghcr.io/<owner>/agent-sandbox/<platform>/<image>:<image_version>
-#   ghcr.io/<owner>/agent-sandbox/<platform>/<image>:latest
+#   ghcr.io/<owner>/<image>:<image_version>
+#   ghcr.io/<owner>/<image>:latest
 # where <owner> is derived from the git remote (override with the GHCR_OWNER
 # env var) and <image_version> is read from the image's vars file.
 #
@@ -36,15 +36,6 @@ if [ -z "$owner" ]; then
     exit 1
 fi
 
-# The platform directory name in images/ is short (e.g. `mac`), while the GHCR
-# path uses the guest OS name. Add a mapping here when a new platform lands.
-registry_platform() {
-    case "$1" in
-        mac) printf 'macos' ;;
-        *) printf '%s' "$1" ;;
-    esac
-}
-
 # Prints the name of every image (i.e. the name of every vars file).
 list_images() {
     for vars_file in "$repo_root"/images/*/vars/*.pkrvars.hcl; do
@@ -69,8 +60,6 @@ find_vars_file() {
 deploy_image() {
     image_name="$1"
     vars_file=$(find_vars_file "$image_name")
-    platform_dir=$(dirname "$(dirname "$vars_file")")
-    platform=$(basename "$platform_dir")
 
     image_version=$(sed -n \
         's/^[[:space:]]*image_version[[:space:]]*=[[:space:]]*"\([^"]*\)"[[:space:]]*$/\1/p' \
@@ -80,7 +69,10 @@ deploy_image() {
         exit 1
     fi
 
-    registry_path="ghcr.io/$owner/agent-sandbox/$(registry_platform "$platform")/$image_name"
+    # Images are pushed flat under the owner: the platform is already part of
+    # the image name (e.g. `sandbox-macos-tahoe`), so the GHCR package name
+    # equals the image name.
+    registry_path="ghcr.io/$owner/$image_name"
 
     echo "Pushing image: $image_name"
     echo "Registry: $registry_path:$image_version and :latest"
