@@ -12,6 +12,22 @@ is never removed — changes land there until the next release.
 
 ## [Unreleased]
 
+### Added
+
+- `scripts/run-macos-sandbox.sh` now installs sandbox environment rules into
+  the guest's coding agents — opencode's global `AGENTS.md`
+  (`~/.config/opencode/AGENTS.md`) and the Copilot CLI's
+  `copilot-instructions.md` (`~/.copilot/copilot-instructions.md`) —
+  explaining the runtime topology: the Docker remote engine (context
+  `host`, published ports reachable at the NAT gateway, volume mounts
+  needing host paths), the shared-directory path mapping and the SSH agent
+  bridge. The content ships in the repo (`scripts/agent-rules.md`); the
+  actual work-dir and mount paths are substituted at install time and the
+  SSH agent section is included only when the bridge is up. The rules are
+  refreshed on every run — files the runner installed before are updated
+  silently (checksum marker in the guest), while files the user modified
+  are kept unless the overwrite is confirmed.
+
 ## [mac-v1.6.0] - 2026-08-20
 
 ### Added

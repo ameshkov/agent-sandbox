@@ -23,7 +23,15 @@ recipes; it is the authoritative build/release guide.
   agent into the guest (see `docs/ssh-agent.md`) and the host's Docker engine
   into the guest when one is running (see `docs/macos.md`), copies the host's
   user settings into the guest once per VM (versioned marker inside the guest,
-  see `docs/macos.md`), and verifies OpenChamber.
+  see `docs/macos.md`), installs the sandbox environment rules into the
+  guest's agents (`scripts/agent-rules.md`), and verifies OpenChamber.
+- `scripts/agent-rules.md` — sandbox environment rules installed into the
+  guest's coding agents (opencode global `AGENTS.md`, Copilot CLI
+  `copilot-instructions.md`): Docker remote-engine topology, shared-directory
+  path mapping, SSH agent bridge. The runner templates in the actual
+  work-dir/mount paths, drops the SSH section when no agent bridge is up,
+  refreshes the rules on every run, and asks before overwriting files the
+  user modified.
 - `scripts/sync-macos-sandbox.sh` — user-facing: copies the host's user
   settings (opencode config/agents/skills/commands/plugins, Copilot
   config/skills, SSH/Git dotfiles)

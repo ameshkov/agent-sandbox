@@ -26,6 +26,7 @@ keep them in sync whenever you change how an image behaves.
 ├── README.md                      # Index: point of entry to all docs
 ├── DEVELOPMENT.md                # This document
 ├── scripts/                       # Shared build, deploy & tag scripts (repo root)
+│   ├── agent-rules.md             # sandbox environment rules for the guest's agents (installed by the runner)
 │   ├── build.sh                   # ./scripts/build.sh [<image>]  — packer init + build
 │   ├── deploy.sh                  # ./scripts/deploy.sh [<image>] — push to GHCR
 │   ├── tag.sh                     # ./scripts/tag.sh [<image>]    — create & push the release git tag

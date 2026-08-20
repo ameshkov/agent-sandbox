@@ -401,6 +401,11 @@ docker run --rm hello-world
 - No engine is needed for image inspection: `docker manifest inspect alpine`
   works offline.
 
+The agents inside the guest know all of this out of the box: the runner
+installs a rules file for them on every run (opencode global `AGENTS.md` +
+Copilot CLI instructions), see
+[Agent rules in the guest](#agent-rules-in-the-guest).
+
 ### The one-VM, many-projects workflow in depth
 
 A sandbox VM accumulates useful state (installed tools, agent config, shell
@@ -508,6 +513,32 @@ Notes:
 - The guest's `~/.ssh/config` is not touched here — it is managed by the SSH
   agent bridge setup (`IdentityAgent`), see [docs/ssh-agent.md](ssh-agent.md).
 - Pass `--no-settings` to skip the step for a run.
+
+### Agent rules in the guest
+
+On every run, the runner also installs a short sandbox environment rules
+file into the guest's coding agents — opencode's global rules
+(`~/.config/opencode/AGENTS.md`) and the Copilot CLI's personal instructions
+(`~/.copilot/copilot-instructions.md`) — so both agents understand the
+runtime topology without being told. The rules explain the Docker remote
+engine (context `host`, published ports reachable at the NAT gateway instead
+of `localhost`, volume mounts needing host paths), the shared-directory path
+mapping and the SSH agent bridge. The content ships in the repo
+([`scripts/agent-rules.md`](../scripts/agent-rules.md)).
+
+Notes:
+
+- The rules are refreshed on every run: files the runner installed before
+  are updated silently (a checksum marker in the guest tracks them), while
+  files you modified yourself are kept — the runner asks before overwriting
+  those.
+- The shared-directory paths in the rules are substituted from the actual
+  run settings (`SANDBOX_WORK_DIR`, `SANDBOX_MOUNT_NAME`), and the SSH agent
+  section is included only when the agent bridge is actually up — the rules
+  never claim a bridge that isn't running.
+- The rules are not part of the user-settings copy. An updated
+  `scripts/agent-rules.md` is applied automatically on the next run; if you
+  modified the guest's copy, the runner asks before replacing it.
 
 ### Runner script reference
 

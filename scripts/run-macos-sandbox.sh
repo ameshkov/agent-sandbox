@@ -35,6 +35,14 @@
 #      don't read contexts — e.g. container-based test frameworks like
 #      testcontainers — find the engine and reach published ports too (see
 #      docs/macos.md, "Docker (remote engine)"). --no-docker skips.
+#      Also installs the sandbox environment rules (this Docker topology,
+#      the shared-directory path mapping, the SSH agent bridge) into the
+#      guest's coding agents — opencode's global AGENTS.md and the Copilot
+#      CLI's copilot-instructions.md, content from scripts/agent-rules.md
+#      with the run's actual work-dir/mount paths substituted in and the
+#      SSH agent section included only when the bridge is up. The rules
+#      are refreshed on every run; files the user modified in the guest
+#      are kept unless the overwrite is confirmed.
 #   5. Offers to copy the host's user settings into the guest — the global
 #      opencode config (json, tui, agents, commands, modes, plugins, skills,
 #      tools, themes) + auth, the OpenCodeReview config
@@ -109,6 +117,7 @@ docker_bridged=0
 docker_bridge_up=0
 docker_engine_up=0
 docker_server_version=
+rules_state=
 openchamber_up=0
 settings_state=
 
@@ -683,6 +692,145 @@ setup_docker_bridge() {
     fi
 }
 
+# --- step 3 (cont.): agent rules ---------------------------------------------
+#
+# Installs the sandbox environment rules into the guest's coding agents:
+# opencode's global rules (~/.config/opencode/AGENTS.md) and the Copilot
+# CLI's personal instructions (~/.copilot/copilot-instructions.md). The
+# content ships in the repo (scripts/agent-rules.md) and explains the
+# runtime topology this script establishes — the Docker remote-engine
+# bridge (context 'host', published ports via the NAT gateway, volume
+# mounts needing host paths), the shared-directory path mapping, and the
+# SSH agent bridge — so agents stop guessing at localhost ports and guest
+# paths. The {{...}} path placeholders are substituted from the actual run
+# settings (SANDBOX_WORK_DIR / SANDBOX_MOUNT_NAME), and the SSH agent
+# section is dropped unless the agent bridge is actually up — the rules
+# never claim a bridge that is not running.
+#
+# The rules are refreshed on every run: files this runner installed before
+# (tracked by a checksum marker in ~/.config/agent-sandbox/) are updated
+# silently, while files the user modified are left alone and reported, so
+# the host can ask before overwriting them. Idempotent; safe to run on
+# every run.
+
+install_agent_rules() {
+    agent_rules_src="$repo_root/scripts/agent-rules.md"
+    if [ ! -f "$agent_rules_src" ]; then
+        warn "agent rules file not found: $agent_rules_src"
+        return 0
+    fi
+
+    # Guest-side first pass: write missing files, refresh files we installed
+    # before (marker checksum), and leave user-modified files alone, echoing
+    # the outcome (installed / updated / conflict / uptodate) for the host.
+    rules_probe=$(cat <<'GUEST_RULES_PROBE'
+tmp=$(mktemp) || exit 1
+trap "rm -f $tmp" EXIT
+cat > "$tmp" || exit 1
+marker="$HOME/.config/agent-sandbox/agent-rules.sha256"
+prev=$(cat "$marker" 2>/dev/null || true)
+new_sha=$(shasum -a 256 "$tmp" | cut -d' ' -f1)
+state=uptodate
+conflict=0
+for target in \
+    "$HOME/.config/opencode/AGENTS.md" \
+    "$HOME/.copilot/copilot-instructions.md"; do
+    if [ ! -f "$target" ]; then
+        mkdir -p "$(dirname "$target")"
+        cp "$tmp" "$target" || exit 1
+        state=installed
+    elif [ "$(shasum -a 256 "$target" | cut -d' ' -f1)" = "$new_sha" ]; then
+        : # already current
+    elif [ -n "$prev" ] && \
+        [ "$(shasum -a 256 "$target" | cut -d' ' -f1)" = "$prev" ]; then
+        cp "$tmp" "$target" || exit 1
+        state=updated
+    else
+        conflict=1
+    fi
+done
+mkdir -p "$(dirname "$marker")"
+printf "%s\n" "$new_sha" > "$marker"
+if [ "$conflict" = 1 ]; then
+    printf "%s\n" conflict
+else
+    printf "%s\n" "$state"
+fi
+GUEST_RULES_PROBE
+)
+
+    # Guest-side overwrite, used only after the user confirmed: replaces
+    # both files and refreshes the marker.
+    rules_force=$(cat <<'GUEST_RULES_FORCE'
+tmp=$(mktemp) || exit 1
+trap "rm -f $tmp" EXIT
+cat > "$tmp" || exit 1
+for target in \
+    "$HOME/.config/opencode/AGENTS.md" \
+    "$HOME/.copilot/copilot-instructions.md"; do
+    mkdir -p "$(dirname "$target")"
+    cp "$tmp" "$target" || exit 1
+done
+mkdir -p "$HOME/.config/agent-sandbox"
+printf "%s\n" "$(shasum -a 256 "$tmp" | cut -d' ' -f1)" \
+    > "$HOME/.config/agent-sandbox/agent-rules.sha256"
+printf "%s\n" overwritten
+GUEST_RULES_FORCE
+)
+
+    guest_mount="/Volumes/My Shared Files/$mount_name"
+    content=$(sed -e "s|{{HOST_WORK_DIR}}|$work_dir|g" \
+        -e "s|{{GUEST_MOUNT}}|$guest_mount|g" "$agent_rules_src" |
+        {
+            if [ "$agent_bridged" = 1 ] && [ "$guest_bridge_up" = 1 ]; then
+                cat
+            else
+                sed '/^## SSH agent bridge$/,$d'
+            fi
+        }) || {
+        rules_state=failed
+        warn "could not render the agent rules."
+        return 1
+    }
+
+    rules_state=
+    if ! rules_state=$(printf '%s\n' "$content" |
+        tart exec -i "$vm" sh -c "$rules_probe" 2>/dev/null); then
+        rules_state=failed
+        warn "could not install the agent rules into the guest."
+        return 1
+    fi
+
+    case "$rules_state" in
+        installed)
+            ok "Installed the sandbox agent rules (opencode + Copilot CLI)."
+            ;;
+        updated)
+            ok "Updated the sandbox agent rules (opencode + Copilot CLI)."
+            ;;
+        conflict)
+            info "The guest has its own agent rules — they were left alone."
+            if confirm "Overwrite the guest's agent rules with the sandbox rules?" n; then
+                if printf '%s\n' "$content" |
+                    tart exec -i "$vm" sh -c "$rules_force" >/dev/null 2>&1; then
+                    rules_state=overwritten
+                    ok "Overwrote the guest's agent rules."
+                else
+                    rules_state=failed
+                    warn "could not overwrite the agent rules in the guest."
+                fi
+            else
+                rules_state=kept
+                info "Keeping the guest's own agent rules."
+            fi
+            ;;
+        *)
+            rules_state=uptodate
+            info "Agent rules are up to date in the guest."
+            ;;
+    esac
+}
+
 # --- step 4: user settings ----------------------------------------------------
 #
 # Copies the host's user settings into the guest: opencode config, skills,
@@ -807,6 +955,26 @@ print_summary() {
     else
         printf '    %-12s %s\n' 'Docker:' 'not bridged'
     fi
+    case "$rules_state" in
+        installed)
+            printf '    %-12s %s\n' 'Agent rules:' "${c_green}installed for opencode + Copilot${c_reset}"
+            ;;
+        updated | overwritten)
+            printf '    %-12s %s\n' 'Agent rules:' "${c_green}updated for opencode + Copilot${c_reset}"
+            ;;
+        uptodate)
+            printf '    %-12s %s\n' 'Agent rules:' 'up to date in the guest'
+            ;;
+        kept)
+            printf '    %-12s %s\n' 'Agent rules:' 'guest rules kept (not overwritten)'
+            ;;
+        failed)
+            printf '    %-12s %s\n' 'Agent rules:' "${c_yellow}could not be installed${c_reset}"
+            ;;
+        *)
+            printf '    %-12s %s\n' 'Agent rules:' 'not installed'
+            ;;
+    esac
     case "$settings_state" in
         copied)
             printf '    %-12s %s\n' 'Settings:' "${c_green}copied into the guest (version $settings_version)${c_reset}"
@@ -985,6 +1153,7 @@ if [ "$skip_docker" = 1 ]; then
 else
     setup_docker_bridge
 fi
+install_agent_rules
 
 # 4. User settings (opencode config + auth, Copilot config + skills, VS Code
 #    config + extensions, SSH/Git dotfiles) — copied once per guest, tracked
