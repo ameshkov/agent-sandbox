@@ -29,11 +29,16 @@
 #      ... — anything with a Unix socket), bridges its socket into the guest
 #      the same way: a host-side socat for this run, and a guest-side socat
 #      plus a docker context 'host' persisted inside the guest, so `docker`
-#      and `docker compose` in the guest just work against the host engine
-#      (see docs/macos.md, "Docker (remote engine)"). --no-docker skips.
+#      and `docker compose` in the guest just work against the host engine.
+#      The guest's ~/.zprofile also exports DOCKER_HOST and
+#      TESTCONTAINERS_HOST_OVERRIDE (the NAT gateway), so docker clients that
+#      don't read contexts — e.g. container-based test frameworks like
+#      testcontainers — find the engine and reach published ports too (see
+#      docs/macos.md, "Docker (remote engine)"). --no-docker skips.
 #   5. Offers to copy the host's user settings into the guest — the global
 #      opencode config (json, tui, agents, commands, modes, plugins, skills,
-#      tools, themes) + auth, the Copilot CLI config + skills
+#      tools, themes) + auth, the OpenCodeReview config
+#      (~/.opencodereview/config.json), the Copilot CLI config + skills
 #      (~/.copilot/config.json, ~/.copilot/skills/), the VS Code extensions
 #      (~/.vscode/extensions) and user config (settings.json, keybindings,
 #      snippets), ~/.ssh/allowed_signers, ~/.ssh/known_hosts,
@@ -456,7 +461,10 @@ setup_ssh_agent() {
 # into a Unix socket at ~/.docker/run/docker.sock. A docker context 'host'
 # pointing at that socket is created and made the default in the guest, so
 # every docker invocation — shells, opencode, OpenChamber — hits the host
-# engine.
+# engine. ~/.zprofile additionally exports DOCKER_HOST and
+# TESTCONTAINERS_HOST_OVERRIDE (the NAT gateway), so docker clients that
+# don't read contexts — e.g. testcontainers — still find the engine and
+# reach its published ports from the guest.
 
 # Prints the path of a Docker engine socket on the host, or nothing. Looks for
 # the engines the sandbox supports: Docker Desktop (4.30+ keeps the socket at
@@ -506,8 +514,12 @@ start_host_docker_bridge() {
 
 # Persist the guest-side Docker bridge in the guest's ~/.zprofile: a socat
 # auto-restart that recreates ~/.docker/run/docker.sock on every login (the
-# socket is rebuilt after reboots; /tmp would be cleared, ~/.docker survives).
-# Idempotent — does nothing when the marker is already present.
+# socket is rebuilt after reboots; /tmp would be cleared, ~/.docker survives),
+# plus DOCKER_HOST and TESTCONTAINERS_HOST_OVERRIDE exports so docker clients
+# that don't read contexts (e.g. testcontainers) reach the host engine and
+# its published ports from the guest. Each block is guarded by its own marker
+# and appended independently, so guests set up before the env exports existed
+# get them on the next run without duplicating the socat block. Idempotent.
 persist_guest_docker() {
     if ! tart exec -i "$vm" sh -s "$docker_port" 2>/dev/null <<'GUEST_DOCKER_ZPROFILE'
 port=$1
@@ -522,16 +534,24 @@ if ! grep -qF '# Docker bridge to the host' "$HOME/.zprofile" 2>/dev/null; then
             'fi'
     } >> "$HOME/.zprofile"
 fi
+if ! grep -qF '# Docker env vars for the host engine' "$HOME/.zprofile" 2>/dev/null; then
+    {
+        printf '\n%s\n' '# Docker env vars for the host engine (testcontainers support, see docs/macos.md)'
+        printf '%s\n' \
+            'export DOCKER_HOST="unix://$HOME/.docker/run/docker.sock"' \
+            "export TESTCONTAINERS_HOST_OVERRIDE=\"\$(netstat -nr | awk '/default/{print \$2; exit}')\""
+    } >> "$HOME/.zprofile"
+fi
 GUEST_DOCKER_ZPROFILE
     then
         warn "could not update the guest's ~/.zprofile (Docker bridge)."
     fi
 }
 
-# Returns 0 when the guest Docker bridge is already persisted in the guest's
-# ~/.zprofile.
+# Returns 0 when the guest Docker bridge (socat block + env exports) is
+# already persisted in the guest's ~/.zprofile.
 guest_docker_installed() {
-    tart exec "$vm" sh -c 'grep -qF "# Docker bridge to the host" "$HOME/.zprofile" 2>/dev/null' 2>/dev/null
+    tart exec "$vm" sh -c 'grep -qF "# Docker bridge to the host" "$HOME/.zprofile" 2>/dev/null && grep -qF "# Docker env vars for the host engine" "$HOME/.zprofile" 2>/dev/null' 2>/dev/null
 }
 
 # Start the guest bridge for this boot (survives the tart exec session) and
@@ -643,7 +663,7 @@ setup_docker_bridge() {
         info "Guest Docker bridge is already set up in the guest's ~/.zprofile."
         ensure_guest_docker_bridge
         ensure_guest_docker_context
-    elif confirm "Set up the Docker bridge inside the guest too (guest socat + docker context 'host')?" y; then
+    elif confirm "Set up the Docker bridge inside the guest too (guest socat + docker context 'host' + env exports)?" y; then
         persist_guest_docker
         ensure_guest_docker_bridge
         ensure_guest_docker_context
@@ -666,7 +686,8 @@ setup_docker_bridge() {
 # --- step 4: user settings ----------------------------------------------------
 #
 # Copies the host's user settings into the guest: opencode config, skills,
-# commands and auth, Copilot config + skills (~/.copilot), VS Code extensions
+# commands and auth, the OpenCodeReview config (~/.opencodereview/config.json),
+# Copilot config + skills (~/.copilot), VS Code extensions
 # (~/.vscode/extensions) and user config (settings.json/keybindings/snippets
 # under ~/Library/Application Support/Code/User/), ~/.ssh/allowed_signers,
 # ~/.ssh/known_hosts, ~/.ssh/*.sh and ~/.gitconfig. The copy logic lives in
@@ -687,7 +708,7 @@ setup_user_settings() {
 
     settings_list=$(collect_settings_files)
     if [ -z "$settings_list" ]; then
-        info "No user settings found on the host (opencode config and auth, Copilot config, VS Code config and extensions, ~/.ssh, ~/.gitconfig) — nothing to copy."
+        info "No user settings found on the host (opencode config and auth, OpenCodeReview config, Copilot config, VS Code config and extensions, ~/.ssh, ~/.gitconfig) — nothing to copy."
         settings_state=none
         return 0
     fi

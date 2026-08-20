@@ -101,7 +101,8 @@ vm_state() {
 # Copies the host's user settings into the guest: the global opencode config
 # (opencode.json/.jsonc, tui.json/.jsonc, agents/, commands/, modes/,
 # plugins/, skills/, tools/, themes/ and the config dir's package.json +
-# lockfiles for local plugin dependencies), opencode auth, the Copilot CLI
+# lockfiles for local plugin dependencies), opencode auth, the OpenCodeReview
+# config (~/.opencodereview/config.json), the Copilot CLI
 # config + skills (~/.copilot/config.json, ~/.copilot/skills/), the VS Code
 # extensions (~/.vscode/extensions) and user config (settings.json,
 # keybindings.json, snippets/ under
@@ -120,7 +121,7 @@ vm_state() {
 # files are added to collect_settings_files, or when the copy logic changes
 # (e.g. the .gitconfig sanitization in copy_settings_to_guest below): guests
 # whose marker is older than this are offered the copy again.
-settings_version=7
+settings_version=9
 
 # Prints the host's user settings files, one per line, as paths relative to
 # $HOME (tarable with -C "$HOME" and displayed with $HOME/). Only entries
@@ -144,6 +145,7 @@ collect_settings_files() {
         ".config/opencode/package-lock.json" \
         ".config/opencode/bun.lock" \
         ".local/share/opencode/auth.json" \
+        ".opencodereview/config.json" \
         ".copilot/config.json" \
         ".copilot/skills" \
         ".vscode/extensions" \
@@ -182,14 +184,14 @@ GUEST_SETTINGS_STATUS
 #
 # .gitconfig is the one file that can carry host-specific paths (the host
 # home directory, e.g. /Users/ameshkov, baked into the config) and the
-# guest's user differs (admin), so it is sanitized before the copy: host
-# home paths are rewritten to ~ (git expands ~ for path-like keys like
-# gpg.ssh.allowedsignersfile, and the shell does for core.sshCommand) and
-# `program` values under ~ are dropped — git execs program values verbatim
-# without ~ expansion, and the gpg.ssh.program signing wrapper is a
-# host-only workaround; the guest signs through the bridged SSH_AUTH_SOCK
-# (set in the guest's ~/.zprofile) with the default ssh-keygen instead.
+# guest's user differs (admin), so it is sanitized before the copy: every
+# occurrence of the host home path is rewritten to the guest's home
+# directory (/Users/admin) — an absolute path works everywhere, including
+# for `program` values that git execs verbatim without ~ expansion.
 copy_settings_to_guest() {
+    # The sandbox user in the guest is fixed by the base image: admin, whose
+    # home is /Users/admin. Host home paths are rewritten to it verbatim.
+    guest_home=/Users/admin
     # Sanitize .gitconfig into a staging dir (only when the host has one);
     # the sanitized copy ships in place of the original below.
     sanitized_gitconfig=
@@ -198,8 +200,7 @@ copy_settings_to_guest() {
             warn "could not create a staging dir for the settings copy."
             return 1
         }
-        if sed -e "s|$HOME|~|g" \
-               -e '/^[[:space:]]*program[[:space:]]*=[[:space:]]*~/d' \
+        if sed -e "s|$HOME|$guest_home|g" \
                "$HOME/.gitconfig" > "$staging/.gitconfig"; then
             chmod "$(stat -f %Lp "$HOME/.gitconfig")" "$staging/.gitconfig"
             sanitized_gitconfig=1

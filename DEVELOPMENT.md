@@ -80,6 +80,10 @@ keep them in sync whenever you change how an image behaves.
      builds, via Homebrew casks; quarantine is stripped with `xattr` so they
      launch without Gatekeeper prompts);
    - OpenCode (`brew install anomalyco/tap/opencode`);
+   - OpenCodeReview (`npm install -g @alibaba-group/open-code-review`) — the
+     `ocr` AI code review CLI; its global config
+     (`~/.opencodereview/config.json`) is synced from the host with the user
+     settings (see "User settings on the guest" in docs/macos.md);
    - OpenChamber desktop app (`brew install --cask openchamber`) — the
      native macOS app for the guest desktop; quarantine stripped so it
      launches without Gatekeeper prompts;

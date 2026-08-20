@@ -12,6 +12,34 @@ is never removed — changes land there until the next release.
 
 ## [Unreleased]
 
+### Added
+
+- OpenCodeReview — the AI-powered code review CLI
+  (https://github.com/alibaba/open-code-review), installed globally via npm
+  (`@alibaba-group/open-code-review`, provides the `ocr` command).
+
+### Changed
+
+- The user-settings copy now includes the OpenCodeReview config
+  (`~/.opencodereview/config.json`), so the guest's `ocr` CLI uses the same
+  LLM provider and model as the host. The settings version was bumped so
+  existing guests are offered the re-copy once.
+- The `.gitconfig` sanitization in the user-settings copy now rewrites
+  paths under the host's home directory to the guest's home directory
+  (`/Users/admin`) instead of `~`, and no longer drops `program` values —
+  the absolute path works even for values git execs verbatim, so a
+  home-relative signing wrapper (e.g. `gpg.ssh.program`) survives the
+  copy. The settings version was bumped so existing guests are offered the
+  re-copy once.
+- The Docker bridge in `scripts/run-macos-sandbox.sh` now also exports
+  `DOCKER_HOST` and `TESTCONTAINERS_HOST_OVERRIDE` in the guest's
+  `~/.zprofile`, so container-based test frameworks (testcontainers and
+  similar) work in the guest out of the box: the Ryuk reaper and published
+  ports are reached on the host engine via the NAT gateway instead of the
+  guest's `localhost`. Guests set up before this change get the exports the
+  next time the runner runs (each `~/.zprofile` block is guarded by its own
+  marker, so the socat block is not duplicated).
+
 ## [mac-v1.5.0] - 2026-08-20
 
 ### Changed

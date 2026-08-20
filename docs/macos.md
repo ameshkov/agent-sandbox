@@ -2,9 +2,10 @@
 
 > **What you'll get.** A local sandbox virtual machine: a macOS guest with a
 > full coding toolchain and an AI coding agent (OpenCode) pre-installed, plus
-> the OpenChamber web UI to run and supervise agent sessions from your host
-> browser and the OpenChamber desktop app inside the guest, running on your
-> Apple Silicon Mac. Your code stays on your host —
+> the OpenCodeReview code-review CLI, the OpenChamber web UI to run and
+> supervise agent sessions from your host browser and the OpenChamber desktop
+> app inside the guest, running on your Apple Silicon Mac. Your code stays on
+> your host —
 > you share a working directory into the VM and run the agent on it from
 > inside the sandbox.
 >
@@ -153,6 +154,12 @@ cd "/Volumes/My Shared Files/dev"
 opencode
 ```
 
+- **Code review (OpenCodeReview)**: the image ships the `ocr` CLI, pre-
+  configured with your host's LLM settings (synced via
+  `~/.opencodereview/config.json`) — see the
+  [OpenCodeReview quick start](https://github.com/alibaba/open-code-review#quick-start)
+  for usage.
+
 All your host projects are inside — `cd` into whichever folder you're working
 on and the agent sees your code. That's it — you are running an AI coding agent
 in an isolated sandbox, with your code safely on the host.
@@ -160,9 +167,9 @@ in an isolated sandbox, with your code safely on the host.
 ### Everyday commands
 
 - **Force-sync your host settings into the sandbox** — opencode config and
-  auth, Copilot config and skills, VS Code config and extensions,
-  mcp-compress-router, `~/.ssh` and `~/.gitconfig` (the same set as on first
-  run). The VM must be running; from the repo root:
+  auth, OpenCodeReview config, Copilot config and skills, VS Code config and
+  extensions, mcp-compress-router, `~/.ssh` and `~/.gitconfig` (the same set
+  as on first run). The VM must be running; from the repo root:
 
   ```bash
   ./scripts/sync-macos-sandbox.sh --yes
@@ -210,6 +217,7 @@ with Tart. The default image ships the following software:
 | Google Chrome | latest (universal) |
 | Firefox | latest (universal) |
 | OpenCode | latest (AI coding agent) |
+| OpenCodeReview | latest (AI code review CLI, `ocr`, config synced from the host) |
 | OpenChamber | latest (web UI for OpenCode, auto-started on port 4000) |
 | OpenChamber desktop app | latest (native macOS app, `/Applications/OpenChamber.app`) |
 | Docker CLI | latest (`docker` + `docker compose` / `docker buildx` plugins; client only — no local engine, see [Docker (remote engine)](#docker-remote-engine)) |
@@ -230,6 +238,7 @@ subl --version
 "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --version
 "/Applications/Firefox.app/Contents/MacOS/firefox" --version
 opencode --version
+ocr --version
 openchamber --version
 defaults read "/Applications/OpenChamber.app/Contents/Info.plist" CFBundleShortVersionString
 docker --version
@@ -321,7 +330,11 @@ guest-side `socat` (persisted in `~/.zprofile`, recreated on every login)
 that serves the socket at `~/.docker/run/docker.sock`. A docker context
 named `host` is created in the guest and made the default, so `docker`,
 `docker compose`, `docker buildx` — from a terminal or from the coding agent
-— all hit the host engine:
+— all hit the host engine. The guest's `~/.zprofile` also exports
+`DOCKER_HOST` (the bridged socket) and `TESTCONTAINERS_HOST_OVERRIDE` (the
+NAT gateway), so docker clients that don't read contexts — e.g. the
+testcontainers library — find the engine and its published ports too (see
+the note below):
 
 ```bash
 # inside the guest — the runner already set up the context
@@ -337,6 +350,17 @@ Notes:
   `docker run -d -p 8080:80 nginx` then `curl http://192.168.64.1:8080`.
   From the host itself, the same port is `http://localhost:8080` as usual.
   Verify the gateway with `route -n get default` inside the guest.
+- Container-based test frameworks (testcontainers and similar) work in the
+  guest out of the box: the runner's `~/.zprofile` exports make them dial
+  the host engine and its published ports via the NAT gateway. Without
+  `TESTCONTAINERS_HOST_OVERRIDE` they assume the engine is local and try
+  `localhost`, where nothing is published — this shows up as
+  `Failed to connect to Reaper` (the testcontainers cleanup container
+  itself starts fine on the host engine). One caveat: task runners that
+  filter the environment — turbo passes through only a built-in set plus
+  declared variables — need the vars declared too, e.g. on the `test`
+  task in `turbo.json`: `"env": ["DOCKER_HOST",
+  "TESTCONTAINERS_HOST_OVERRIDE"]`.
 - The host engine must be running when the runner bridges it (the socket only
   exists then). If Docker Desktop isn't started yet, the runner skips the
   bridge — start the engine and re-run the script (or just run it again; the
@@ -413,6 +437,7 @@ credentials and preferences out of the box. What it copies:
 | `~/.config/opencode/themes/` | same path | Custom UI themes |
 | `~/.config/opencode/package.json` (+ lockfiles) | same path | Dependencies of local plugins — OpenCode runs `bun install` at startup |
 | `~/.local/share/opencode/auth.json` | same path | OpenCode provider credentials — no `opencode auth login` needed in the guest |
+| `~/.opencodereview/config.json` | same path | OpenCodeReview provider/model config (custom LLM endpoints, API keys) — `ocr` works in the guest as configured on the host |
 | `~/.copilot/config.json` | same path | Copilot CLI settings (`~/.copilot` is where Copilot keeps its config) |
 | `~/.copilot/skills/` | same path | Your Copilot skills (e.g. `gh/SKILL.md`), like the opencode ones |
 | `~/.vscode/extensions/` | same path | Installed VS Code extensions — no reinstall in the guest |
@@ -462,9 +487,8 @@ Notes:
 
 - Only files that exist on the host are copied.
 - `.gitconfig` is adjusted for the guest (`admin`): paths under the host's
-  home are rewritten to `~`, and a host-only signing wrapper
-  (`gpg.ssh.program`) is dropped — the guest signs through the bridged SSH
-  agent anyway.
+  home — including `program` values, which git execs verbatim — are
+  rewritten to the guest's home (`/Users/admin`).
 - Skills and commands in a project's `.opencode/` directory are **not**
   copied — they come into the guest via the shared work directory; only the
   global `~/.config/opencode` ones are synced.

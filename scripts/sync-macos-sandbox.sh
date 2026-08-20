@@ -15,7 +15,8 @@
 #
 # What it copies (the same set as run-macos-sandbox.sh, see docs/macos.md):
 #   the global opencode config (json, tui, agents, commands, modes, plugins,
-#   skills, tools, themes) + auth, the Copilot CLI config + skills
+#   skills, tools, themes) + auth, the OpenCodeReview config
+#   (~/.opencodereview/config.json), the Copilot CLI config + skills
 #   (~/.copilot/config.json, ~/.copilot/skills/), the VS Code extensions
 #   (~/.vscode/extensions) and user config (settings.json, keybindings.json,
 #   snippets/), ~/.ssh/allowed_signers, ~/.ssh/known_hosts, ~/.ssh/*.sh and
@@ -46,7 +47,8 @@ Usage: sync-macos-sandbox.sh [options]
 
 Copies the host's user settings into the sandbox guest on demand: the global
 opencode config (json, tui, agents, commands, modes, plugins, skills, tools,
-themes) + auth, the Copilot CLI config + skills (~/.copilot/config.json,
+themes) + auth, the OpenCodeReview config (~/.opencodereview/config.json),
+the Copilot CLI config + skills (~/.copilot/config.json,
 ~/.copilot/skills/), the VS Code extensions (~/.vscode/extensions) and user
 config (settings.json, keybindings.json, snippets/), ~/.ssh/allowed_signers,
 ~/.ssh/known_hosts, ~/.ssh/*.sh and ~/.gitconfig (see docs/macos.md). The VM
@@ -87,7 +89,7 @@ fi
 
 settings_list=$(collect_settings_files)
 if [ -z "$settings_list" ]; then
-    info "No user settings found on the host (opencode config and auth, Copilot config, VS Code config and extensions, ~/.ssh, ~/.gitconfig) — nothing to copy."
+    info "No user settings found on the host (opencode config and auth, OpenCodeReview config, Copilot config, VS Code config and extensions, ~/.ssh, ~/.gitconfig) — nothing to copy."
     exit 0
 fi
 

@@ -311,6 +311,21 @@ END
     ]
   }
 
+  # OpenCodeReview — the AI-powered code review CLI
+  # (https://github.com/alibaba/open-code-review). Installed via npm (the
+  # image ships Node.js via nvm), provides the `ocr` command; its global
+  # config (~/.opencodereview/config.json) is synced from the host by the
+  # user-settings copy (see scripts/lib/macos-settings.sh).
+  provisioner "shell" {
+    inline = [<<-END
+set -e -x
+source ~/.zprofile
+npm install -g @alibaba-group/open-code-review
+ocr --version
+END
+    ]
+  }
+
   # OpenChamber — the native macOS desktop app (https://openchamber.dev),
   # installed alongside the web UI below. Distributed as the `openchamber`
   # Homebrew cask (the arm64 build on Apple Silicon); the cask pins the DMG
@@ -440,6 +455,7 @@ subl --version
 "/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" --version
 "/Applications/Firefox.app/Contents/MacOS/firefox" --version
 opencode --version
+ocr --version | head -1
 openchamber --version
 defaults read "/Applications/OpenChamber.app/Contents/Info.plist" CFBundleShortVersionString
 docker --version
