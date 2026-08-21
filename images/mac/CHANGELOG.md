@@ -12,6 +12,18 @@ is never removed — changes land there until the next release.
 
 ## [Unreleased]
 
+### Fixed
+
+- `scripts/run-macos-sandbox.sh` no longer fails with
+  `the specified VM "<image>" does not exist` right after a first-time image
+  pull. On current
+  Tart versions `tart pull` stages the image in the local OCI store under its
+  full registry reference (`ghcr.io/<owner>/<image>:latest`) — the bare
+  short name never appears in `tart list` — so the runner now detects the
+  pulled image by that stored reference and clones the working VM from it
+  (falling back to a local VM name when the image was imported locally, and
+  resolving the GHCR owner only for an image that is not yet present).
+
 ## [mac-v1.6.0] - 2026-08-20
 
 ### Added

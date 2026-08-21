@@ -149,7 +149,10 @@ get_vm_ip() {
 
 # --- step 1: pull / clone ---------------------------------------------------
 
-pull_image() {
+# Resolves the GHCR owner — GHCR_OWNER, the git remote, or a prompt — and
+# prints it. Shared by the pull and the clone: a pulled image is addressed by
+# its OCI reference, ghcr.io/<owner>/<image>:latest.
+resolve_owner() {
     owner=${GHCR_OWNER:-}
     if [ -z "$owner" ]; then
         owner=$(git -C "$repo_root" config --get remote.origin.url 2>/dev/null |
@@ -160,8 +163,37 @@ pull_image() {
         read -r owner || true
     fi
     [ -n "$owner" ] || die "no GHCR owner — cannot pull. Set GHCR_OWNER, e.g. GHCR_OWNER=my-org."
+    printf '%s\n' "$owner"
+}
 
-    registry="ghcr.io/$owner/$image"
+# Prints the clone source for the pristine image: the local VM name when the
+# image was imported locally (older setups), otherwise the image's OCI
+# reference, ghcr.io/<owner>/<image>:latest. On current Tart, `tart pull`
+# stages the image in the OCI store under its full registry reference — the
+# short name (`sandbox-macos-tahoe`) never appears in `tart list` on its own,
+# and `tart clone` only accepts a VM name or a full reference.
+image_clone_source() {
+    if vm_exists "$image"; then
+        printf '%s\n' "$image"
+        return 0
+    fi
+    # The image may already be staged in the local OCI store under its full
+    # registry reference — whatever the owner published it as (`tart pull`
+    # records it as ghcr.io/<owner>/<image>:latest, never under the bare
+    # name). Clone that exact reference when it is present, so the owner is
+    # not needed and the stored image is reused.
+    found=$(tart list | awk -v suffix="/$image:latest" \
+        '$1 == "OCI" && index($2, suffix) > 0 { print $2; exit }')
+    if [ -n "$found" ]; then
+        printf '%s\n' "$found"
+        return 0
+    fi
+    # Not present yet — this is the source to pull and then clone from.
+    printf '%s\n' "ghcr.io/$(resolve_owner)/$image:latest"
+}
+
+pull_image() {
+    registry="ghcr.io/$(resolve_owner)/$image"
     info "Pulling $registry:latest (one-time, ~50 GB download)..."
     tart pull "$registry:latest" || die "pull failed — check your network connection (public GHCR images pull without a login)."
 }
@@ -172,29 +204,34 @@ ensure_vm() {
         return 0
     fi
 
-    if vm_exists "$image"; then
+    clone_source=$(image_clone_source)
+
+    if vm_exists "$clone_source"; then
         info "Sandbox image '$image' is present."
     else
         info "Sandbox image '$image' is not pulled on this machine."
         if confirm "Pull it now?" y; then
             pull_image
+            # The pull registers only the OCI reference — recompute the clone
+            # source so we clone from it instead of a non-existent VM name.
+            clone_source=$(image_clone_source)
         else
             die "aborted — no sandbox image available. Run 'tart pull' manually when ready."
         fi
     fi
 
-    img_state=$(vm_state "$image")
+    img_state=$(vm_state "$clone_source")
     if [ "$img_state" = running ]; then
-        die "image VM '$image' is running — stop it first: tart stop $image"
+        die "image VM '$clone_source' is running — stop it first: tart stop $clone_source"
     fi
 
     if confirm "No working VM '$vm' yet — clone it from the pristine image '$image'?" y; then
-        cmd "tart clone $image $vm"
-        tart clone "$image" "$vm"
+        cmd "tart clone $clone_source $vm"
+        tart clone "$clone_source" "$vm"
         created=1
         ok "Cloned '$vm' from '$image'."
     else
-        die "aborted — '$vm' is required. Clone it manually with 'tart clone $image $vm'."
+        die "aborted — '$vm' is required. Clone it manually with 'tart clone $clone_source $vm'."
     fi
 }
 
