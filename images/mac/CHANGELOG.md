@@ -23,10 +23,9 @@ is never removed — changes land there until the next release.
   needing host paths), the shared-directory path mapping and the SSH agent
   bridge. The content ships in the repo (`scripts/agent-rules.md`); the
   actual work-dir and mount paths are substituted at install time and the
-  SSH agent section is included only when the bridge is up. The rules are
-  refreshed on every run — files the runner installed before are updated
-  silently (checksum marker in the guest), while files the user modified
-  are kept unless the overwrite is confirmed.
+  SSH agent section is included only when the bridge is up. The runner
+  asks before installing or updating the rules, and files the user
+  modified are replaced only after a confirmation that defaults to no.
 
 ## [mac-v1.6.0] - 2026-08-20
 

@@ -528,17 +528,16 @@ mapping and the SSH agent bridge. The content ships in the repo
 
 Notes:
 
-- The rules are refreshed on every run: files the runner installed before
-  are updated silently (a checksum marker in the guest tracks them), while
-  files you modified yourself are kept — the runner asks before overwriting
-  those.
+- The rules are refreshed on every run, but the runner always asks before
+  installing or updating them. When you modified the guest's copy yourself,
+  the prompt asks whether to overwrite it and defaults to no.
 - The shared-directory paths in the rules are substituted from the actual
   run settings (`SANDBOX_WORK_DIR`, `SANDBOX_MOUNT_NAME`), and the SSH agent
   section is included only when the agent bridge is actually up — the rules
   never claim a bridge that isn't running.
 - The rules are not part of the user-settings copy. An updated
-  `scripts/agent-rules.md` is applied automatically on the next run; if you
-  modified the guest's copy, the runner asks before replacing it.
+  `scripts/agent-rules.md` is offered on the next run; the runner asks
+  before replacing the guest's copy.
 
 ### Runner script reference
 

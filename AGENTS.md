@@ -30,8 +30,8 @@ recipes; it is the authoritative build/release guide.
   `copilot-instructions.md`): Docker remote-engine topology, shared-directory
   path mapping, SSH agent bridge. The runner templates in the actual
   work-dir/mount paths, drops the SSH section when no agent bridge is up,
-  refreshes the rules on every run, and asks before overwriting files the
-  user modified.
+  asks before installing or updating the rules, and only replaces
+  user-modified files after a confirmation.
 - `scripts/sync-macos-sandbox.sh` — user-facing: copies the host's user
   settings (opencode config/agents/skills/commands/plugins, Copilot
   config/skills, SSH/Git dotfiles)

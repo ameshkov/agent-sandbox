@@ -40,9 +40,10 @@
 #      guest's coding agents — opencode's global AGENTS.md and the Copilot
 #      CLI's copilot-instructions.md, content from scripts/agent-rules.md
 #      with the run's actual work-dir/mount paths substituted in and the
-#      SSH agent section included only when the bridge is up. The rules
-#      are refreshed on every run; files the user modified in the guest
-#      are kept unless the overwrite is confirmed.
+#      SSH agent section included only when the bridge is up. The runner
+#      asks before installing or updating the rules; files the user
+#      modified in the guest are only replaced after a confirmation that
+#      defaults to no.
 #   5. Offers to copy the host's user settings into the guest — the global
 #      opencode config (json, tui, agents, commands, modes, plugins, skills,
 #      tools, themes) + auth, the OpenCodeReview config
@@ -707,10 +708,12 @@ setup_docker_bridge() {
 # section is dropped unless the agent bridge is actually up — the rules
 # never claim a bridge that is not running.
 #
-# The rules are refreshed on every run: files this runner installed before
-# (tracked by a checksum marker in ~/.config/agent-sandbox/) are updated
-# silently, while files the user modified are left alone and reported, so
-# the host can ask before overwriting them. Idempotent; safe to run on
+# The rules are refreshed on every run, but never written without asking:
+# the probe below only inspects the guest and reports what would change
+# (install / update / conflict / uptodate), and the host confirms before
+# any write. A checksum marker in ~/.config/agent-sandbox/ tracks what the
+# runner installed, so files the user modified are only replaced after a
+# separate confirmation that defaults to no. Idempotent; safe to run on
 # every run.
 
 install_agent_rules() {
@@ -720,9 +723,11 @@ install_agent_rules() {
         return 0
     fi
 
-    # Guest-side first pass: write missing files, refresh files we installed
-    # before (marker checksum), and leave user-modified files alone, echoing
-    # the outcome (installed / updated / conflict / uptodate) for the host.
+    # Read-only guest-side probe: compares each target against the new
+    # content and the marker, without writing anything. Reports the most
+    # significant pending action: conflict (user-modified file) > install
+    # (missing file) > update (file we installed, content changed) >
+    # uptodate (nothing to do).
     rules_probe=$(cat <<'GUEST_RULES_PROBE'
 tmp=$(mktemp) || exit 1
 trap "rm -f $tmp" EXIT
@@ -730,31 +735,31 @@ cat > "$tmp" || exit 1
 marker="$HOME/.config/agent-sandbox/agent-rules.sha256"
 prev=$(cat "$marker" 2>/dev/null || true)
 new_sha=$(shasum -a 256 "$tmp" | cut -d' ' -f1)
-state=uptodate
 conflict=0
+install=0
+update=0
 for target in \
     "$HOME/.config/opencode/AGENTS.md" \
     "$HOME/.copilot/copilot-instructions.md"; do
     if [ ! -f "$target" ]; then
-        mkdir -p "$(dirname "$target")"
-        cp "$tmp" "$target" || exit 1
-        state=installed
+        install=1
     elif [ "$(shasum -a 256 "$target" | cut -d' ' -f1)" = "$new_sha" ]; then
         : # already current
     elif [ -n "$prev" ] && \
         [ "$(shasum -a 256 "$target" | cut -d' ' -f1)" = "$prev" ]; then
-        cp "$tmp" "$target" || exit 1
-        state=updated
+        update=1
     else
         conflict=1
     fi
 done
-mkdir -p "$(dirname "$marker")"
-printf "%s\n" "$new_sha" > "$marker"
 if [ "$conflict" = 1 ]; then
     printf "%s\n" conflict
+elif [ "$install" = 1 ]; then
+    printf "%s\n" install
+elif [ "$update" = 1 ]; then
+    printf "%s\n" update
 else
-    printf "%s\n" "$state"
+    printf "%s\n" uptodate
 fi
 GUEST_RULES_PROBE
 )
@@ -797,19 +802,32 @@ GUEST_RULES_FORCE
     if ! rules_state=$(printf '%s\n' "$content" |
         tart exec -i "$vm" sh -c "$rules_probe" 2>/dev/null); then
         rules_state=failed
-        warn "could not install the agent rules into the guest."
+        warn "could not inspect the agent rules in the guest."
         return 1
     fi
 
     case "$rules_state" in
-        installed)
-            ok "Installed the sandbox agent rules (opencode + Copilot CLI)."
-            ;;
-        updated)
-            ok "Updated the sandbox agent rules (opencode + Copilot CLI)."
+        install | update)
+            if confirm "Install/update the sandbox agent rules in the guest?" y; then
+                if printf '%s\n' "$content" |
+                    tart exec -i "$vm" sh -c "$rules_force" >/dev/null 2>&1; then
+                    if [ "$rules_state" = install ]; then
+                        rules_state=installed
+                    else
+                        rules_state=updated
+                    fi
+                    ok "Installed/updated the sandbox agent rules (opencode + Copilot CLI)."
+                else
+                    rules_state=failed
+                    warn "could not install the agent rules into the guest."
+                fi
+            else
+                rules_state=kept
+                info "Keeping the guest's agent rules as they are."
+            fi
             ;;
         conflict)
-            info "The guest has its own agent rules — they were left alone."
+            info "The guest has its own agent rules."
             if confirm "Overwrite the guest's agent rules with the sandbox rules?" n; then
                 if printf '%s\n' "$content" |
                     tart exec -i "$vm" sh -c "$rules_force" >/dev/null 2>&1; then
