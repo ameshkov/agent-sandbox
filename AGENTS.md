@@ -66,7 +66,9 @@ recipes; it is the authoritative build/release guide.
   sandbox-macos-tahoe` first. The Windows image is built with
   `WINDOWS_ISO_PATH=/path/to/iso ./scripts/build.sh sandbox-windows-11` —
   `build.sh` delegates to `images/windows-arm64-qemu/build.sh` (swtpm + ISO
-  staging), see `images/windows-arm64-qemu/README.md`.
+  staging + a VNC build watchdog, `scripts/watch-build.sh`, that
+  auto-dismisses Windows Setup dialogs — needs `pip3 install vncdotool`),
+  see `images/windows-arm64-qemu/README.md`.
 - Fast HCL check without a build (from `images/mac/`):
   `packer validate -var-file=vars/<image>.pkrvars.hcl sandbox.pkr.hcl`.
 - Publish: `./scripts/deploy.sh <image>` — pushes `<version>` + `:latest` to

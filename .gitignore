@@ -8,3 +8,6 @@
 images/windows-arm64-qemu/output/
 images/windows-arm64-qemu/packer_cache/
 images/windows-arm64-qemu/drivers/staging/
+
+# Python bytecode
+__pycache__/

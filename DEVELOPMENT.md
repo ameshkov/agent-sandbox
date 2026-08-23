@@ -310,6 +310,30 @@ WinPE drive letters on ARM64 are non-deterministic, so a separate drivers
 CD is unreliable), starts `swtpm`, and runs `packer init` + `packer
 build`. A build takes roughly 30 minutes on an M-series Mac.
 
+### Build watchdog
+
+The headless build is not self-driving: its `boot_command` types Enter 15
+times at boot to answer the firmware's prompts, and those stray keys can
+hit "Cancel" on Windows Setup's "Installing Windows 11" screen — Setup
+then asks "Are you sure you want to quit?" and the build stalls forever.
+Boot races can also land in the UEFI shell. The template pins the plugin's
+VNC server to port 5901 and `build.sh` starts
+[`scripts/watch-build.sh`](scripts/watch-build.sh) around `packer build`:
+it polls the VNC framebuffer, OCRs each frame with Apple Vision
+(`scripts/watch-build-ocr.swift`, compiled on first use), and
+
+- clicks "No" on the quit-confirmation dialog (at the OCR'd button
+  position, with a fallback for the 800x600 framebuffer),
+- presses a key when "Press any key to boot from CD or DVD" is on screen,
+- boots the ISO from the UEFI shell (`fs0:` + `EFI\BOOT\BOOTAA64.EFI`).
+
+The Python supervisor ([`scripts/watch-build.py`](scripts/watch-build.py))
+runs every capture in a subprocess with a hard timeout, so a hung
+VNC/OCR cycle cannot stall the watch. Prerequisites: `pip3 install
+vncdotool` + the Xcode command line tools; `build.sh` skips the watchdog
+with a warning when they are missing. Frames and logs land in
+`packer_cache/watchdog/` (gitignored).
+
 ### Template variables
 
 | Variable | Type | Default | Description |
@@ -332,6 +356,7 @@ build`. A build takes roughly 30 minutes on an M-series Mac.
 | `openchamber_port` | number | `4000` | TCP port of the OpenChamber web UI in the guest |
 | `qemu_binary` | string | `./qemu-with-tpm.sh` | qemu binary (or wrapper) Packer invokes |
 | `efi_firmware_code` / `efi_firmware_vars` | string | Homebrew edk2 AAVMF | UEFI firmware paths (read-only code + NVRAM template) |
+| `vnc_bind_address` / `vnc_port_min` / `vnc_port_max` | string/number | `127.0.0.1` / `5901` / `5901` | VNC server for the build watchdog (pinned so `build.sh` can start it without scanning for the port) |
 
 ### Publishing
 

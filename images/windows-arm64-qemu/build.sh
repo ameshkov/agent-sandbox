@@ -164,6 +164,7 @@ staging_dir="$platform_dir/drivers/staging"
 mount_dir=$(mktemp -d -t agent-sandbox-virtio-win.XXXXXX)
 swtpm_pidfile=""
 cleanup() {
+  stop_watchdog
   hdiutil detach "$mount_dir" -quiet 2>/dev/null || true
   rmdir "$mount_dir" 2>/dev/null || true
   if [ -f "$swtpm_pidfile" ]; then
@@ -235,6 +236,42 @@ if [ ! -S "$swtpm_sock" ]; then
   exit 1
 fi
 
+# ---- build watchdog (VNC) ---------------------------------------------------
+#
+# The headless build's boot_command Enter-spam can hit "Cancel" on Windows
+# Setup's "Installing Windows 11" screen, and boot races can land in the
+# UEFI shell — either way the build stalls until something answers. The
+# watchdog (scripts/watch-build.sh) polls the VNC framebuffer the plugin
+# exposes (pinned to port 5901 in sandbox.pkr.hcl), OCRs each frame, and
+# auto-dismisses the dialogs. Optional but strongly recommended: without
+# it, rebuilds can stall mid-Setup.
+
+watchdog_pid=""
+start_watchdog() {
+  if ! python3 -c 'import vncdotool' 2>/dev/null; then
+    echo "WARN: vncdotool not installed (pip3 install vncdotool) —" >&2
+    echo "      the build may stall at Setup dialogs without the watchdog." >&2
+    return 1
+  fi
+  command -v swiftc >/dev/null 2>&1 || {
+    echo "WARN: swiftc not found — the watchdog OCR helper needs the" >&2
+    echo "      Xcode command line tools; skipping the watchdog." >&2
+    return 1
+  }
+  echo "==> starting build watchdog (VNC port 5901, frames in packer_cache/watchdog)"
+  "$repo_root/scripts/watch-build.sh" 5901 "$platform_dir/packer_cache/watchdog" \
+    >"$platform_dir/packer_cache/watchdog.log" 2>&1 &
+  watchdog_pid=$!
+}
+
+stop_watchdog() {
+  if [ -n "$watchdog_pid" ]; then
+    kill "$watchdog_pid" 2>/dev/null || true
+    wait "$watchdog_pid" 2>/dev/null || true
+    watchdog_pid=""
+  fi
+}
+
 # ---- packer pipeline ---------------------------------------------------------
 
 export SWTPM_SOCK="$swtpm_sock"
@@ -255,11 +292,14 @@ packer fmt -check "$platform_dir" || {
 }
 
 echo "==> packer build"
-# Don't `exec` — the EXIT trap must tear down swtpm and the ISO mount.
+start_watchdog
+# Don't `exec` — the EXIT trap must tear down swtpm, the ISO mount, and
+# the watchdog.
 (
   cd "$platform_dir" &&
     packer build -var-file="$vars_file" "$platform_dir/sandbox.pkr.hcl"
 )
+stop_watchdog
 
 # ---- compress the output -----------------------------------------------------
 

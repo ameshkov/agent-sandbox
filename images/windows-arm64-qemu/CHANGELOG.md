@@ -13,6 +13,22 @@ the next release.
 
 ## [Unreleased]
 
+### Added
+
+- Build watchdog: `scripts/watch-build.sh` (+ `watch-build.py` supervisor
+  and `watch-build-ocr.swift` OCR helper). The headless build's
+  boot-command Enter-spam can hit "Cancel" on Windows Setup's "Installing
+  Windows 11" screen, and boot races can land in the UEFI shell — either
+  way the build stalls until something answers. The watchdog polls the
+  VNC framebuffer the Packer plugin exposes (pinned to port 5901 in the
+  template), OCRs each frame with Apple Vision, and auto-dismisses the
+  quit dialog (clicking "No" at the OCR'd button position), answers the
+  "Press any key to boot from CD or DVD" prompt, and boots the ISO from
+  the UEFI shell. `build.sh` starts it around `packer build` and stops it
+  in the cleanup trap; skipped with a warning when `vncdotool` or the
+  Xcode command line tools are missing. Observed during the v1.0.0 build:
+  one cancel dialog dismissed, one EFI-shell boot rescued.
+
 ## [windows-arm64-qemu-v1.0.0] - 2026-08-23
 
 ### Added

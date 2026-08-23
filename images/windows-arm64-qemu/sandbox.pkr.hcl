@@ -246,6 +246,13 @@ source "qemu" "windows" {
   # still watchable via the plugin's VNC server (e.g. vncdotool captures).
   headless = true
 
+  # VNC server for the build watchdog (scripts/watch-build.sh): pinned to a
+  # single port so the platform build.sh can start the watchdog before
+  # `packer build` without scanning for the port.
+  vnc_bind_address = "127.0.0.1"
+  vnc_port_min     = 5901
+  vnc_port_max     = 5901
+
   # Enter-spam: answers the firmware's "Press ESC in 1 second" shell prompt
   # AND Windows' "Press any key to boot from CD or DVD" prompt on the first
   # boot. Without it, a boot that lands in the EFI shell stalls forever

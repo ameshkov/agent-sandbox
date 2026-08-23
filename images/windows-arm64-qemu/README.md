@@ -57,7 +57,14 @@ directory ships its own wrapper. The wrapper:
    with the vars file; Packer's `qemu_binary` points at
    `qemu-with-tpm.sh`, which appends the TPM/ramfb/USB/CD-ROM wiring the
    plugin's `qemuargs` option cannot express.
-5. Compresses the resulting qcow2 with zstd.
+5. Runs a VNC **build watchdog** (`scripts/watch-build.sh`) alongside
+   `packer build`: the headless boot's Enter-spam can hit "Cancel" on
+   Windows Setup's "Installing Windows 11" screen, and boot races can land
+   in the UEFI shell — the watchdog OCRs the VNC framebuffer (Apple
+   Vision, pinned VNC port 5901) and auto-dismisses the dialog, answers
+   the "Press any key" prompt, or boots the ISO from the shell. Needs
+   `pip3 install vncdotool`; skipped with a warning when missing.
+6. Compresses the resulting qcow2 with zstd.
 
 A build takes roughly 30 minutes on an M-series Mac (Windows Setup itself
 dominates; HVF runs the guest at near-native speed). The output lands in
