@@ -42,6 +42,15 @@ build_image() {
     vars_file=$(find_vars_file "$image_name")
     platform_dir=$(dirname "$(dirname "$vars_file")")
 
+    # Platforms may ship their own build wrapper (e.g.
+    # images/windows-arm64-qemu/ needs swtpm + ISO staging that plain
+    # packer cannot do). Delegate when one exists; the wrapper resolves
+    # the vars file itself.
+    if [ -f "$platform_dir/build.sh" ]; then
+        "$platform_dir/build.sh" "$image_name"
+        return
+    fi
+
     template_file=
     for candidate in "$platform_dir"/*.pkr.hcl; do
         [ -f "$candidate" ] || continue

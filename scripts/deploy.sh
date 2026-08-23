@@ -60,6 +60,15 @@ find_vars_file() {
 deploy_image() {
     image_name="$1"
     vars_file=$(find_vars_file "$image_name")
+    platform_dir=$(dirname "$(dirname "$vars_file")")
+
+    # Platforms may ship their own deploy wrapper (e.g. the Windows image
+    # is a qcow2 that must be pushed with oras, not tart). Delegate when
+    # one exists; the wrapper resolves the vars file itself.
+    if [ -f "$platform_dir/deploy.sh" ]; then
+        "$platform_dir/deploy.sh" "$image_name"
+        return
+    fi
 
     image_version=$(sed -n \
         's/^[[:space:]]*image_version[[:space:]]*=[[:space:]]*"\([^"]*\)"[[:space:]]*$/\1/p' \

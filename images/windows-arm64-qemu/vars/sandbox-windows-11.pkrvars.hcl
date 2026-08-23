@@ -1,0 +1,65 @@
+# Windows 11 (ARM64) sandbox image.
+#
+# Built with the Packer qemu plugin on Apple Silicon (HVF accelerator):
+# Windows 11 ARM64 ISO + virtio-win drivers + swtpm (TPM 2.0). See
+# images/windows-arm64-qemu/README.md for the full build flow — the Windows ISO is
+# bring-your-own (Microsoft does not permit redistribution), so it is not
+# part of this repo.
+
+windows_version = "11"
+
+# SHA256 of the Windows 11 ARM64 ISO. Microsoft publishes the hash on the
+# download page (https://www.microsoft.com/software-download/windows11arm64);
+# paste it here to enable integrity verification. Set WINDOWS_ISO_PATH to
+# the local ISO path when building. Empty = skip verification.
+iso_sha256 = "638AA2C88E94385B00F4F178D071E3DF0B7D9E335577A83BD533B7F2EB65ADF0"
+
+# virtio-win ISO with ARM64 drivers (release 0.1.240+). Downloaded by
+# images/windows-arm64-qemu/build.sh into packer_cache/ when VIRTIO_WIN_ISO_PATH is
+# unset; paste the published SHA256 to verify (empty = skip).
+virtio_win_url = "https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/stable-virtio/virtio-win.iso"
+virtio_win_sha256 = ""
+
+# Toolchain versions installed via Chocolatey (choco package versions —
+# must exist in the community repository).
+nodejs_version = "22.23.2"
+python_version = "3.13.15"
+github_cli_version = "2.97.0"
+ripgrep_version = "15.2.0"
+git_version = "2.55.0.4"
+jq_version = "1.8.1"
+open_code_review_version = "1.9.5"
+
+# Google Chrome: installed from the Chrome for Testing (CfT) snapshot
+# archive instead of choco — choco's googlechrome package always downloads
+# the live dl.google.com MSI whose hash rotates on every Chrome release,
+# so the pinned package hash breaks between releases. CfT serves versioned
+# zips at storage.googleapis.com/chrome-for-testing-public/<version>/,
+# which stay downloadable and hash-stable. The x64 build runs under Windows
+# on ARM emulation, like the choco MSI did.
+chrome_version = "152.0.7977.54"
+chrome_sha256 = "91850065e6b80bba0c752e17a150fe1b9e39bba51ed705640c1273f565950dda"
+
+# VM resources
+disk_size = 100
+cpu_count = 4
+memory_gb = 8
+
+# WinRM credentials used for provisioning. They are baked into
+# images/windows-arm64-qemu/autounattend.xml (Administrator password) and become the
+# sandbox's login (SSH/RDP) — keep the two files in sync.
+winrm_username = "Administrator"
+winrm_password = "sandbox1"
+
+# OpenChamber web UI password + port. The runner forwards guest 4000 to
+# host 127.0.0.1:4000, so the UI is reachable at http://127.0.0.1:4000
+# (password "sandbox" by default). OpenChamber refuses to serve on the
+# network without a password.
+openchamber_ui_password = "sandbox"
+openchamber_port = 4000
+
+# Semantic version this image is published under (also the GHCR push tag,
+# besides :latest). For every release: bump it, add a CHANGELOG.md entry,
+# and create the windows-arm64-qemu-v<version> git tag
+# (./scripts/tag.sh <image>).
+image_version = "1.0.0"

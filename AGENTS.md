@@ -15,9 +15,15 @@ recipes; it is the authoritative build/release guide.
   version): OS/toolchain versions, VM resources, `image_version`. Single
   source of truth for versions — wire changes through template variables,
   never hardcode in the template.
+- `images/windows-arm64-qemu/` — Windows 11 (ARM64) sandbox images: Packer QEMU
+  template (`sandbox.pkr.hcl`) with `autounattend.xml` + `build.sh` /
+  `qemu-with-tpm.sh` wrappers (the platform build wrapper is required — swtpm,
+  the bring-your-own ISO, and the ARM64 virtio driver staging can't be
+  expressed in the template).
 - `scripts/build.sh`, `scripts/deploy.sh`, `scripts/tag.sh` — wrappers that
   discover images from `images/*/vars/*.pkrvars.hcl`; they resolve the repo
-  root themselves, so run them from anywhere.
+  root themselves, so run them from anywhere. `build.sh` delegates to a
+  platform's `build.sh` when the platform directory ships one.
 - `scripts/run-macos-sandbox.sh` — user-facing runner: pulls/clones the sandbox
   if needed, runs it with the recommended settings, bridges the host's SSH
   agent into the guest (see `docs/ssh-agent.md`) and the host's Docker engine
@@ -25,6 +31,12 @@ recipes; it is the authoritative build/release guide.
   user settings into the guest once per VM (versioned marker inside the guest,
   see `docs/macos.md`), installs the sandbox environment rules into the
   guest's agents (`scripts/agent-rules.md`), and verifies OpenChamber.
+- `scripts/run-windows-sandbox.sh` — user-facing runner for the Windows
+  sandbox: boots the qcow2 under QEMU + swtpm (working VM = COW overlay +
+  persistent TPM/NVRAM under `~/Library/Application Support/agent-sandbox/`),
+  forwards SSH/RDP/WinRM/OpenChamber ports, bridges the host's SSH agent and
+  Docker engine into the guest (Node relays on named pipes + host socat),
+  and verifies OpenChamber. See `docs/windows.md`.
 - `scripts/agent-rules.md` — sandbox environment rules installed into the
   guest's coding agents (opencode global `AGENTS.md`, Copilot CLI
   `copilot-instructions.md`): Docker remote-engine topology, shared-directory
@@ -40,9 +52,9 @@ recipes; it is the authoritative build/release guide.
   output helpers, VM helpers, and the user-settings copy logic
   (`collect_settings_files`, marker, OpenChamber restart). Keep the settings
   logic here, not in the scripts.
-- `docs/` — user guides. Only `macos.md` and `ssh-agent.md` are real;
-  `linux.md` / `windows.md` are placeholders (only macOS host → macOS guest is
-  supported today).
+- `docs/` — user guides. `macos.md`, `windows.md` and `ssh-agent.md` are
+  real; `linux.md` is a placeholder (only macOS host → macOS/Windows guest
+  is supported today).
 - `images/mac/CHANGELOG.md` — per-image changelog, keep in sync with
   `image_version`; always keeps an `[Unreleased]` section on top and links to
   the release tags (`mac-v<version>`) at the bottom.
@@ -51,13 +63,18 @@ recipes; it is the authoritative build/release guide.
 
 - Build one image: `./scripts/build.sh sandbox-macos-tahoe` (all images if no
   arg). Fails if a VM with that name already exists — `tart delete
-  sandbox-macos-tahoe` first.
+  sandbox-macos-tahoe` first. The Windows image is built with
+  `WINDOWS_ISO_PATH=/path/to/iso ./scripts/build.sh sandbox-windows-11` —
+  `build.sh` delegates to `images/windows-arm64-qemu/build.sh` (swtpm + ISO
+  staging), see `images/windows-arm64-qemu/README.md`.
 - Fast HCL check without a build (from `images/mac/`):
   `packer validate -var-file=vars/<image>.pkrvars.hcl sandbox.pkr.hcl`.
 - Publish: `./scripts/deploy.sh <image>` — pushes `<version>` + `:latest` to
-  `ghcr.io/<owner>/<image>`; needs a one-time
-  `tart login ghcr.io` with `packages:write`. Owner comes from the git remote,
-  override with `GHCR_OWNER`.
+  `ghcr.io/<owner>/<image>`; macOS needs a one-time `tart login ghcr.io` with
+  `packages:write`, the Windows image delegates to its platform deploy
+  wrapper (`images/windows-arm64-qemu/deploy.sh`, oras push — needs
+  `brew install oras` + `oras login ghcr.io`). Owner comes from the git
+  remote, override with `GHCR_OWNER`.
 - Tag a release: `./scripts/tag.sh <image>` — creates and pushes the annotated
   git tag `<platform>-v<version>` (e.g. `mac-v1.2.0`); fails on a dirty tree
   or a missing `[<tag>]` CHANGELOG entry. Run after committing a release,

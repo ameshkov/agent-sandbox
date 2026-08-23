@@ -32,19 +32,31 @@ keep them in sync whenever you change how an image behaves.
 │   ├── tag.sh                     # ./scripts/tag.sh [<image>]    — create & push the release git tag
 │   ├── lib/macos-settings.sh      # shared: output helpers + user-settings copy logic (runner + sync)
 │   ├── run-macos-sandbox.sh       # user-facing: pull/run a VM + SSH agent & Docker bridges + user settings + OpenChamber
+│   ├── run-windows-sandbox.sh     # user-facing: boot the Windows qcow2 + SSH agent & Docker bridges + OpenChamber
 │   └── sync-macos-sandbox.sh      # user-facing: copy host user settings into the guest on demand
 ├── docs/                          # User-facing, per host OS setup guides
 │   ├── macos.md                   # macOS (Apple Silicon) — pull & run, details
 │   ├── linux.md                   # placeholder (not supported yet)
-│   ├── windows.md                 # placeholder (not supported yet)
+│   ├── windows.md                 # Windows 11 (ARM64) guest — run, details
 │   └── ssh-agent.md               # share the host's SSH agent with the guest
 └── images/
-    └── mac/                       # macOS guest images (host: Apple Silicon Mac)
-        ├── sandbox.pkr.hcl        # Packer template for all macOS images
-        ├── README.md              # Image list, build/publish commands
-        ├── CHANGELOG.md           # Per-version changelog of the images
-        └── vars/                  # One .pkrvars.hcl per image (macOS version)
-            └── sandbox-macos-tahoe.pkrvars.hcl
+    ├── mac/                       # macOS guest images (host: Apple Silicon Mac)
+    │   ├── sandbox.pkr.hcl        # Packer template for all macOS images
+    │   ├── README.md              # Image list, build/publish commands
+    │   ├── CHANGELOG.md           # Per-version changelog of the images
+    │   └── vars/                  # One .pkrvars.hcl per image (macOS version)
+    │       └── sandbox-macos-tahoe.pkrvars.hcl
+    └── windows-arm64-qemu/        # Windows 11 (ARM64) guest images (host: Apple Silicon)
+        ├── sandbox.pkr.hcl        # Packer template (QEMU plugin)
+        ├── autounattend.xml       # Windows unattended install config
+        ├── build.sh               # Platform build wrapper (ISO staging + swtpm + packer)
+        ├── deploy.sh              # Platform deploy wrapper (oras push of the qcow2)
+        ├── qemu-with-tpm.sh       # qemu_binary wrapper (TPM/USB/CD wiring)
+        ├── drivers/               # Staging dir for ARM64 virtio drivers (build-time)
+        ├── README.md
+        ├── CHANGELOG.md
+        └── vars/
+            └── sandbox-windows-11.pkrvars.hcl
 ```
 
 ## macOS images
@@ -225,6 +237,120 @@ pullable by anyone.
    new version tag plus `:latest` to GHCR with
    `./scripts/deploy.sh <image-name>` (see "Publishing" above).
 
+## Windows images
+
+### How they are built
+
+`images/windows-arm64-qemu/sandbox.pkr.hcl` uses the
+[QEMU Packer plugin](https://developer.hashicorp.com/packer/integrations/hashicorp/qemu)
+(source `qemu`). Windows 11 ARM64 is installed from the official Microsoft
+ISO (bring-your-own — Microsoft does not permit redistribution, so the ISO
+is not in the repo) with `autounattend.xml` answering Setup. The builder:
+
+1. **Boots an ARM64 VM under QEMU on Apple Silicon's HVF accelerator**
+   (near-native speed; HVF can only virtualize ARM64 guests, so the image
+   is ARM64-only). `machine_type = "virt,gic-version=max"`, `cpu_model =
+   "host"`, UEFI via the edk2 AAVMF firmware that Homebrew's qemu ships,
+   and a TPM 2.0 provided by `swtpm` (a Windows 11 system requirement).
+   The install ISO, the unattend CD, and virtio-win.iso are all attached
+   as usb-storage devices (the ARM `virt` machine has no IDE/SATA
+   controller and WinPE has in-box xHCI drivers); the TPM, display, USB
+   input and CD wiring is appended by `qemu-with-tpm.sh`, which wraps
+   `qemu-system-aarch64` because the plugin's `qemuargs` option replaces
+   its auto-generated args instead of appending.
+2. **Installs Windows unattended.** `autounattend.xml` (all components
+   `processorArchitecture="arm64"`): pure-UEFI disk layout (ESP + MSR +
+   NTFS), "Windows 11 Pro" image, LabConfig bypasses for the Win11
+   hardware checks (required because `-cpu host` advertises Apple Silicon
+   to the guest), OOBE bypass for the Microsoft-account requirement, and
+   FirstLogonCommands that register the staged virtio drivers (NetKVM
+   does not survive the WinPE → installed-system handoff), force the
+   network profile to Private, and bring up WinRM on 5985.
+3. **Provisions over WinRM** (`Administrator`/password from the vars
+   file, elevated token): virtio guest tools (full driver suite + qemu
+   guest agent), Chocolatey + toolchain (Node.js, Python, Git, GitHub
+   CLI, ripgrep, jq, curl, Chrome, Firefox, Docker CLI — versions pinned
+   in the vars file), Visual Studio Code (native arm64, direct download),
+    OpenCode (`opencode-ai`), OpenCodeReview (`ocr`), the OpenChamber web
+    UI as a native service on port 4000 (with the `OPENCODE_BINARY` pin,
+    like the macOS template), OpenSSH Server + RDP, and the bridge
+    tooling (`socat` + `npiperelay` ship as utilities; the sandbox runner
+    uses in-image Node relays instead — see docs/windows.md). Finishes
+    with hardening (Defender realtime scan, telemetry/indexer services,
+    hibernation), a version banner, and cleanup.
+4. Leaves a qcow2 disk image at
+   `images/windows-arm64-qemu/output/sandbox-windows-11.qcow2`, compressed
+   with zstd.
+
+### Prerequisites (local builds)
+
+- macOS host with **Apple Silicon** (HVF, see above).
+- [QEMU](https://www.qemu.org/): `brew install qemu`
+- [swtpm](https://github.com/stefanberger/swtpm): `brew install swtpm`
+- [Packer](https://www.packer.io/): `brew install hashicorp/tap/packer`
+  (the QEMU plugin is installed automatically by `packer init`).
+- The Windows 11 ARM64 ISO (see `images/windows-arm64-qemu/README.md` for the
+  download steps) — `WINDOWS_ISO_PATH` must be set when building.
+
+### Building an image
+
+```bash
+# From the repository root; the ISO is required
+WINDOWS_ISO_PATH=/path/to/Win11_24H2_English_Arm64.iso \
+  ./scripts/build.sh sandbox-windows-11
+```
+
+`scripts/build.sh` delegates to `images/windows-arm64-qemu/build.sh` (a
+platform
+wrapper — see its header comment), which verifies the ISO against
+`iso_sha256` from the vars file, downloads virtio-win.iso into
+`packer_cache/` when `VIRTIO_WIN_ISO_PATH` is unset, stages the ARM64
+driver subset into `drivers/staging/` (packed into the unattend CD —
+WinPE drive letters on ARM64 are non-deterministic, so a separate drivers
+CD is unreliable), starts `swtpm`, and runs `packer init` + `packer
+build`. A build takes roughly 30 minutes on an M-series Mac.
+
+### Template variables
+
+| Variable | Type | Default | Description |
+| --- | --- | --- | --- |
+| `windows_version` | string | — | Windows guest version, e.g. `11`; part of the image name (`sandbox-windows-<windows_version>`) |
+| `image_version` | string | — | Semantic version this image is published under; bump it + add a `CHANGELOG.md` entry per release |
+| `iso_path` | string | — | Absolute path to the Windows 11 ARM64 ISO (set by the build wrapper, not in the vars file) |
+| `iso_sha256` | string | `` | SHA256 of the Windows ISO (verified by the build wrapper; empty = skip) |
+| `virtio_win_iso_path` | string | — | Path to virtio-win.iso (set by the build wrapper) |
+| `virtio_win_url` | string | stable URL | Download URL used by the build wrapper when `VIRTIO_WIN_ISO_PATH` is unset |
+| `virtio_win_sha256` | string | `` | SHA256 of virtio-win.iso (verified by the build wrapper; empty = skip) |
+| `nodejs_version` / `python_version` / `github_cli_version` / `ripgrep_version` / `git_version` / `jq_version` | string | pinned | Choco package versions installed in every image |
+| `open_code_review_version` | string | pinned | `ocr` version installed via npm |
+| `disk_size` | number | `100` | VM disk size in GB |
+| `cpu_count` | number | `4` | CPU count of the VM |
+| `memory_gb` | number | `8` | RAM of the VM in GB |
+| `winrm_username` | string | `Administrator` | WinRM provisioning user; must match `autounattend.xml` |
+| `winrm_password` | string | `sandbox1` | WinRM provisioning password; must match `autounattend.xml` |
+| `openchamber_ui_password` | string | `sandbox` | Password protecting the OpenChamber web UI |
+| `openchamber_port` | number | `4000` | TCP port of the OpenChamber web UI in the guest |
+| `qemu_binary` | string | `./qemu-with-tpm.sh` | qemu binary (or wrapper) Packer invokes |
+| `efi_firmware_code` / `efi_firmware_vars` | string | Homebrew edk2 AAVMF | UEFI firmware paths (read-only code + NVRAM template) |
+
+### Publishing
+
+The macOS images are pushed with `tart push`; Windows images are qcow2
+files, so `images/windows-arm64-qemu/deploy.sh` pushes them to GHCR as an
+OCI artifact with `oras` — `scripts/deploy.sh` delegates to it
+automatically (mirroring the `build.sh` delegation):
+
+```bash
+# From the repository root; needs `brew install oras` and a GHCR token
+# with write:packages (`oras login ghcr.io`)
+./scripts/deploy.sh sandbox-windows-11
+```
+
+This pushes `ghcr.io/<owner>/sandbox-windows-11:<image_version>` and
+`:latest`. Consumers pull the qcow2 back by its file name, e.g.
+`scripts/run-windows-sandbox.sh` runs `oras pull` into its state dir when
+no local build output exists.
+
 ## Adding a new platform
 
 To add a new host/guest combination (e.g. macOS host → Linux guest), create a
@@ -232,7 +358,12 @@ new `images/<platform>/` directory following the macOS pattern:
 
 1. Packer template with the appropriate builder (e.g. QEMU, or the
    [qocker](https://github.com/AdGuardSoftwareLimited/qocker) Vmfile approach
-   for layered Linux images).
+   for layered Linux images). If the platform needs host-side preparation
+   that plain `packer build` cannot do (like the Windows ISO staging and
+   swtpm), add a platform `build.sh` wrapper — `scripts/build.sh` delegates
+   to it automatically. If it needs a different push mechanism (like the
+   Windows qcow2 vs Tart VMs), add a platform `deploy.sh` wrapper —
+   `scripts/deploy.sh` delegates the same way.
 2. `vars/` image files + a `CHANGELOG.md` (the shared `scripts/build.sh` and
    `scripts/deploy.sh` pick up the new image automatically).
 3. A short per-platform `README.md` with build/publish commands.

@@ -1,0 +1,325 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  autounattend.xml — Windows 11 ARM64 unattended install for the Packer
+  QEMU build (images/windows/sandbox.pkr.hcl).
+
+  Windows Setup probes attached removable media for Autounattend.xml at
+  the root and applies it before the language picker. The CD is built by
+  Packer's cd_files from this file + the drivers/ tree staged by
+  images/windows-arm64-qemu/build.sh (the ARM64 viostor/vioscsi/NetKVM driver subset
+  extracted from virtio-win.iso). WinPE drive-letter enumeration on
+  ARM64 + EFI is non-deterministic, so the driver paths below list
+  D:..G: candidates.
+
+  Schema components carry processorArchitecture="arm64". The
+  Administrator password must stay in sync with the winrm_password
+  variable in vars/sandbox-windows-11.pkrvars.hcl — change both together.
+
+  References:
+  - https://learn.microsoft.com/en-us/windows-hardware/customize/desktop/unattend/
+  - Recipe verified end-to-end on Apple Silicon in the mac-vms project
+    (https://github.com/bbirkinbine/mac-vms, packer/windows-11-arm64/).
+-->
+<unattend xmlns="urn:schemas-microsoft-com:unattend">
+
+  <settings pass="windowsPE">
+
+    <!-- Virtio drivers for the QEMU emulated disk + NIC. Without viostor
+         WinPE can't see the boot disk (the template uses disk_interface
+         "virtio"); without NetKVM the NIC has no driver and WinRM never
+         comes up. -->
+    <component name="Microsoft-Windows-PnpCustomizationsWinPE"
+               processorArchitecture="arm64"
+               publicKeyToken="31bf3856ad364e35"
+               language="neutral" versionScope="nonSxS"
+               xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State"
+               xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
+      <DriverPaths>
+        <PathAndCredentials wcm:action="add" wcm:keyValue="viostor-d">
+          <Path>D:\drivers\staging\viostor</Path>
+        </PathAndCredentials>
+        <PathAndCredentials wcm:action="add" wcm:keyValue="viostor-e">
+          <Path>E:\drivers\staging\viostor</Path>
+        </PathAndCredentials>
+        <PathAndCredentials wcm:action="add" wcm:keyValue="viostor-f">
+          <Path>F:\drivers\staging\viostor</Path>
+        </PathAndCredentials>
+        <PathAndCredentials wcm:action="add" wcm:keyValue="viostor-g">
+          <Path>G:\drivers\staging\viostor</Path>
+        </PathAndCredentials>
+        <PathAndCredentials wcm:action="add" wcm:keyValue="vioscsi-d">
+          <Path>D:\drivers\staging\vioscsi</Path>
+        </PathAndCredentials>
+        <PathAndCredentials wcm:action="add" wcm:keyValue="vioscsi-e">
+          <Path>E:\drivers\staging\vioscsi</Path>
+        </PathAndCredentials>
+        <PathAndCredentials wcm:action="add" wcm:keyValue="vioscsi-f">
+          <Path>F:\drivers\staging\vioscsi</Path>
+        </PathAndCredentials>
+        <PathAndCredentials wcm:action="add" wcm:keyValue="vioscsi-g">
+          <Path>G:\drivers\staging\vioscsi</Path>
+        </PathAndCredentials>
+        <PathAndCredentials wcm:action="add" wcm:keyValue="NetKVM-d">
+          <Path>D:\drivers\staging\NetKVM</Path>
+        </PathAndCredentials>
+        <PathAndCredentials wcm:action="add" wcm:keyValue="NetKVM-e">
+          <Path>E:\drivers\staging\NetKVM</Path>
+        </PathAndCredentials>
+        <PathAndCredentials wcm:action="add" wcm:keyValue="NetKVM-f">
+          <Path>F:\drivers\staging\NetKVM</Path>
+        </PathAndCredentials>
+        <PathAndCredentials wcm:action="add" wcm:keyValue="NetKVM-g">
+          <Path>G:\drivers\staging\NetKVM</Path>
+        </PathAndCredentials>
+      </DriverPaths>
+    </component>
+
+    <component name="Microsoft-Windows-International-Core-WinPE"
+               processorArchitecture="arm64"
+               publicKeyToken="31bf3856ad364e35"
+               language="neutral" versionScope="nonSxS"
+               xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State">
+      <SetupUILanguage>
+        <UILanguage>en-US</UILanguage>
+      </SetupUILanguage>
+      <InputLocale>en-US</InputLocale>
+      <SystemLocale>en-US</SystemLocale>
+      <UILanguage>en-US</UILanguage>
+      <UserLocale>en-US</UserLocale>
+    </component>
+
+    <component name="Microsoft-Windows-Setup"
+               processorArchitecture="arm64"
+               publicKeyToken="31bf3856ad364e35"
+               language="neutral" versionScope="nonSxS"
+               xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State">
+
+      <!-- Pure-UEFI layout for ARM64: ESP + MSR + Windows. -->
+      <DiskConfiguration>
+        <Disk wcm:action="add">
+          <DiskID>0</DiskID>
+          <WillWipeDisk>true</WillWipeDisk>
+          <CreatePartitions>
+            <CreatePartition wcm:action="add">
+              <Order>1</Order>
+              <Type>EFI</Type>
+              <Size>300</Size>
+            </CreatePartition>
+            <CreatePartition wcm:action="add">
+              <Order>2</Order>
+              <Type>MSR</Type>
+              <Size>16</Size>
+            </CreatePartition>
+            <CreatePartition wcm:action="add">
+              <Order>3</Order>
+              <Type>Primary</Type>
+              <Extend>true</Extend>
+            </CreatePartition>
+          </CreatePartitions>
+          <ModifyPartitions>
+            <ModifyPartition wcm:action="add">
+              <Order>1</Order>
+              <PartitionID>1</PartitionID>
+              <Format>FAT32</Format>
+              <Label>System</Label>
+            </ModifyPartition>
+            <ModifyPartition wcm:action="add">
+              <Order>2</Order>
+              <PartitionID>2</PartitionID>
+            </ModifyPartition>
+            <ModifyPartition wcm:action="add">
+              <Order>3</Order>
+              <PartitionID>3</PartitionID>
+              <Format>NTFS</Format>
+              <Label>Windows</Label>
+              <Letter>C</Letter>
+            </ModifyPartition>
+          </ModifyPartitions>
+        </Disk>
+      </DiskConfiguration>
+
+      <!-- Multi-edition ISO: pick Pro by image name. If the release uses
+           a different SKU label (e.g. "Windows 11 Pro for ARM"), the
+           install halts — check with `dism /Get-WimInfo` on the ISO. -->
+      <ImageInstall>
+        <OSImage>
+          <InstallTo>
+            <DiskID>0</DiskID>
+            <PartitionID>3</PartitionID>
+          </InstallTo>
+          <InstallFrom>
+            <MetaData wcm:action="add">
+              <Key>/IMAGE/NAME</Key>
+              <Value>Windows 11 Pro</Value>
+            </MetaData>
+          </InstallFrom>
+        </OSImage>
+      </ImageInstall>
+
+      <UserData>
+        <AcceptEula>true</AcceptEula>
+        <FullName>agent-sandbox</FullName>
+        <Organization>agent-sandbox</Organization>
+        <!-- Generic install key for Windows 11 Pro: lets Setup complete
+             without prompting; does NOT activate (the sandbox runs
+             unactivated with a watermark). -->
+        <ProductKey>
+          <Key>VK7JG-NPHTM-C97JM-9MPGT-3V66T</Key>
+          <WillShowUI>OnError</WillShowUI>
+        </ProductKey>
+      </UserData>
+
+      <!-- Bypass the Win11 hardware-requirements checks. swtpm provides a
+           real TPM 2.0 and edk2 provides UEFI Secure Boot, but `-cpu
+           host` advertises Apple Silicon to the guest and Apple Silicon
+           is not on Microsoft's supported CPU list, so BypassCPUCheck is
+           mandatory; the rest are belt-and-braces. RunSynchronous in the
+           windowsPE pass runs strictly before Setup's hardware probe. -->
+      <RunSynchronous>
+        <RunSynchronousCommand wcm:action="add">
+          <Order>1</Order>
+          <Path>reg add HKLM\System\Setup\LabConfig /v BypassTPMCheck /t REG_DWORD /d 1 /f</Path>
+        </RunSynchronousCommand>
+        <RunSynchronousCommand wcm:action="add">
+          <Order>2</Order>
+          <Path>reg add HKLM\System\Setup\LabConfig /v BypassSecureBootCheck /t REG_DWORD /d 1 /f</Path>
+        </RunSynchronousCommand>
+        <RunSynchronousCommand wcm:action="add">
+          <Order>3</Order>
+          <Path>reg add HKLM\System\Setup\LabConfig /v BypassRAMCheck /t REG_DWORD /d 1 /f</Path>
+        </RunSynchronousCommand>
+        <RunSynchronousCommand wcm:action="add">
+          <Order>4</Order>
+          <Path>reg add HKLM\System\Setup\LabConfig /v BypassCPUCheck /t REG_DWORD /d 1 /f</Path>
+        </RunSynchronousCommand>
+        <RunSynchronousCommand wcm:action="add">
+          <Order>5</Order>
+          <Path>reg add HKLM\System\Setup\LabConfig /v BypassStorageCheck /t REG_DWORD /d 1 /f</Path>
+        </RunSynchronousCommand>
+      </RunSynchronous>
+    </component>
+  </settings>
+
+  <settings pass="specialize">
+    <component name="Microsoft-Windows-Shell-Setup"
+               processorArchitecture="arm64"
+               publicKeyToken="31bf3856ad364e35"
+               language="neutral" versionScope="nonSxS"
+               xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State">
+      <!-- NetBIOS computer names are limited to 15 chars — longer names
+           fail the specialize pass with hrResult=0x80220005. -->
+      <ComputerName>win11-sandbox</ComputerName>
+      <TimeZone>UTC</TimeZone>
+      <RegisteredOrganization>agent-sandbox</RegisteredOrganization>
+      <RegisteredOwner>agent-sandbox</RegisteredOwner>
+    </component>
+    <component name="Microsoft-Windows-International-Core"
+               processorArchitecture="arm64"
+               publicKeyToken="31bf3856ad364e35"
+               language="neutral" versionScope="nonSxS"
+               xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State">
+      <InputLocale>en-US</InputLocale>
+      <SystemLocale>en-US</SystemLocale>
+      <UILanguage>en-US</UILanguage>
+      <UserLocale>en-US</UserLocale>
+    </component>
+  </settings>
+
+  <settings pass="oobeSystem">
+    <component name="Microsoft-Windows-Shell-Setup"
+               processorArchitecture="arm64"
+               publicKeyToken="31bf3856ad364e35"
+               language="neutral" versionScope="nonSxS"
+               xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State">
+
+      <OOBE>
+        <HideEULAPage>true</HideEULAPage>
+        <HideLocalAccountScreen>true</HideLocalAccountScreen>
+        <HideOEMRegistrationScreen>true</HideOEMRegistrationScreen>
+        <!-- Bypasses the Microsoft-account requirement on Win11 24H2. If a
+             future release blocks this too, add BYPASSNRO registry writes
+             via RunSynchronous in the specialize pass. -->
+        <HideOnlineAccountScreens>true</HideOnlineAccountScreens>
+        <HideWirelessSetupInOOBE>true</HideWirelessSetupInOOBE>
+        <NetworkLocation>Work</NetworkLocation>
+        <ProtectYourPC>3</ProtectYourPC>
+        <SkipUserOOBE>true</SkipUserOOBE>
+        <SkipMachineOOBE>true</SkipMachineOOBE>
+      </OOBE>
+
+      <UserAccounts>
+        <AdministratorPassword>
+          <!-- MUST match winrm_password in the vars file. -->
+          <Value>sandbox1</Value>
+          <PlainText>true</PlainText>
+        </AdministratorPassword>
+        <LocalAccounts>
+          <LocalAccount wcm:action="add">
+            <Name>Administrator</Name>
+            <Group>Administrators</Group>
+            <Password>
+              <Value>sandbox1</Value>
+              <PlainText>true</PlainText>
+            </Password>
+            <Description>Local admin; also the SSH/RDP account of the sandbox.</Description>
+            <DisplayName>Administrator</DisplayName>
+          </LocalAccount>
+        </LocalAccounts>
+      </UserAccounts>
+
+      <!-- LogonCount=1: exactly one auto-login (the first OOBE boot, where
+           FirstLogonCommands brings up WinRM); Windows clears
+           AutoAdminLogon itself afterwards. -->
+      <AutoLogon>
+        <Username>Administrator</Username>
+        <Password>
+          <Value>sandbox1</Value>
+          <PlainText>true</PlainText>
+        </Password>
+        <Enabled>true</Enabled>
+        <LogonCount>1</LogonCount>
+      </AutoLogon>
+
+      <!-- Bring up WinRM so Packer's provisioners can connect.
+           Order is load-bearing:
+             1. Install the staged ARM64 virtio drivers into the running
+                OS's driver store — NetKVM does NOT survive the WinPE ->
+                installed-system handoff (install.wim carries no ARM64
+                virtio NIC driver), so the NIC is dead until pnputil
+                registers it. Drive letters differ from the WinPE phase,
+                so scan D:..I: for the staging tree.
+             2. Wait for the NIC to attach and complete DHCP, then force
+                the network category to Private (WinRM's AllowUnencrypted
+                refuses to apply on Public).
+             3. Enable + configure WinRM (Basic + AllowUnencrypted) and
+                open port 5985. -->
+      <FirstLogonCommands>
+        <SynchronousCommand wcm:action="add">
+          <Order>1</Order>
+          <Description>Install ARM64 virtio drivers into the driver store</Description>
+          <CommandLine>powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='Stop'; $found=$false; foreach ($l in 'D','E','F','G','H','I') { $p = ${l} + ':\drivers\staging'; if (Test-Path $p) { Get-ChildItem -Path $p -Recurse -Filter *.inf | ForEach-Object { pnputil.exe /add-driver $_.FullName /install | Out-Null }; $found=$true; break } }; if (-not $found) { Write-Error 'drivers\staging not found on D:..I: — unattend CD missing or relocated' }"</CommandLine>
+        </SynchronousCommand>
+        <SynchronousCommand wcm:action="add">
+          <Order>2</Order>
+          <Description>Wait for network and force profile to Private</Description>
+          <CommandLine>powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "for ($i=0; $i -lt 60; $i++) { $p = Get-NetConnectionProfile -ErrorAction SilentlyContinue; if ($p) { break }; Start-Sleep 2 }; Get-NetConnectionProfile | Set-NetConnectionProfile -NetworkCategory Private"</CommandLine>
+        </SynchronousCommand>
+        <SynchronousCommand wcm:action="add">
+          <Order>3</Order>
+          <Description>Enable WinRM service</Description>
+          <CommandLine>powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "Set-Service -Name WinRM -StartupType Automatic; Start-Service WinRM"</CommandLine>
+        </SynchronousCommand>
+        <SynchronousCommand wcm:action="add">
+          <Order>4</Order>
+          <Description>Configure WinRM listener and auth</Description>
+          <CommandLine>powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "winrm quickconfig -quiet; winrm set winrm/config/service '@{AllowUnencrypted=\"true\"}'; winrm set winrm/config/service/auth '@{Basic=\"true\"}'"</CommandLine>
+        </SynchronousCommand>
+        <SynchronousCommand wcm:action="add">
+          <Order>5</Order>
+          <Description>Open firewall for WinRM</Description>
+          <CommandLine>powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "New-NetFirewallRule -Name 'WinRM HTTP-In' -DisplayName 'WinRM HTTP-In' -Profile Any -LocalPort 5985 -Protocol TCP -Action Allow"</CommandLine>
+        </SynchronousCommand>
+      </FirstLogonCommands>
+    </component>
+  </settings>
+</unattend>

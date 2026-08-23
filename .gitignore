@@ -1,2 +1,10 @@
 .DS_Store
 *.tvm
+
+# Playwright MCP scratch dir (occasionally created by tooling)
+.playwright-mcp/
+
+# Windows image build artifacts (images/windows-arm64-qemu)
+images/windows-arm64-qemu/output/
+images/windows-arm64-qemu/packer_cache/
+images/windows-arm64-qemu/drivers/staging/

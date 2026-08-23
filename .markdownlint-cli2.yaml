@@ -26,3 +26,4 @@ globs:
 ignores:
   - node_modules/**
   - build/**
+  - images/windows-arm64-qemu/drivers/staging/**
