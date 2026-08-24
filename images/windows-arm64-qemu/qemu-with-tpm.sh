@@ -36,6 +36,9 @@
 # Required env (exported by images/windows-arm64-qemu/build.sh):
 #   SWTPM_SOCK          — absolute path to the swtpm Unix socket
 #   VIRTIO_WIN_ISO_PATH — absolute path to virtio-win.iso
+#   QEMU_WITH_TPM_LOG   — log file for the final qemu invocation
+#                         (build/windows-arm64-qemu/packer_cache/
+#                         qemu-with-tpm.cmd.log)
 #
 # Adapted from bbirkinbine/mac-vms (MIT):
 # https://github.com/bbirkinbine/mac-vms/blob/main/scripts/qemu-with-tpm.sh
@@ -152,11 +155,13 @@ final_argv=(
 )
 
 # Log the final qemu invocation so future "Qemu failed to start" errors
-# are debuggable without PACKER_LOG=1. Packer runs from the platform dir,
-# so packer_cache/ is relative to images/windows-arm64-qemu/.
+# are debuggable without PACKER_LOG=1. build.sh exports the per-image log
+# path; the fallback matches the old platform-dir layout for standalone
+# runs.
+qemu_log_file="${QEMU_WITH_TPM_LOG:-packer_cache/qemu-with-tpm.cmd.log}"
 {
   echo "==> $(date -u +%FT%TZ) qemu-system-aarch64 invocation"
   printf '  %q\n' qemu-system-aarch64 "${final_argv[@]}"
-} >"packer_cache/qemu-with-tpm.cmd.log" 2>/dev/null || true
+} >"$qemu_log_file" 2>/dev/null || true
 
 exec qemu-system-aarch64 "${final_argv[@]}"

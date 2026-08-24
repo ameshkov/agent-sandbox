@@ -2,9 +2,9 @@ packer {
   required_version = ">= 1.10.0"
 
   required_plugins {
-    qemu = {
-      version = ">= 1.1.0"
-      source  = "github.com/hashicorp/qemu"
+    vmware = {
+      version = ">= 2.1.5"
+      source  = "github.com/vmware/vmware"
     }
   }
 }
@@ -13,15 +13,15 @@ packer {
 # Variables
 # ---------------------------------------------------------------------------
 #
-# Most variables mirror the macOS template (images/mac/sandbox.pkr.hcl) so
-# the vars files look and feel the same. The Windows build differs in the
-# mechanics: the OS comes from a bring-your-own ISO instead of a GHCR base
-# image, provisioning happens over WinRM instead of SSH, and the image is a
-# qcow2 disk instead of a Tart VM.
+# The Windows build is shared between the QEMU and VMware platforms: the
+# toolchain, credentials and OpenChamber vars mirror
+# images/windows-arm64-qemu/sandbox.pkr.hcl. The VMware build differs in the
+# mechanics — VMware Fusion hosts the installer and the VM is exported as a
+# .vmx + .vmdk instead of a qcow2.
 
 variable "windows_version" {
   type        = string
-  description = "Windows guest version, e.g. '11'; part of the image name (sandbox-windows-<windows_version>)."
+  description = "Windows guest version, e.g. '11'; part of the image name (sandbox-windows-<windows_version>-vmware)."
 }
 
 variable "image_version" {
@@ -32,49 +32,37 @@ variable "image_version" {
 # --- Build layout ---
 #
 # Built images and their scratch land in a top-level build/ directory:
-# build/windows-arm64-qemu/output (Packer's output_directory) and
-# build/windows-arm64-qemu/drivers/ (staged into the unattend CD).
-# images/windows-arm64-qemu/build.sh computes the directory and passes it
-# in; the default keeps a bare `packer build` from the platform dir
+# build/windows-arm64-vmware/output (Packer's output_directory) and
+# build/windows-arm64-vmware/drivers/ (staged into the unattend CD).
+# images/windows-arm64-vmware/build.sh computes the directory and passes
+# it in; the default keeps a bare `packer build` from the platform dir
 # working.
 
 variable "build_dir" {
   type        = string
   default     = "."
-  description = "Per-image build directory: <build_dir>/output holds the built image and <build_dir>/drivers the staged unattend-CD drivers. Set by images/windows-arm64-qemu/build.sh to build/windows-arm64-qemu/."
+  description = "Per-image build directory: <build_dir>/output holds the built image and <build_dir>/drivers the staged unattend-CD drivers. Set by images/windows-arm64-vmware/build.sh to build/windows-arm64-vmware/."
 }
 
-# --- Windows install ISO (bring-your-own, see images/windows-arm64-qemu/README.md) ---
+# --- Windows install ISO (bring-your-own, see images/windows-arm64-vmware/README.md) ---
 
 variable "iso_path" {
   type        = string
-  description = "Absolute path to the Windows 11 ARM64 ISO. Set by images/windows-arm64-qemu/build.sh (PKR_VAR_iso_path); the ISO is not redistributable so it cannot live in the repo. Required — validate with `-var iso_path=/path/to/iso`."
+  description = "Absolute path to the Windows 11 ARM64 ISO. Set by images/windows-arm64-vmware/build.sh (PKR_VAR_iso_path); the ISO is not redistributable so it cannot live in the repo. Required — validate with `-var iso_path=/path/to/iso`."
 }
 
 variable "iso_sha256" {
   type        = string
   default     = ""
-  description = "SHA256 of the Windows ISO as published on the Microsoft download page. Read by images/windows-arm64-qemu/build.sh for verification, not by Packer itself (iso_checksum is 'none')."
+  description = "SHA256 of the Windows ISO as published on the Microsoft download page. Read by images/windows-arm64-vmware/build.sh for verification, not by Packer itself (iso_checksum is 'none')."
 }
 
-# --- virtio-win drivers (ARM64) ---
+# --- VMware Fusion (host hypervisor + ARM64 boot drivers + tools ISO) ---
 
-variable "virtio_win_iso_path" {
+variable "vmware_fusion_app_path" {
   type        = string
-  default     = ""
-  description = "Absolute path to virtio-win.iso (release 0.1.240+). Set by images/windows-arm64-qemu/build.sh; the wrapper stages the ARM64 driver subset into drivers/staging/ and qemu-with-tpm.sh attaches the full ISO as a CD."
-}
-
-variable "virtio_win_url" {
-  type        = string
-  default     = "https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/stable-virtio/virtio-win.iso"
-  description = "Download URL used by images/windows-arm64-qemu/build.sh when VIRTIO_WIN_ISO_PATH is unset."
-}
-
-variable "virtio_win_sha256" {
-  type        = string
-  default     = ""
-  description = "SHA256 of virtio-win.iso. Read by images/windows-arm64-qemu/build.sh for verification (empty = skip)."
+  default     = "/Applications/VMware Fusion.app"
+  description = "Path of the VMware Fusion installation. Packer's vmware-iso builder drives Fusion via vmrun; the ARM64 Windows boot drivers (drivers-arm64.zip) and the ARM64 VMware Tools ISO (isoimages/arm64/windows.iso) come from the app bundle."
 }
 
 # --- Toolchain versions (installed via Chocolatey) ---
@@ -222,7 +210,7 @@ variable "winrm_password" {
 variable "openchamber_ui_password" {
   type        = string
   default     = "sandbox"
-  description = "Password protecting the OpenChamber web UI; required because the server binds to 0.0.0.0 (host access: http://127.0.0.1:4000)."
+  description = "Password protecting the OpenChamber web UI; required because the server binds to 0.0.0.0 (host access: http://<guest-ip>:4000)."
 }
 
 variable "openchamber_port" {
@@ -231,79 +219,93 @@ variable "openchamber_port" {
   description = "TCP port the OpenChamber web UI listens on inside the guest."
 }
 
-# --- QEMU specifics ---
-
-variable "qemu_binary" {
-  type        = string
-  default     = "./qemu-with-tpm.sh"
-  description = "qemu binary (or wrapper) Packer invokes. The wrapper appends the TPM/ramfb/USB/CD rewrites Packer's qemuargs option cannot express (it replaces the generated args)."
-}
-
-variable "efi_firmware_code" {
-  type        = string
-  default     = "/opt/homebrew/share/qemu/edk2-aarch64-code.fd"
-  description = "UEFI firmware (read-only code image) for the ARM64 guest; ships with Homebrew's qemu."
-}
-
-variable "efi_firmware_vars" {
-  type        = string
-  default     = "/opt/homebrew/share/qemu/edk2-arm-vars.fd"
-  description = "UEFI firmware template for the writable NVRAM store; Packer copies it per build."
-}
-
 # ---------------------------------------------------------------------------
-# Source: QEMU (aarch64 + Apple Silicon HVF)
+# Source: VMware (Fusion on Apple Silicon, ARM64 guest)
 # ---------------------------------------------------------------------------
 #
-# The recipe is proven on Apple Silicon (HVF can only virtualize ARM64
-# guests, so x86_64 Windows would run under slow TCG emulation):
-#   - machine "virt,gic-version=max", cpu "host" (required by HVF; do NOT
-#     add virtualization=on — HVF cannot pass nested virt through),
-#   - UEFI via edk2 AAVMF firmware + swtpm TPM 2.0 (Win11 system
-#     requirements; swtpm is started by images/windows-arm64-qemu/build.sh),
-#   - all CD-ROMs attached as usb-storage (the virt machine has no
-#     IDE/SATA controller and WinPE has in-box xHCI drivers) — done by
-#     qemu-with-tpm.sh because the plugin's qemuargs option would replace
-#     its auto-generated args,
-#   - the ARM64 virtio drivers (viostor/vioscsi/NetKVM) are staged into
-#     the same CD as autounattend.xml (drivers/staging/), because WinPE
-#     drive-letter enumeration on ARM64 + EFI is non-deterministic.
+# Windows 11 ARM64 runs natively on VMware Fusion on Apple Silicon — the
+# most proven Windows-ARM path (Fusion ships the ARM64 guest drivers and
+# tools). The recipe mirrors the reference implementation in
+# gusztavvargadr/packer (src/windows/source.vmware.pkr.hcl +
+# samples/windows-11/images.pkrvars.hcl, Unlicense), adapted to this repo's
+# conventions:
+#   - guest_os_type "arm-windows11-64", hardware version 20, NVMe disk,
+#     vmxnet3 NIC under NAT, EFI firmware — the proven ARM64 combo,
+#   - the unattend CD also carries the vmxnet3 ARM64 network driver
+#     (drivers/staging/, staged by build.sh from Fusion's
+#     Contents/Library/isoimages/arm64/drivers-arm64.zip). Without it there
+#     is NO NIC in the guest and WinRM is unreachable from the host — the
+#     driver must land before any network use (FirstLogonCommands order 1),
+#   - VMware Tools ARM64 (the ISO Fusion bundles at
+#     Contents/Library/isoimages/arm64/windows.iso) is attached by the
+#     builder (tools_mode "attach"); autounattend.xml installs it at
+#     first logon, before WinRM — the installer rebinds the NIC and
+#     would kill a live WinRM session (observed as"dial tcp ... wsman:
+#     operation timed out"). Tools
+#     are what make vmrun's getGuestIPAddress work in the sandbox runner,
+#   - NVMe storage needs no extra driver: Windows 11 ARM64 has the NVMe
+#     driver in-box (unlike QEMU's virtio disk, which needs viostor in
+#     WinPE).
 #
-# See images/windows-arm64-qemu/README.md and DEVELOPMENT.md for the full flow.
+# No snapshot is created (snapshot_name): the sandbox runner makes a full
+# vmrun clone as its working VM, and a snapshot inside the published image
+# would only complicate disk compaction and re-clones.
 
-source "qemu" "windows" {
-  vm_name          = "sandbox-windows-${var.windows_version}.qcow2"
+source "vmware-iso" "windows" {
+  vm_name          = "sandbox-windows-${var.windows_version}-vmware"
   output_directory = "${var.build_dir}/output"
 
-  # The wrapper (images/windows-arm64-qemu/build.sh) verifies the ISO against
-  # var.iso_sha256 before Packer runs; iso_checksum is "none" so Packer
-  # does not re-verify.
+  # The wrapper (images/windows-arm64-vmware/build.sh) verifies the ISO
+  # against var.iso_sha256 before Packer runs; iso_checksum is "none" so
+  # Packer does not re-verify.
   iso_url      = var.iso_path
   iso_checksum = "none"
 
-  cpus           = var.cpu_count
-  memory         = var.memory_gb * 1024
-  disk_size      = "${var.disk_size}G"
-  format         = "qcow2"
-  disk_interface = "virtio"
-  net_device     = "virtio-net-pci"
+  cpus      = var.cpu_count
+  memory    = var.memory_gb * 1024
+  disk_size = var.disk_size * 1024
 
-  machine_type = "virt,gic-version=max"
-  accelerator  = "hvf"
-  cpu_model    = "host"
+  # --- ARM64 guest wiring (proven in gusztavvargadr/packer) ---
+  version              = 20
+  guest_os_type        = "arm-windows11-64"
+  disk_type_id         = "0"
+  disk_adapter_type    = "nvme"
+  network              = "nat"
+  network_adapter_type = "vmxnet3"
+  firmware             = "efi"
+  cdrom_adapter_type   = "sata"
 
-  efi_boot          = true
-  efi_firmware_code = var.efi_firmware_code
-  efi_firmware_vars = var.efi_firmware_vars
-
-  qemu_binary = var.qemu_binary
-
-  # Unattend CD: Windows Setup probes attached media for Autounattend.xml
-  # at the root and applies it before the language picker, so no keyboard
-  # input is needed — except for the firmware's ~5 s "Press any key to
-  # boot from CD" prompt, hence the enter-spam below.
-  cd_files = ["./autounattend.xml", "${var.build_dir}/drivers"]
+  # Unattend CD: Setup probes attached media for Autounattend.xml at the
+  # root, so no keyboard input is needed for the answer file. The same CD
+  # carries the staged vmxnet3 ARM64 driver flat in the root (see the
+  # FirstLogonCommands driver scan in autounattend.xml). Note: glob the
+  # staged files rather than passing the directory — the plugin copies
+  # directory cd_files into a temp tree where nested paths break.
+  cd_files = ["./autounattend.xml", "${var.build_dir}/drivers/staging/*"]
   cd_label = "UNATTEND"
+
+  # VMware Tools ARM64 from the Fusion install (matching the host's Fusion
+  # version — no download, no version pinning). Attached as a CD-ROM for
+  # the whole build and removed on completion; autounattend.xml's
+  # FirstLogonCommands installs it before WinRM comes up (the installer
+  # rebinds the NIC and would kill a live WinRM session). Requires
+  # Fusion 13.6+ (the plugin's minimum) and makes vmrun guest tooling
+  # (getGuestIPAddress, shared folders) available at runtime.
+  tools_mode        = "attach"
+  tools_source_path = "${var.vmware_fusion_app_path}/Contents/Library/isoimages/arm64/windows.iso"
+
+  vmx_data = {
+    # The unattend/tools CD-ROMs ride on the SATA controller.
+    "sata1.present" = "TRUE"
+    # USB 3.x controller — Windows 11 ARM64 has in-box xHCI drivers; the
+    # plugin auto-enables USB on Apple Silicon for its own VNC typer, and
+    # keeping it present makes the USB input devices work in the guest.
+    "usb_xhci.present" = "TRUE"
+    # Boot the install CD before the (empty) NVMe disk, so the firmware
+    # reaches the ISO's "Press any key to boot from CD" prompt as early
+    # as possible.
+    "bios.bootorder" = "cdrom,hdd"
+  }
 
   # WinRM, not SSH: it comes up via autounattend's FirstLogonCommands
   # before any OpenSSH server exists, and DISM online servicing needs the
@@ -314,29 +316,32 @@ source "qemu" "windows" {
   winrm_timeout  = "90m"
   winrm_port     = 5985
 
-  # Headless: no QEMU window, so the cocoa quit-confirmation dialog can
-  # never stall a build (it popped up on every windowed run). Progress is
-  # still watchable via the plugin's VNC server (e.g. vncdotool captures).
+  # Headless: no Fusion window, and the VNC server stays available for the
+  # build watchdog (scripts/watch-build.sh) — pinned so the platform
+  # build.sh can start it before `packer build`. The vmware plugin's VNC
+  # server is bound to 127.0.0.1; the password is disabled so the watchdog
+  # (which assumes an unauthenticated VNC, like the QEMU plugin's) can
+  # connect.
   headless = true
 
-  # VNC server for the build watchdog (scripts/watch-build.sh): pinned to a
-  # single port so the platform build.sh can start the watchdog before
-  # `packer build` without scanning for the port.
-  vnc_bind_address = "127.0.0.1"
-  vnc_port_min     = 5901
-  vnc_port_max     = 5901
+  vnc_bind_address     = "127.0.0.1"
+  vnc_port_min         = 5901
+  vnc_port_max         = 5901
+  vnc_disable_password = true
 
-  # Enter-spam: answers the firmware's "Press ESC in 1 second" shell prompt
-  # AND Windows' "Press any key to boot from CD or DVD" prompt on the first
-  # boot. Without it, a boot that lands in the EFI shell stalls forever
-  # (Windows cannot be booted reliably from the shell). The keys are typed
-  # within the first ~15 s, long before Setup's UI appears, so the Cancel
-  # dialog they trigger on the "Installing Windows 11" screen is auto-
-  # dismissed by the build watchdog (see scripts/watch-build.sh on the host).
+  # The ISO's EFI "Press any key to boot from CD or DVD" prompt appears a
+  # few seconds after power-on; Enter presses spread over ~25 s cover
+  # early and late appearances without spamming keys into Setup like the
+  # QEMU template does (no stray keys, no Cancel-dialog watch needed).
+  # The build watchdog (scripts/watch-build.sh) also answers the prompt
+  # and rescues a boot that lands in the EFI shell.
   boot_wait = "1s"
   boot_command = [
-    "<enter><wait1><enter><wait1><enter><wait1><enter><wait1><enter><wait1><enter><wait1><enter><wait1><enter><wait1><enter><wait1><enter><wait1><enter><wait1><enter><wait1><enter><wait1><enter><wait1><enter>",
+    "<enter><wait5><enter><wait5><enter><wait5><enter><wait5><enter><wait5><enter>",
   ]
+
+  shutdown_command = "shutdown /s /t 10"
+  shutdown_timeout = "10m"
 }
 
 # ---------------------------------------------------------------------------
@@ -344,7 +349,7 @@ source "qemu" "windows" {
 # ---------------------------------------------------------------------------
 
 build {
-  sources = ["source.qemu.windows"]
+  sources = ["source.vmware-iso.windows"]
 
   # ===== Preamble: settle after OOBE, dump versions =====
   provisioner "powershell" {
@@ -360,37 +365,14 @@ build {
     ]
   }
 
-  # ===== VirtIO guest tools (full driver suite + qemu guest agent) =====
-  # The MSI lives on the virtio-win CD attached by qemu-with-tpm.sh (the
-  # last usb-storage device). WinPE got the boot-critical drivers from the
-  # unattend CD; this registers everything else in the installed OS.
-  provisioner "powershell" {
-    elevated_user     = var.winrm_username
-    elevated_password = var.winrm_password
-    inline = [
-      "$ErrorActionPreference = 'Stop'",
-      # The virtio-win CD may not be mounted yet right after first logon;
-      # retry for up to ~2 min before giving up.
-      "$msi = $null",
-      "for ($try = 0; $try -lt 8 -and -not $msi; $try++) {",
-      "  $cdroms = Get-WmiObject Win32_CDROMDrive | Select-Object -ExpandProperty Drive",
-      "  foreach ($drive in $cdroms) {",
-      "    $msi = Get-ChildItem $drive -Filter 'virtio-win-guest-tools*.msi' -ErrorAction SilentlyContinue | Select-Object -First 1",
-      "    if ($msi) { break }",
-      "  }",
-      "  if (-not $msi) { Start-Sleep -Seconds 15 }",
-      "}",
-      "if (-not $msi) {",
-      "  Write-Warning 'virtio-win-guest-tools MSI not found on any CD-ROM; skipping guest tools'",
-      "} else {",
-      "  Write-Host \"Installing $($msi.Name)\"",
-      "  Start-Process msiexec.exe -ArgumentList \"/i `\"$($msi.FullName)`\" /qn /norestart\" -Wait",
-      "  Start-Sleep -Seconds 5",
-      "}",
-      "$ga = Get-Service -Name 'QEMU-GA' -ErrorAction SilentlyContinue",
-      "if ($ga) { Set-Service 'QEMU-GA' -StartupType Automatic; Start-Service 'QEMU-GA' -ErrorAction SilentlyContinue }",
-    ]
-  }
+  # ===== VMware Tools =====
+  # VMware Tools are installed by autounattend.xml's FirstLogonCommands
+  # (order 2, BEFORE WinRM comes up) — the tools installer rebinds the
+  # NIC and drops every live WinRM session mid-install, so a provisioner
+  # here would kill its own connection (observed as a hard "dial tcp ...
+  # wsman: operation timed out" failure). The tools are what make vmrun
+  # getGuestIPAddress and HGFS shared folders work in the sandbox runner;
+  # the build fails softly if the CD was not found.
 
   # ===== Chocolatey + .NET strong crypto =====
   provisioner "powershell" {
@@ -409,11 +391,12 @@ build {
   }
 
   # ===== Reboot: clear the tools-install pending reboot =====
-  # The virtio-win guest-tools MSI install leaves a pending reboot, which
-  # makes `choco install` return 3010 and makes the .NET Framework 4.8
-  # Developer Pack installer fail with exit code 1 (it refuses to run
-  # while a reboot is pending). Restart once and wait for WinRM, so the
-  # toolchain + VS phases run on a cleanly booted machine.
+  # The VMware Tools install (autounattend FirstLogonCommands) leaves a
+  # pending reboot, which makes `choco install` return 3010 (seen on
+  # python) and makes the .NET Framework 4.8 Developer Pack installer
+  # fail with exit code 1 (it refuses to run while a reboot is pending).
+  # Restart once and wait for WinRM, so the toolchain + VS phases run on
+  # a cleanly booted machine.
   provisioner "windows-restart" {
     restart_timeout = "30m"
   }
@@ -429,43 +412,41 @@ build {
       # the machine/user PATH, but after the tools reboot a fresh WinRM
       # process can inherit a stale PATH (observed: 'choco' not recognized).
       $env:Path = [System.Environment]::GetEnvironmentVariable('Path','Machine') + ';' + [System.Environment]::GetEnvironmentVariable('Path','User')
-      choco install nodejs --version=${var.nodejs_version} -y
-      if ($LASTEXITCODE -ne 0) { throw "choco nodejs failed: $LASTEXITCODE" }
-      choco install gh --version=${var.github_cli_version} -y
-      if ($LASTEXITCODE -ne 0) { throw "choco gh failed: $LASTEXITCODE" }
-      choco install ripgrep --version=${var.ripgrep_version} -y
-      if ($LASTEXITCODE -ne 0) { throw "choco ripgrep failed: $LASTEXITCODE" }
-      choco install git --version=${var.git_version} -y
-      if ($LASTEXITCODE -ne 0) { throw "choco git failed: $LASTEXITCODE" }
-      choco install jq --version=${var.jq_version} -y
-      if ($LASTEXITCODE -ne 0) { throw "choco jq failed: $LASTEXITCODE" }
-      choco install python --version=${var.python_version} -y
-      if ($LASTEXITCODE -ne 0) { throw "choco python failed: $LASTEXITCODE" }
-      choco install firefox curl docker-cli docker-compose -y
-      if ($LASTEXITCODE -ne 0) { throw "choco browsers/docker failed: $LASTEXITCODE" }
-
+      # choco downloads can 404 transiently over the VM's NAT (observed
+      # with the pinned python package); retry each install before giving
+      # up.
+      function Invoke-ChocoRetry([string]$installArgs) {
+        for ($try = 1; $try -le 3; $try++) {
+          cmd /c "choco install $installArgs -y" 2>&1 | Out-Null
+          if ($LASTEXITCODE -eq 0) { return }
+          Write-Host "choco install $installArgs attempt $try failed ($LASTEXITCODE); retrying"
+          Start-Sleep -Seconds 15
+        }
+        throw "choco install $installArgs failed after 3 attempts"
+      }
+      Invoke-ChocoRetry "nodejs --version=${var.nodejs_version}"
+      Invoke-ChocoRetry "gh --version=${var.github_cli_version}"
+      Invoke-ChocoRetry "ripgrep --version=${var.ripgrep_version}"
+      Invoke-ChocoRetry "git --version=${var.git_version}"
+      Invoke-ChocoRetry "jq --version=${var.jq_version}"
+      Invoke-ChocoRetry "python --version=${var.python_version}"
+      Invoke-ChocoRetry "firefox"
+      Invoke-ChocoRetry "curl"
+      Invoke-ChocoRetry "docker-cli"
+      Invoke-ChocoRetry "docker-compose"
       # C/C++ + cross-language toolchains (brought over from AdGuard's
       # build-agent-images windows2022-vs2022 / windows2022-go images).
       # VS2022 Build Tools (with its .NET/VC++ workloads) and Rust are
       # installed by their own provisioners below.
-      choco install golang --version=${var.go_version} -y
-      if ($LASTEXITCODE -ne 0) { throw "choco golang failed: $LASTEXITCODE" }
-      choco install mingw --version=${var.mingw_version} -y
-      if ($LASTEXITCODE -ne 0) { throw "choco mingw failed: $LASTEXITCODE" }
-      choco install make --version=${var.make_version} -y
-      if ($LASTEXITCODE -ne 0) { throw "choco make failed: $LASTEXITCODE" }
-      choco install vim --version=${var.vim_version} -y
-      if ($LASTEXITCODE -ne 0) { throw "choco vim failed: $LASTEXITCODE" }
-      choco install nuget.commandline --version=${var.nuget_version} -y
-      if ($LASTEXITCODE -ne 0) { throw "choco nuget.commandline failed: $LASTEXITCODE" }
-      choco install protoc --version=${var.protoc_version} -y
-      if ($LASTEXITCODE -ne 0) { throw "choco protoc failed: $LASTEXITCODE" }
-      choco install nasm --version=${var.nasm_version} -y
-      if ($LASTEXITCODE -ne 0) { throw "choco nasm failed: $LASTEXITCODE" }
-      choco install llvm --version=${var.llvm_version} -y
-      if ($LASTEXITCODE -ne 0) { throw "choco llvm failed: $LASTEXITCODE" }
-      choco install wixtoolset --version=${var.wixtoolset_version} -y
-      if ($LASTEXITCODE -ne 0) { throw "choco wixtoolset failed: $LASTEXITCODE" }
+      Invoke-ChocoRetry "golang --version=${var.go_version}"
+      Invoke-ChocoRetry "mingw --version=${var.mingw_version}"
+      Invoke-ChocoRetry "make --version=${var.make_version}"
+      Invoke-ChocoRetry "vim --version=${var.vim_version}"
+      Invoke-ChocoRetry "nuget.commandline --version=${var.nuget_version}"
+      Invoke-ChocoRetry "protoc --version=${var.protoc_version}"
+      Invoke-ChocoRetry "nasm --version=${var.nasm_version}"
+      Invoke-ChocoRetry "llvm --version=${var.llvm_version}"
+      Invoke-ChocoRetry "wixtoolset --version=${var.wixtoolset_version}"
 
       # ===== Google Chrome (CfT snapshot, hash-pinned) =====
       # choco's googlechrome package downloads the live dl.google.com MSI,
@@ -477,7 +458,7 @@ build {
       $chromeZip = "$env:TEMP\chrome-win64.zip"
       $chromeAppDir = 'C:\Program Files\Google\Chrome\Application'
       $chromeExe = Join-Path $chromeAppDir 'chrome.exe'
-      # 202 MB over usermode networking can drop mid-transfer; retry.
+      # 202 MB over a VM NAT can drop mid-transfer; retry.
       $downloaded = $false
       for ($try = 1; $try -le 3 -and -not $downloaded; $try++) {
         try {
@@ -685,7 +666,7 @@ build {
       $env:Path = $machinePath + ';' + [System.Environment]::GetEnvironmentVariable('Path','User')
       # The openchamber scheduled task launches at logon and locks its
       # node_modules — kill it before reinstalling, and retry npm installs
-      # (the guest's usermode networking drops large transfers).
+      # (the guest's NAT networking drops large transfers).
       try { schtasks /End /TN dev.openchamber.web 2>&1 | Out-Null } catch {}
       Stop-Process -Name node -Force -ErrorAction SilentlyContinue
       function Invoke-NpmRetry([string]$argsLine) {
@@ -781,7 +762,7 @@ if (Test-Path $envFile) {
       # Windows' firewall "TCP/UDP Query User" rules for node.exe default to
       # BLOCK when the allow prompt goes unanswered (headless build) — the
       # web UI then only answers on the guest loopback. Remove them and
-      # allow port 4000 explicitly so the host can reach the UI.
+      # allow the UI port explicitly so the host can reach it.
       Get-NetFirewallRule -Direction Inbound -Action Block -ErrorAction SilentlyContinue |
         Where-Object { $_.DisplayName -like '*Query User*node.exe*' } |
         Remove-NetFirewallRule -ErrorAction SilentlyContinue
@@ -792,10 +773,10 @@ if (Test-Path $envFile) {
   }
 
   # ===== OpenSSH Server + RDP =====
-  # sshd gives the host a management channel (scripts/run-windows-sandbox.sh
-  # forwards guest 22 to host 2222); RDP gives a desktop session. Password
-  # auth is enabled for the Administrator account so the fixed sandbox
-  # credentials from the vars file work.
+  # sshd gives the host a management channel (scripts/run-windows-vmware-sandbox.sh
+  # connects to the guest's NAT IP on port 22); RDP gives a desktop session.
+  # Password auth is enabled for the Administrator account so the fixed
+  # sandbox credentials from the vars file work.
   provisioner "powershell" {
     elevated_user     = var.winrm_username
     elevated_password = var.winrm_password
@@ -827,8 +808,8 @@ if (Test-Path $envFile) {
 
   # ===== Bridge tooling: socat + npiperelay (best-effort) =====
   # Used by the SSH-agent bridge on the host side of the sandbox runner
-  # (see docs/windows-qemu.md once the runner lands). Not load-bearing for the
-  # image itself, so a download failure only warns.
+  # (see docs/windows-vmware.md). Not load-bearing for the image itself, so
+  # a download failure only warns.
   provisioner "powershell" {
     elevated_user     = var.winrm_username
     elevated_password = var.winrm_password
@@ -942,6 +923,7 @@ if (Test-Path $envFile) {
       if (Test-Path 'C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Tools\MSVC') {
         Write-Host "MSVC: $('C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Tools\MSVC')"
       }
+      Write-Host "VMware Tools: $(Test-Path 'C:\Program Files\VMware\VMware Tools\vmtoolsd.exe')"
       Write-Host "Chrome: $(Test-Path 'C:\Program Files\Google\Chrome\Application\chrome.exe')"
       Write-Host "Firefox: $(Test-Path 'C:\Program Files\Mozilla Firefox\firefox.exe')"
       Write-Host "VS Code: $(Test-Path "$env:LOCALAPPDATA\Programs\Microsoft VS Code\bin\code.cmd")"

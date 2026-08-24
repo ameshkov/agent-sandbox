@@ -1,0 +1,301 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  autounattend.xml — Windows 11 ARM64 unattended install for the Packer
+  VMware build (images/windows-arm64-vmware/sandbox.pkr.hcl).
+
+  Windows Setup probes attached removable media for Autounattend.xml at
+  the root and applies it before the language picker. The CD is built by
+  Packer's cd_files from this file + the vmxnet3 ARM64 driver staged by
+  images/windows-arm64-vmware/build.sh (extracted from VMware Fusion's
+  Contents/Library/isoimages/arm64/drivers-arm64.zip, placed flat at the
+  CD root).
+
+  Unlike the QEMU image no WinPE driver is needed: the disk is NVMe (the
+  NVMe driver is in-box in Windows 11 ARM64) and Setup runs offline, so no
+  network, storage or input drivers are required in the windowsPE pass.
+  The vmxnet3 NIC driver, however, must be installed at first logon
+  BEFORE any network use — Windows 11 ARM64 has no in-box driver for
+  VMware NICs, so without it there is no network in the guest and WinRM
+  would be unreachable from the host (FirstLogonCommands order 1 scans
+  the unattend CD; drive letters on EFI installs are non-deterministic,
+  so D:..H: candidates are listed).
+
+  VMware Tools are installed at first logon (FirstLogonCommands order 2,
+  BEFORE WinRM) — the builder attaches Fusion's ARM64 tools ISO
+  (tools_mode "attach"), and moving the install after WinRM would break
+  it (the tools installer rebinds the NIC).
+
+  Schema components carry processorArchitecture="arm64". The
+  Administrator password must stay in sync with the winrm_password
+  variable in vars/sandbox-windows-11-vmware.pkrvars.hcl — change both
+  together.
+
+  References:
+  - https://learn.microsoft.com/en-us/windows-hardware/customize/desktop/unattend/
+  - Recipe verified end-to-end on Apple Silicon in gusztavvargadr/packer
+    (https://github.com/gusztavvargadr/packer, src/windows/boot/ +
+    samples/windows-11/25h2-professional-arm64, Unlicense).
+-->
+<unattend xmlns="urn:schemas-microsoft-com:unattend">
+
+  <settings pass="windowsPE">
+
+    <component name="Microsoft-Windows-International-Core-WinPE"
+               processorArchitecture="arm64"
+               publicKeyToken="31bf3856ad364e35"
+               language="neutral" versionScope="nonSxS"
+               xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State">
+      <SetupUILanguage>
+        <UILanguage>en-US</UILanguage>
+      </SetupUILanguage>
+      <InputLocale>en-US</InputLocale>
+      <SystemLocale>en-US</SystemLocale>
+      <UILanguage>en-US</UILanguage>
+      <UserLocale>en-US</UserLocale>
+    </component>
+
+    <component name="Microsoft-Windows-Setup"
+               processorArchitecture="arm64"
+               publicKeyToken="31bf3856ad364e35"
+               language="neutral" versionScope="nonSxS"
+               xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State">
+
+      <!-- Pure-UEFI layout for ARM64: ESP + MSR + Windows. -->
+      <DiskConfiguration>
+        <Disk wcm:action="add">
+          <DiskID>0</DiskID>
+          <WillWipeDisk>true</WillWipeDisk>
+          <CreatePartitions>
+            <CreatePartition wcm:action="add">
+              <Order>1</Order>
+              <Type>EFI</Type>
+              <Size>300</Size>
+            </CreatePartition>
+            <CreatePartition wcm:action="add">
+              <Order>2</Order>
+              <Type>MSR</Type>
+              <Size>16</Size>
+            </CreatePartition>
+            <CreatePartition wcm:action="add">
+              <Order>3</Order>
+              <Type>Primary</Type>
+              <Extend>true</Extend>
+            </CreatePartition>
+          </CreatePartitions>
+          <ModifyPartitions>
+            <ModifyPartition wcm:action="add">
+              <Order>1</Order>
+              <PartitionID>1</PartitionID>
+              <Format>FAT32</Format>
+              <Label>System</Label>
+            </ModifyPartition>
+            <ModifyPartition wcm:action="add">
+              <Order>2</Order>
+              <PartitionID>2</PartitionID>
+            </ModifyPartition>
+            <ModifyPartition wcm:action="add">
+              <Order>3</Order>
+              <PartitionID>3</PartitionID>
+              <Format>NTFS</Format>
+              <Label>Windows</Label>
+              <Letter>C</Letter>
+            </ModifyPartition>
+          </ModifyPartitions>
+        </Disk>
+      </DiskConfiguration>
+
+      <!-- Multi-edition ISO: pick Pro by image name. If the release uses
+           a different SKU label (e.g. "Windows 11 Pro for ARM"), the
+           install halts — check with `dism /Get-WimInfo` on the ISO. -->
+      <ImageInstall>
+        <OSImage>
+          <InstallTo>
+            <DiskID>0</DiskID>
+            <PartitionID>3</PartitionID>
+          </InstallTo>
+          <InstallFrom>
+            <MetaData wcm:action="add">
+              <Key>/IMAGE/NAME</Key>
+              <Value>Windows 11 Pro</Value>
+            </MetaData>
+          </InstallFrom>
+        </OSImage>
+      </ImageInstall>
+
+      <UserData>
+        <AcceptEula>true</AcceptEula>
+        <FullName>agent-sandbox</FullName>
+        <Organization>agent-sandbox</Organization>
+        <!-- Generic install key for Windows 11 Pro: lets Setup complete
+             without prompting; does NOT activate (the sandbox runs
+             unactivated with a watermark). -->
+        <ProductKey>
+          <Key>VK7JG-NPHTM-C97JM-9MPGT-3V66T</Key>
+          <WillShowUI>OnError</WillShowUI>
+        </ProductKey>
+      </UserData>
+
+      <!-- Bypass the Win11 hardware-requirements checks. Fusion provides
+           a virtual TPM 2.0 when one is configured, but Apple Silicon is
+           not on Microsoft's supported CPU list, so BypassCPUCheck is
+           mandatory; the rest are belt-and-braces. RunSynchronous in the
+           windowsPE pass runs strictly before Setup's hardware probe. -->
+      <RunSynchronous>
+        <RunSynchronousCommand wcm:action="add">
+          <Order>1</Order>
+          <Path>reg add HKLM\System\Setup\LabConfig /v BypassTPMCheck /t REG_DWORD /d 1 /f</Path>
+        </RunSynchronousCommand>
+        <RunSynchronousCommand wcm:action="add">
+          <Order>2</Order>
+          <Path>reg add HKLM\System\Setup\LabConfig /v BypassSecureBootCheck /t REG_DWORD /d 1 /f</Path>
+        </RunSynchronousCommand>
+        <RunSynchronousCommand wcm:action="add">
+          <Order>3</Order>
+          <Path>reg add HKLM\System\Setup\LabConfig /v BypassRAMCheck /t REG_DWORD /d 1 /f</Path>
+        </RunSynchronousCommand>
+        <RunSynchronousCommand wcm:action="add">
+          <Order>4</Order>
+          <Path>reg add HKLM\System\Setup\LabConfig /v BypassCPUCheck /t REG_DWORD /d 1 /f</Path>
+        </RunSynchronousCommand>
+        <RunSynchronousCommand wcm:action="add">
+          <Order>5</Order>
+          <Path>reg add HKLM\System\Setup\LabConfig /v BypassStorageCheck /t REG_DWORD /d 1 /f</Path>
+        </RunSynchronousCommand>
+      </RunSynchronous>
+    </component>
+  </settings>
+
+  <settings pass="specialize">
+    <component name="Microsoft-Windows-Shell-Setup"
+               processorArchitecture="arm64"
+               publicKeyToken="31bf3856ad364e35"
+               language="neutral" versionScope="nonSxS"
+               xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State">
+      <!-- NetBIOS computer names are limited to 15 chars — longer names
+           fail the specialize pass with hrResult=0x80220005. -->
+      <ComputerName>win11-sandbox</ComputerName>
+      <TimeZone>UTC</TimeZone>
+      <RegisteredOrganization>agent-sandbox</RegisteredOrganization>
+      <RegisteredOwner>agent-sandbox</RegisteredOwner>
+    </component>
+    <component name="Microsoft-Windows-International-Core"
+               processorArchitecture="arm64"
+               publicKeyToken="31bf3856ad364e35"
+               language="neutral" versionScope="nonSxS"
+               xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State">
+      <InputLocale>en-US</InputLocale>
+      <SystemLocale>en-US</SystemLocale>
+      <UILanguage>en-US</UILanguage>
+      <UserLocale>en-US</UserLocale>
+    </component>
+  </settings>
+
+  <settings pass="oobeSystem">
+    <component name="Microsoft-Windows-Shell-Setup"
+               processorArchitecture="arm64"
+               publicKeyToken="31bf3856ad364e35"
+               language="neutral" versionScope="nonSxS"
+               xmlns:wcm="http://schemas.microsoft.com/WMIConfig/2002/State">
+
+      <OOBE>
+        <HideEULAPage>true</HideEULAPage>
+        <HideLocalAccountScreen>true</HideLocalAccountScreen>
+        <HideOEMRegistrationScreen>true</HideOEMRegistrationScreen>
+        <!-- Bypasses the Microsoft-account requirement on Win11 24H2. If a
+             future release blocks this too, add BYPASSNRO registry writes
+             via RunSynchronous in the specialize pass. -->
+        <HideOnlineAccountScreens>true</HideOnlineAccountScreens>
+        <HideWirelessSetupInOOBE>true</HideWirelessSetupInOOBE>
+        <NetworkLocation>Work</NetworkLocation>
+        <ProtectYourPC>3</ProtectYourPC>
+        <SkipUserOOBE>true</SkipUserOOBE>
+        <SkipMachineOOBE>true</SkipMachineOOBE>
+      </OOBE>
+
+      <UserAccounts>
+        <AdministratorPassword>
+          <!-- MUST match winrm_password in the vars file. -->
+          <Value>sandbox1</Value>
+          <PlainText>true</PlainText>
+        </AdministratorPassword>
+        <LocalAccounts>
+          <LocalAccount wcm:action="add">
+            <Name>Administrator</Name>
+            <Group>Administrators</Group>
+            <Password>
+              <Value>sandbox1</Value>
+              <PlainText>true</PlainText>
+            </Password>
+            <Description>Local admin; also the SSH/RDP account of the sandbox.</Description>
+            <DisplayName>Administrator</DisplayName>
+          </LocalAccount>
+        </LocalAccounts>
+      </UserAccounts>
+
+      <!-- LogonCount=1: exactly one auto-login (the first OOBE boot, where
+           FirstLogonCommands brings up WinRM); Windows clears
+           AutoAdminLogon itself afterwards. -->
+      <AutoLogon>
+        <Username>Administrator</Username>
+        <Password>
+          <Value>sandbox1</Value>
+          <PlainText>true</PlainText>
+        </Password>
+        <Enabled>true</Enabled>
+        <LogonCount>1</LogonCount>
+      </AutoLogon>
+
+      <!-- Bring up WinRM so Packer's provisioners can connect.
+           Order is load-bearing:
+             1. Install the vmxnet3 ARM64 NIC driver into the running OS's
+                driver store — Windows 11 ARM64 has no in-box VMware NIC
+                driver, so the (NAT) adapter is dead until pnputil
+                registers it. The driver lives flat at the root of the
+                unattend CD; drive letters differ per install, so scan
+                D:..H: candidates.
+             2. Install VMware Tools from the attached tools CD (the
+                builder's tools_mode "attach") — *before* WinRM, because
+                the tools installer rebinds the NIC and drops every live
+                WinRM session mid-install (observed as a hard provisioner
+                failure). The tools are what make vmrun getGuestIPAddress
+                and HGFS shared folders work at runtime.
+             3. Wait for the NIC to attach and complete DHCP, then force
+                the network category to Private (WinRM's AllowUnencrypted
+                refuses to apply on Public).
+             4. Enable + configure WinRM (Basic + AllowUnencrypted) and
+                open port 5985. -->
+      <FirstLogonCommands>
+        <SynchronousCommand wcm:action="add">
+          <Order>1</Order>
+          <Description>Install vmxnet3 ARM64 driver into the driver store</Description>
+          <CommandLine>powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='Stop'; $found=$false; foreach ($l in 'D','E','F','G','H') { $p = ${l} + ':\vmxnet3.inf'; if (Test-Path $p) { pnputil.exe /add-driver $p /install | Out-Null; $found=$true; break } }; if (-not $found) { Write-Error 'vmxnet3.inf not found on D:..H: — unattend CD missing or relocated' }"</CommandLine>
+        </SynchronousCommand>
+        <SynchronousCommand wcm:action="add">
+          <Order>2</Order>
+          <Description>Install VMware Tools from the attached tools CD</Description>
+          <CommandLine>powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='Continue'; $inst=$null; foreach ($l in 'D','E','F','G','H') { $s=${l}+':\setup.exe'; $a=${l}+':\autorun.inf'; if ((Test-Path $s) -and (Test-Path $a) -and ((Get-Content $a -Raw -ErrorAction SilentlyContinue) -match 'open=setup')) { $inst=$s; break } }; if (-not $inst) { Write-Output 'VMware Tools CD not found — the image will lack guest tools (vmrun getGuestIPAddress/shared folders unavailable)'; exit 0 }; Write-Output ('Installing VMware Tools from ' + $inst); Start-Process $inst -ArgumentList '/S','/v','\"/qn REBOOT=R\"' -Wait | Out-Null; for ($i=0; $i -lt 48 -and -not (Test-Path 'C:\Program Files\VMware\VMware Tools\vmtoolsd.exe'); $i++) { Start-Sleep -Seconds 10 }; if (Test-Path 'C:\Program Files\VMware\VMware Tools\vmtoolsd.exe') { Write-Output 'VMware Tools installed (vmtoolsd.exe present)' } else { Write-Output 'VMware Tools install did not complete in ~8 min — see vmtoolsd.log' }"</CommandLine>
+        </SynchronousCommand>
+        <SynchronousCommand wcm:action="add">
+          <Order>3</Order>
+          <Description>Wait for network and force profile to Private</Description>
+          <CommandLine>powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "for ($i=0; $i -lt 60; $i++) { $p = Get-NetConnectionProfile -ErrorAction SilentlyContinue; if ($p) { break }; Start-Sleep 2 }; Get-NetConnectionProfile | Set-NetConnectionProfile -NetworkCategory Private"</CommandLine>
+        </SynchronousCommand>
+        <SynchronousCommand wcm:action="add">
+          <Order>4</Order>
+          <Description>Enable WinRM service</Description>
+          <CommandLine>powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "Set-Service -Name WinRM -StartupType Automatic; Start-Service WinRM"</CommandLine>
+        </SynchronousCommand>
+        <SynchronousCommand wcm:action="add">
+          <Order>5</Order>
+          <Description>Configure WinRM listener and auth</Description>
+          <CommandLine>powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "winrm quickconfig -quiet; winrm set winrm/config/service '@{AllowUnencrypted=\"true\"}'; winrm set winrm/config/service/auth '@{Basic=\"true\"}'"</CommandLine>
+        </SynchronousCommand>
+        <SynchronousCommand wcm:action="add">
+          <Order>6</Order>
+          <Description>Open firewall for WinRM</Description>
+          <CommandLine>powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "New-NetFirewallRule -Name 'WinRM HTTP-In' -DisplayName 'WinRM HTTP-In' -Profile Any -LocalPort 5985 -Protocol TCP -Action Allow"</CommandLine>
+        </SynchronousCommand>
+      </FirstLogonCommands>
+    </component>
+  </settings>
+</unattend>

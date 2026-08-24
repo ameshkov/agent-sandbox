@@ -13,8 +13,46 @@ the next release.
 
 ## [Unreleased]
 
+### Changed
+
+- Build artifacts moved out of the image directory into a top-level
+  `build/windows-arm64-<platform>/` directory: `output/` for
+  the built qcow2, `packer_cache/` for virtio-win.iso/swtpm/watchdog
+  scratch and `drivers/staging/` for the unattend CD driver subset. The
+  template's `output_directory` and the staged `cd_files` path are now
+  variables set by the platform `build.sh` wrapper; the macOS/tart images
+  build no files and have no such directory. Guest content is unchanged
+  (no `image_version` bump).
+
 ### Added
 
+- The toolchain and VS provisioners re-read PATH from the registry at
+  the start of their scripts: after the tools reboot a fresh WinRM
+  process can inherit a stale PATH (observed once: 'choco' not
+  recognized), and the choco bootstrapper's PATH update must be picked
+  up explicitly.
+- The final verification checks the new toolchains with a check-and-warn
+  loop instead of hard version dumps: a missing helper (e.g.
+  `llvm-config`, not shipped by every LLVM Windows build) no longer
+  fails the build.
+- The build reboots the guest once after the virtio-win guest-tools MSI
+  install (new `windows-restart` provisioner): the MSI leaves a pending
+  reboot, which makes `choco install` return 3010 and makes the .NET
+  Framework 4.8 Developer Pack installer fail with exit code 1 (it
+  refuses to run while a reboot is pending). Choco exit-code checks in
+  the VS phase accept 3010 (success, reboot required).
+- Toolchains from AdGuard's `build-agent-images` Windows image
+  (`windows2022-vs2022` / `windows2022-go`) that were missing: Go, Rust
+  (via rustup — arm64 host toolchain + MSVC targets for
+  x86_64/i686/aarch64), Visual Studio 2022 Build Tools (choco package +
+  `setup.exe` finalizer: .NET 4.8/.NET Core SDKs, VC++ workload
+  x86/x64/ARM/ARM64, CMake, Windows 11 SDK 22621), WiX Toolset, protoc,
+  NASM, LLVM, Vim, NuGet CLI, MinGW-w64 and GNU make. All versions are
+  pinned in the vars file (`go_version`, `rust_version`,
+  `vs_buildtools_version`, `wixtoolset_version`, `protoc_version`,
+  `nasm_version`, `llvm_version`, `vim_version`, `nuget_version`,
+  `mingw_version`, `make_version`); the toolchain provisioner and the
+  final verification dump their versions.
 - Build watchdog: `scripts/watch-build.sh` (+ `watch-build.py` supervisor
   and `watch-build-ocr.swift` OCR helper). The headless build's
   boot-command Enter-spam can hit "Cancel" on Windows Setup's "Installing
@@ -51,7 +89,7 @@ the next release.
   CLI client (remote engine via the host bridge), and the bridge tooling
   (`socat` + `npiperelay`) as utilities.
 - `scripts/run-windows-sandbox.sh` — the user-facing Windows sandbox
-  runner, landing together with the user guide `docs/windows.md`: boots
+  runner, landing together with the user guide `docs/windows-qemu.md`: boots
   the qcow2 under `qemu-system-aarch64` + swtpm (working VM = COW overlay
   with persistent TPM/NVRAM under `~/Library/Application Support/
   agent-sandbox/windows-11`), forwards SSH/RDP/WinRM/OpenChamber ports,

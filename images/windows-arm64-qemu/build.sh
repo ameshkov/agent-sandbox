@@ -10,7 +10,8 @@
 #      referenced via WINDOWS_ISO_PATH, not committed.
 #   2. WinPE needs the ARM64 virtio drivers (viostor / vioscsi / NetKVM)
 #      staged into the same CD as autounattend.xml; they are extracted
-#      here from virtio-win.iso into drivers/staging/.
+#      here from virtio-win.iso into
+#      build/windows-arm64-qemu/drivers/staging/.
 #   3. Windows 11 requires a TPM 2.0 — swtpm must run while Packer boots
 #      the VM, and Packer's qemu binary must be wrapped by
 #      qemu-with-tpm.sh (the plugin's qemuargs option replaces its
@@ -27,8 +28,14 @@
 #                         verified against iso_sha256 from the vars file)
 #   VIRTIO_WIN_ISO_PATH — path to virtio-win.iso (optional; downloaded
 #                         from the vars file's virtio_win_url into
-#                         packer_cache/ when unset)
+#                         build/windows-arm64-qemu/packer_cache/ when unset)
 #   PACKER_LOG          — 1 for verbose Packer output
+#
+# Build layout: every image gets its own directory under
+# build/windows-arm64-qemu/ — output/ (the built qcow2), packer_cache/
+# (virtio-win.iso, swtpm state, watchdog frames/log) and
+# drivers/staging/ (driver subset packed into the unattend CD). The tart
+# (macOS) images build no files and have no such directory.
 
 set -euo pipefail
 
@@ -93,6 +100,24 @@ iso_sha256=$(read_var iso_sha256)
 virtio_win_url=$(read_var virtio_win_url)
 virtio_win_sha256=$(read_var virtio_win_sha256)
 
+# ---- per-image build directory --------------------------------------------
+#
+# Built images and their scratch live under build/windows-arm64-qemu/
+# (gitignored):
+#   output/          — Packer's output_directory (the built qcow2)
+#   packer_cache/    — virtio-win.iso, swtpm state, watchdog frames/logs
+#   drivers/staging/ — ARM64 virtio drivers packed into the unattend CD
+#
+# Note: do NOT pre-create output_dir — the qemu plugin refuses an existing
+# output directory (it creates it itself; use `packer build -force` to
+# rebuild over an old artifact).
+
+build_dir="$repo_root/build/windows-arm64-qemu"
+output_dir="$build_dir/output"
+cache_dir="$build_dir/packer_cache"
+staging_dir="$build_dir/drivers/staging"
+mkdir -p "$cache_dir"
+
 # ---- Windows ISO (bring-your-own) ------------------------------------------
 
 if [ -z "${WINDOWS_ISO_PATH:-}" ]; then
@@ -132,8 +157,8 @@ fi
 
 if [ -z "${VIRTIO_WIN_ISO_PATH:-}" ]; then
   echo "==> VIRTIO_WIN_ISO_PATH unset — downloading virtio-win.iso"
-  mkdir -p "$platform_dir/packer_cache"
-  VIRTIO_WIN_ISO_PATH="$platform_dir/packer_cache/virtio-win.iso"
+  mkdir -p "$cache_dir"
+  VIRTIO_WIN_ISO_PATH="$cache_dir/virtio-win.iso"
   if [ ! -f "$VIRTIO_WIN_ISO_PATH" ]; then
     curl -fSL -o "$VIRTIO_WIN_ISO_PATH" "$virtio_win_url"
   else
@@ -160,7 +185,6 @@ fi
 
 # ---- driver staging: ARM64 virtio drivers into the unattend CD ------------
 
-staging_dir="$platform_dir/drivers/staging"
 mount_dir=$(mktemp -d -t agent-sandbox-virtio-win.XXXXXX)
 swtpm_pidfile=""
 cleanup() {
@@ -212,7 +236,7 @@ rmdir "$mount_dir" 2>/dev/null || true
 # TPM 2.0. swtpm provides one over a Unix socket; qemu-with-tpm.sh wires
 # it in. State is wiped per build (nothing to carry forward).
 
-swtpm_dir="$platform_dir/packer_cache/swtpm"
+swtpm_dir="$cache_dir/swtpm"
 swtpm_sock="$swtpm_dir/sock"
 swtpm_pidfile="$swtpm_dir/pid"
 
@@ -258,9 +282,9 @@ start_watchdog() {
     echo "      Xcode command line tools; skipping the watchdog." >&2
     return 1
   }
-  echo "==> starting build watchdog (VNC port 5901, frames in packer_cache/watchdog)"
-  "$repo_root/scripts/watch-build.sh" 5901 "$platform_dir/packer_cache/watchdog" \
-    >"$platform_dir/packer_cache/watchdog.log" 2>&1 &
+  echo "==> starting build watchdog (VNC port 5901, frames in $cache_dir/watchdog)"
+  "$repo_root/scripts/watch-build.sh" 5901 "$cache_dir/watchdog" \
+    >"$cache_dir/watchdog.log" 2>&1 &
   watchdog_pid=$!
 }
 
@@ -276,6 +300,7 @@ stop_watchdog() {
 
 export SWTPM_SOCK="$swtpm_sock"
 export VIRTIO_WIN_ISO_PATH
+export QEMU_WITH_TPM_LOG="$cache_dir/qemu-with-tpm.cmd.log"
 export PKR_VAR_iso_path="$WINDOWS_ISO_PATH"
 export PKR_VAR_virtio_win_iso_path="$VIRTIO_WIN_ISO_PATH"
 export PKR_VAR_qemu_binary="$platform_dir/qemu-with-tpm.sh"
@@ -297,13 +322,15 @@ start_watchdog
 # the watchdog.
 (
   cd "$platform_dir" &&
-    packer build -var-file="$vars_file" "$platform_dir/sandbox.pkr.hcl"
+    packer build \
+      -var "build_dir=$build_dir" \
+      -var-file="$vars_file" "$platform_dir/sandbox.pkr.hcl"
 )
 stop_watchdog
 
 # ---- compress the output -----------------------------------------------------
 
-output="$platform_dir/output/${image_name}.qcow2"
+output="$output_dir/${image_name}.qcow2"
 if [ ! -f "$output" ]; then
   echo "ERROR: build produced no $output" >&2
   exit 1

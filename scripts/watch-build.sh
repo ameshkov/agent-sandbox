@@ -24,7 +24,7 @@
 # Usage:
 #   scripts/watch-build.sh <vnc-port> [outdir]
 #
-# <outdir> defaults to images/windows-arm64-qemu/packer_cache/watchdog
+# <outdir> defaults to build/windows-arm64-qemu/packer_cache/watchdog
 # (gitignored build artifacts). Frames and the compiled OCR helper land
 # there; the OCR helper is recompiled when its source is newer.
 #
@@ -42,7 +42,7 @@ set -euo pipefail
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 
 port="${1:?usage: watch-build.sh <vnc-port> [outdir]}"
-outdir="${2:-$repo_root/images/windows-arm64-qemu/packer_cache/watchdog}"
+outdir="${2:-$repo_root/build/windows-arm64-qemu/packer_cache/watchdog}"
 
 die() {
     printf '%s\n' "watch-build.sh: $*" >&2

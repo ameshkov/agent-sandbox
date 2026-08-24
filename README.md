@@ -16,7 +16,8 @@ Pick the guide for your operating system:
 | --- | --- |
 | macOS (Apple Silicon) | [Set up your macOS sandbox](docs/macos.md) |
 | Linux | [Coming soon](docs/linux.md) |
-| Windows | [Coming soon](docs/windows.md) |
+| Windows (QEMU) | [Set up your Windows sandbox](docs/windows-qemu.md) |
+| Windows (VMware) | [Set up your Windows VMware sandbox](docs/windows-vmware.md) |
 
 The [macOS guide](docs/macos.md) starts with a short, four-step quick setup and
 is all you need to have a sandbox with a coding agent running.

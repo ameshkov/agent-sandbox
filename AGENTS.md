@@ -20,6 +20,11 @@ recipes; it is the authoritative build/release guide.
   `qemu-with-tpm.sh` wrappers (the platform build wrapper is required — swtpm,
   the bring-your-own ISO, and the ARM64 virtio driver staging can't be
   expressed in the template).
+- `images/windows-arm64-vmware/` — the VMware sibling: Packer `vmware-iso`
+  template (`sandbox.pkr.hcl`) with `autounattend.xml` + `build.sh` /
+  `deploy.sh` wrappers (the ARM64 vmxnet3 driver staging + the VMware Tools
+  attach come from the Fusion app bundle; the published artifact is a tar.gz
+  of the output vmx/vmdk). Same guest and toolchain as the QEMU image.
 - `scripts/build.sh`, `scripts/deploy.sh`, `scripts/tag.sh` — wrappers that
   discover images from `images/*/vars/*.pkrvars.hcl`; they resolve the repo
   root themselves, so run them from anywhere. `build.sh` delegates to a
@@ -36,7 +41,14 @@ recipes; it is the authoritative build/release guide.
   persistent TPM/NVRAM under `~/Library/Application Support/agent-sandbox/`),
   forwards SSH/RDP/WinRM/OpenChamber ports, bridges the host's SSH agent and
   Docker engine into the guest (Node relays on named pipes + host socat),
-  and verifies OpenChamber. See `docs/windows.md`.
+  and verifies OpenChamber. See `docs/windows-qemu.md`.
+- `scripts/run-windows-vmware-sandbox.sh` — user-facing runner for the
+  VMware Windows sandbox: extracts the vmx/vmdk archive and clones a
+  working VM with `vmrun` (Fusion NAT; no port forwarding — the guest IP
+  comes from `vmrun getGuestIPAddress`), bridges the host's SSH agent and
+  Docker engine into the guest the same way, optionally shares a host
+  folder (HGFS, `--work-dir`), and verifies OpenChamber. See
+  `docs/windows-vmware.md`.
 - `scripts/agent-rules.md` — sandbox environment rules installed into the
   guest's coding agents (opencode global `AGENTS.md`, Copilot CLI
   `copilot-instructions.md`): Docker remote-engine topology, shared-directory
@@ -52,9 +64,15 @@ recipes; it is the authoritative build/release guide.
   output helpers, VM helpers, and the user-settings copy logic
   (`collect_settings_files`, marker, OpenChamber restart). Keep the settings
   logic here, not in the scripts.
-- `docs/` — user guides. `macos.md`, `windows.md` and `ssh-agent.md` are
-  real; `linux.md` is a placeholder (only macOS host → macOS/Windows guest
-  is supported today).
+- `scripts/lib/windows-vmware/` — shared helpers for the VMware Windows
+  sandbox: `lib.sh` (vmrun resolution + the post-build hardware-version
+  upgrade used by both the platform `build.sh` and the runner) and the
+  guest-side bridge templates (`bridge-relay.js`, `bridges.ps1`,
+  `start-relays.cmd`, `guest-setup.ps1`) that the runner renders into the
+  guest.
+- `docs/` — user guides. `macos.md`, `windows-qemu.md`, `windows-vmware.md` and
+  `ssh-agent.md` are real; `linux.md` is a placeholder (only macOS host →
+  macOS/Windows guest is supported today).
 - `images/mac/CHANGELOG.md` — per-image changelog, keep in sync with
   `image_version`; always keeps an `[Unreleased]` section on top and links to
   the release tags (`mac-v<version>`) at the bottom.
@@ -63,18 +81,21 @@ recipes; it is the authoritative build/release guide.
 
 - Build one image: `./scripts/build.sh sandbox-macos-tahoe` (all images if no
   arg). Fails if a VM with that name already exists — `tart delete
-  sandbox-macos-tahoe` first. The Windows image is built with
-  `WINDOWS_ISO_PATH=/path/to/iso ./scripts/build.sh sandbox-windows-11` —
-  `build.sh` delegates to `images/windows-arm64-qemu/build.sh` (swtpm + ISO
-  staging + a VNC build watchdog, `scripts/watch-build.sh`, that
-  auto-dismisses Windows Setup dialogs — needs `pip3 install vncdotool`),
-  see `images/windows-arm64-qemu/README.md`.
+  sandbox-macos-tahoe` first. The Windows images are built with
+  `WINDOWS_ISO_PATH=/path/to/iso ./scripts/build.sh sandbox-windows-11`
+  (QEMU) or `./scripts/build.sh sandbox-windows-11-vmware` (VMware) —
+  `build.sh` delegates to the platform wrapper (`images/windows-arm64-qemu/build.sh`
+  for swtpm + ISO staging, `images/windows-arm64-vmware/build.sh` for the
+  Fusion ARM64 driver staging; both run a VNC build watchdog,
+  `scripts/watch-build.sh`, that auto-dismisses Windows Setup dialogs —
+  needs `pip3 install vncdotool`), see the platform READMEs.
 - Fast HCL check without a build (from `images/mac/`):
   `packer validate -var-file=vars/<image>.pkrvars.hcl sandbox.pkr.hcl`.
 - Publish: `./scripts/deploy.sh <image>` — pushes `<version>` + `:latest` to
   `ghcr.io/<owner>/<image>`; macOS needs a one-time `tart login ghcr.io` with
-  `packages:write`, the Windows image delegates to its platform deploy
-  wrapper (`images/windows-arm64-qemu/deploy.sh`, oras push — needs
+  `packages:write`, the Windows images delegate to their platform deploy
+  wrappers (`images/windows-arm64-qemu/deploy.sh`,
+  `images/windows-arm64-vmware/deploy.sh`, oras push — needs
   `brew install oras` + `oras login ghcr.io`). Owner comes from the git
   remote, override with `GHCR_OWNER`.
 - Tag a release: `./scripts/tag.sh <image>` — creates and pushes the annotated

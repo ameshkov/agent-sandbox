@@ -8,7 +8,7 @@ performance — HVF can only virtualize ARM64 guests, so this image is
 ARM64-only).
 
 See [docs/macos.md](../../docs/macos.md) for the macOS images and
-[docs/windows.md](../../docs/windows.md) for the Windows sandbox user guide
+[docs/windows-qemu.md](../../docs/windows-qemu.md) for the Windows sandbox user guide
 (boot it with [scripts/run-windows-sandbox.sh](../../scripts/run-windows-sandbox.sh)).
 
 ## Prerequisites
@@ -46,10 +46,12 @@ directory ships its own wrapper. The wrapper:
 
 1. Verifies the host (Apple Silicon), the tools, and the Windows ISO
    (SHA256 against `iso_sha256` from the vars file).
-2. Downloads virtio-win.iso into `packer_cache/` unless
-   `VIRTIO_WIN_ISO_PATH` is set.
+2. Downloads virtio-win.iso into
+   `build/windows-arm64-qemu/packer_cache/` unless `VIRTIO_WIN_ISO_PATH`
+   is set.
 3. Mounts virtio-win.iso and stages the ARM64 `viostor` / `vioscsi` /
-   `NetKVM` driver subset into `drivers/staging/`, which Packer packs
+   `NetKVM` driver subset into
+   `build/windows-arm64-qemu/drivers/staging/`, which Packer packs
    into the same CD as `autounattend.xml` (WinPE drive-letter
    enumeration on ARM64 is non-deterministic, so a separate drivers CD
    would be a guessing game).
@@ -67,8 +69,12 @@ directory ships its own wrapper. The wrapper:
 6. Compresses the resulting qcow2 with zstd.
 
 A build takes roughly 30 minutes on an M-series Mac (Windows Setup itself
-dominates; HVF runs the guest at near-native speed). The output lands in
-`images/windows-arm64-qemu/output/sandbox-windows-11.qcow2`.
+dominates; HVF runs the guest at near-native speed). Everything per image
+lives in a top-level `build/` directory (gitignored):
+`build/windows-arm64-<platform>/output/`
+(`sandbox-windows-11.qcow2`, compressed with zstd), plus `packer_cache/`
+and `drivers/staging/`. The macOS/tart images build no files and have no
+such directory.
 
 ## What's in the image
 
@@ -78,6 +84,10 @@ dominates; HVF runs the guest at near-native speed). The output lands in
 | VirtIO drivers | viostor/vioscsi, NetKVM, vioserial, balloon + qemu guest agent (from virtio-win guest tools) |
 | Chocolatey | Community package manager (versions pinned in the vars file) |
 | Node.js, Python, Git, gh, ripgrep, jq, curl | Choco packages (versions from the vars file) |
+| Go, Vim, NuGet, make, MinGW-w64 | Choco packages (versions from the vars file) |
+| Rust | Via rustup (arm64 host toolchain + MSVC targets for x86_64/i686/aarch64), `rust`/`cargo` on PATH |
+| VS2022 Build Tools | Choco + `setup.exe` finalizer: .NET 4.8/.NET Core SDKs, VC++ workload (x86/x64/ARM/ARM64), CMake, Windows 11 SDK |
+| WiX, protoc, NASM, LLVM | Choco packages (versions from the vars file) |
 | Visual Studio Code | Native arm64 build, latest stable, direct download; `code` on PATH |
 | Google Chrome | Chrome for Testing snapshot, hash-pinned (see the vars file); x64, runs under Prism emulation |
 | Firefox | Choco package (x64, runs under Prism emulation) |
@@ -100,7 +110,7 @@ tag via `./scripts/tag.sh <image>`.
 - Run the sandbox: `./scripts/run-windows-sandbox.sh` — boots the qcow2
   under QEMU + swtpm, forwards SSH/RDP/OpenChamber ports, and bridges the
   host's Docker engine and SSH agent into the guest (see
-  [docs/windows.md](../../docs/windows.md)).
+  [docs/windows-qemu.md](../../docs/windows-qemu.md)).
 - Publish: `./scripts/deploy.sh sandbox-windows-11` pushes the qcow2 to
   `ghcr.io/<owner>/sandbox-windows-11:<version>` + `:latest` as an OCI
   artifact via `oras` (the platform ships its own deploy wrapper —

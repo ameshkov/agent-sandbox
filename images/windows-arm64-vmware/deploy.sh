@@ -1,13 +1,16 @@
 #!/bin/bash
-# images/windows-arm64-qemu/deploy.sh — publish the Windows sandbox image to GHCR.
+# images/windows-arm64-vmware/deploy.sh — publish the Windows sandbox image
+# to GHCR.
 #
 # Invoked by scripts/deploy.sh, which delegates to a platform's deploy.sh
 # when one exists (mirroring the build.sh delegation). The macOS images are
-# pushed with `tart push`; the Windows image is a qcow2 file, so it is
-# pushed to GHCR as an OCI artifact with oras.
+# pushed with `tart push`; the Windows images are plain files, so they are
+# pushed to GHCR as OCI artifacts with oras. The VMware image is the whole
+# .vmx output directory (vmx + vmdk + nvram), packed into a single tar.gz
+# that consumers extract and clone.
 #
 # Usage:
-#   images/windows-arm64-qemu/deploy.sh [<image>]
+#   images/windows-arm64-vmware/deploy.sh [<image>]
 #
 # <image> defaults to the single vars file in vars/ (must be passed when
 # more than one image exists).
@@ -40,7 +43,7 @@ else
   vars_files=("$platform_dir"/vars/*.pkrvars.hcl)
   if [ "${#vars_files[@]}" -ne 1 ]; then
     echo "ERROR: expected exactly one vars file in $platform_dir/vars/," >&2
-    echo "       pass the image name explicitly (e.g. sandbox-windows-11)." >&2
+    echo "       pass the image name explicitly (e.g. sandbox-windows-11-vmware)." >&2
     exit 1
   fi
   image_name=$(basename "${vars_files[0]}" .pkrvars.hcl)
@@ -74,13 +77,31 @@ if [ -z "$image_version" ]; then
   exit 1
 fi
 
-build_dir="$repo_root/build/windows-arm64-qemu"
-artifact="$build_dir/output/${image_name}.qcow2"
-if [ ! -f "$artifact" ]; then
-  echo "ERROR: no built image at $artifact" >&2
+build_dir="$repo_root/build/windows-arm64-vmware"
+vmx="$build_dir/output/${image_name}.vmx"
+if [ ! -f "$vmx" ]; then
+  echo "ERROR: no built image at $vmx" >&2
   echo "       Build it first: WINDOWS_ISO_PATH=/path/to/iso ./scripts/build.sh $image_name" >&2
   exit 1
 fi
+
+# ---- package the VM directory ---------------------------------------------
+#
+# The vmware-iso builder leaves the runnable VM in output/ (vmx + vmdk +
+# nvram; vmware.log and friends are noise). One tar.gz keeps the oras push
+# single-file and gives consumers a single pull artifact to extract.
+
+command -v tar >/dev/null 2>&1 || {
+  echo "ERROR: tar is not available." >&2
+  exit 1
+}
+
+artifact="$build_dir/output/${image_name}.tar.gz"
+echo "==> packing $artifact (excluding vmware logs)"
+(
+  cd "$build_dir/output" &&
+    tar -czf "$artifact" --exclude='*.log' ${image_name}.vmx ${image_name}.nvram *.vmdk
+)
 
 command -v oras >/dev/null 2>&1 || {
   echo "ERROR: oras is not installed on PATH." >&2
@@ -90,7 +111,7 @@ command -v oras >/dev/null 2>&1 || {
 
 # ---- push ------------------------------------------------------------------
 #
-# OCI artifact: the qcow2 travels as one layer of an OCI artifact manifest
+# OCI artifact: the tar.gz travels as one layer of an OCI artifact manifest
 # (no container image config needed). The media type is arbitrary for oras
 # round-trips — consumers `oras pull` the file back by its name. Multiple
 # tags are pushed in one go (1.0.0 + latest).
@@ -104,14 +125,15 @@ echo "Artifact: $artifact ($(du -h "$artifact" | awk '{print $1}'))"
 
 # Push from the output dir with the bare file name: oras stores the file
 # under the name it is given (consumers `oras pull` it back by that name,
-# e.g. scripts/run-windows-sandbox.sh expects sandbox-windows-11.qcow2),
-# and it rejects absolute paths by default.
+# e.g. scripts/run-windows-vmware-sandbox.sh expects
+# sandbox-windows-11-vmware.tar.gz), and it rejects absolute paths by
+# default.
 (
   cd "$build_dir/output" &&
     oras push \
-      --artifact-type "application/vnd.agent-sandbox.qcow2" \
+      --artifact-type "application/vnd.agent-sandbox.vmware-vm" \
       "$ref" \
-      "${image_name}.qcow2:application/vnd.oci.image.layer.v1.tar"
+      "${image_name}.tar.gz:application/vnd.oci.image.layer.v1.tar"
 )
 
 echo "Done: $registry_path:$image_version (and :latest)"

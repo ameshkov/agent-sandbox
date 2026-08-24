@@ -12,7 +12,7 @@
 # What it does:
 #
 #   1. Picks the disk image: $WINDOWS_IMAGE if set, else the local build
-#      output (images/windows-arm64-qemu/output/sandbox-windows-11.qcow2),
+#      output (build/windows-arm64-qemu/output/sandbox-windows-11.qcow2),
 #      else pulls sandbox-windows-11:latest from GHCR via oras (asks
 #      first). The pristine image is never written to: a qcow2 copy-on-write
 #      overlay plus a persistent TPM state and EFI NVRAM store live in
@@ -162,6 +162,10 @@ read_var() {
         "$vars_file" 2>/dev/null | head -n1
 }
 
+# Per-image build directory, mirroring images/windows-arm64-qemu/build.sh:
+# the local build output fallback lives in build/windows-arm64-qemu/.
+build_dir="$repo_root/build/windows-arm64-qemu"
+
 # --- step 1: prerequisites --------------------------------------------------
 
 require_cmd() {
@@ -192,7 +196,7 @@ pick_image() {
         return 0
     fi
 
-    local_output="$platform_dir/output/${image_name}.qcow2"
+    local_output="$build_dir/output/${image_name}.qcow2"
     if [ -f "$local_output" ]; then
         printf '%s\n' "$local_output"
         return 0
@@ -779,7 +783,7 @@ setup_guest_bridges() {
     elif confirm "Set up the bridges inside the guest too (Node relays + docker context 'host')?" y; then
         :
     else
-        info "Guest bridges not configured — the Node relays and the docker context must be set up manually (see docs/windows.md)."
+        info "Guest bridges not configured — the Node relays and the docker context must be set up manually (see docs/windows-qemu.md)."
         return 0
     fi
 

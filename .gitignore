@@ -4,10 +4,9 @@
 # Playwright MCP scratch dir (occasionally created by tooling)
 .playwright-mcp/
 
-# Windows image build artifacts (images/windows-arm64-qemu)
-images/windows-arm64-qemu/output/
-images/windows-arm64-qemu/packer_cache/
-images/windows-arm64-qemu/drivers/staging/
+# Per-image build artifacts (build/<image>/: output, packer_cache,
+# drivers/staging — created by the platform build wrappers)
+build/
 
 # Python bytecode
 __pycache__/

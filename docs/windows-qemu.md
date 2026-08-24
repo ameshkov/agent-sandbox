@@ -1,5 +1,9 @@
 # Set up a Windows sandbox (Apple Silicon)
 
+> **Prefer VMware?** This guide is the QEMU-based sandbox. A VMware
+> (Fusion) variant with the same guest and toolchain — plus a shared host
+> folder — exists too: [Set up a Windows VMware sandbox](windows-vmware.md).
+>
 > **What you'll get.** A local sandbox virtual machine: a Windows 11 (ARM64)
 > guest with a full coding toolchain and an AI coding agent (OpenCode)
 > pre-installed, plus the OpenCodeReview code-review CLI and the OpenChamber
@@ -60,9 +64,10 @@ ports, and wires up the bridges. From the repo root:
 ```
 
 On first use it picks the disk image: the local build output
-(`images/windows-arm64-qemu/output/sandbox-windows-11.qcow2`) when present,
-otherwise it asks to pull `sandbox-windows-11:latest` from GHCR via
-[oras](https://oras.land/) (one-time, ~14 GB — `brew install oras`). It then
+(`build/windows-arm64-qemu/output/sandbox-windows-11.qcow2`) when
+present, otherwise it asks to pull `sandbox-windows-11:latest` from GHCR
+via [oras](https://oras.land/) (one-time, ~14 GB — `brew install oras`).
+It then
 creates a working VM — a copy-on-write overlay plus persistent TPM and EFI
 state under `~/Library/Application Support/agent-sandbox/windows-11` — the
 pristine image is never written to. The guest boots headless or in a QEMU
@@ -178,6 +183,10 @@ and runs under `qemu-system-aarch64` with HVF. It ships:
 | VirtIO drivers | viostor/vioscsi, NetKVM, vioserial, balloon + qemu guest agent |
 | Chocolatey | Community package manager (versions pinned in the vars file) |
 | Node.js, Python, Git, gh, ripgrep, jq, curl | Choco packages (versions from the vars file) |
+| Go, Vim, NuGet, make, MinGW-w64 | Choco packages (versions from the vars file) |
+| Rust | Via rustup (arm64 host toolchain + MSVC targets), `rust`/`cargo` on PATH |
+| VS2022 Build Tools | Choco + `setup.exe` finalizer: .NET 4.8/.NET Core SDKs, VC++ workload (x86/x64/ARM/ARM64), CMake, Windows 11 SDK |
+| WiX, protoc, NASM, LLVM | Choco packages (versions from the vars file) |
 | Visual Studio Code | Native arm64 build, latest stable, direct download; `code` on PATH |
 | Google Chrome | Chrome for Testing snapshot (hash-pinned), x64 under emulation |
 | Firefox | Choco package (x64, runs under emulation) |
@@ -198,6 +207,9 @@ git --version
 gh --version
 rg --version
 jq --version
+go version
+rustc --version && cargo --version
+protoc --version
 code --version
 opencode --version
 ocr --version

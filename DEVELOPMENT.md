@@ -31,14 +31,18 @@ keep them in sync whenever you change how an image behaves.
 │   ├── deploy.sh                  # ./scripts/deploy.sh [<image>] — push to GHCR
 │   ├── tag.sh                     # ./scripts/tag.sh [<image>]    — create & push the release git tag
 │   ├── lib/macos-settings.sh      # shared: output helpers + user-settings copy logic (runner + sync)
+│   ├── lib/windows-vmware/        # shared: vmrun + hw-version upgrade helpers (lib.sh), guest bridge templates
 │   ├── run-macos-sandbox.sh       # user-facing: pull/run a VM + SSH agent & Docker bridges + user settings + OpenChamber
-│   ├── run-windows-sandbox.sh     # user-facing: boot the Windows qcow2 + SSH agent & Docker bridges + OpenChamber
+│   ├── run-windows-sandbox.sh     # user-facing: boot the Windows qcow2 (QEMU) + SSH agent & Docker bridges + OpenChamber
+│   ├── run-windows-vmware-sandbox.sh # user-facing: run the Windows VMware sandbox (vmrun) + bridges + OpenChamber
 │   └── sync-macos-sandbox.sh      # user-facing: copy host user settings into the guest on demand
 ├── docs/                          # User-facing, per host OS setup guides
 │   ├── macos.md                   # macOS (Apple Silicon) — pull & run, details
 │   ├── linux.md                   # placeholder (not supported yet)
-│   ├── windows.md                 # Windows 11 (ARM64) guest — run, details
+│   ├── windows-qemu.md            # Windows 11 (ARM64) guest under QEMU — run, details
+│   ├── windows-vmware.md          # Windows 11 (ARM64) guest under VMware Fusion — run, details
 │   └── ssh-agent.md               # share the host's SSH agent with the guest
+├── build/                         # Per-image build artifacts (gitignored)
 └── images/
     ├── mac/                       # macOS guest images (host: Apple Silicon Mac)
     │   ├── sandbox.pkr.hcl        # Packer template for all macOS images
@@ -46,17 +50,25 @@ keep them in sync whenever you change how an image behaves.
     │   ├── CHANGELOG.md           # Per-version changelog of the images
     │   └── vars/                  # One .pkrvars.hcl per image (macOS version)
     │       └── sandbox-macos-tahoe.pkrvars.hcl
-    └── windows-arm64-qemu/        # Windows 11 (ARM64) guest images (host: Apple Silicon)
-        ├── sandbox.pkr.hcl        # Packer template (QEMU plugin)
+    ├── windows-arm64-qemu/        # Windows 11 (ARM64) guest images (host: Apple Silicon)
+    │   ├── sandbox.pkr.hcl        # Packer template (QEMU plugin)
+    │   ├── autounattend.xml       # Windows unattended install config
+    │   ├── build.sh               # Platform build wrapper (ISO staging + swtpm + packer)
+    │   ├── deploy.sh              # Platform deploy wrapper (oras push of the qcow2)
+    │   ├── qemu-with-tpm.sh       # qemu_binary wrapper (TPM/USB/CD wiring)
+    │   ├── README.md
+    │   ├── CHANGELOG.md
+    │   └── vars/
+    │       └── sandbox-windows-11.pkrvars.hcl
+    └── windows-arm64-vmware/      # Windows 11 (ARM64) guest images, VMware (host: Apple Silicon)
+        ├── sandbox.pkr.hcl        # Packer template (vmware-iso plugin)
         ├── autounattend.xml       # Windows unattended install config
-        ├── build.sh               # Platform build wrapper (ISO staging + swtpm + packer)
-        ├── deploy.sh              # Platform deploy wrapper (oras push of the qcow2)
-        ├── qemu-with-tpm.sh       # qemu_binary wrapper (TPM/USB/CD wiring)
-        ├── drivers/               # Staging dir for ARM64 virtio drivers (build-time)
+        ├── build.sh               # Platform build wrapper (Fusion driver staging + packer)
+        ├── deploy.sh              # Platform deploy wrapper (tar.gz + oras push)
         ├── README.md
         ├── CHANGELOG.md
         └── vars/
-            └── sandbox-windows-11.pkrvars.hcl
+            └── sandbox-windows-11-vmware.pkrvars.hcl
 ```
 
 ## macOS images
@@ -275,12 +287,15 @@ is not in the repo) with `autounattend.xml` answering Setup. The builder:
     UI as a native service on port 4000 (with the `OPENCODE_BINARY` pin,
     like the macOS template), OpenSSH Server + RDP, and the bridge
     tooling (`socat` + `npiperelay` ship as utilities; the sandbox runner
-    uses in-image Node relays instead — see docs/windows.md). Finishes
+    uses in-image Node relays instead — see docs/windows-qemu.md). Finishes
     with hardening (Defender realtime scan, telemetry/indexer services,
     hibernation), a version banner, and cleanup.
 4. Leaves a qcow2 disk image at
-   `images/windows-arm64-qemu/output/sandbox-windows-11.qcow2`, compressed
-   with zstd.
+   `build/windows-arm64-qemu/output/sandbox-windows-11.qcow2`,
+   compressed with zstd. Per-image build artifacts (output/,
+   packer_cache/, drivers/staging/) live in a top-level
+   `build/windows-arm64-<platform>/` directory; the tart
+   (macOS) images build no files and have no such directory.
 
 ### Prerequisites (local builds)
 
@@ -304,11 +319,68 @@ WINDOWS_ISO_PATH=/path/to/Win11_24H2_English_Arm64.iso \
 platform
 wrapper — see its header comment), which verifies the ISO against
 `iso_sha256` from the vars file, downloads virtio-win.iso into
-`packer_cache/` when `VIRTIO_WIN_ISO_PATH` is unset, stages the ARM64
-driver subset into `drivers/staging/` (packed into the unattend CD —
-WinPE drive letters on ARM64 are non-deterministic, so a separate drivers
-CD is unreliable), starts `swtpm`, and runs `packer init` + `packer
-build`. A build takes roughly 30 minutes on an M-series Mac.
+`build/windows-arm64-qemu/packer_cache/` when
+`VIRTIO_WIN_ISO_PATH` is unset, stages the ARM64 driver subset into
+`build/windows-arm64-qemu/drivers/staging/` (packed into the
+unattend CD — WinPE drive letters on ARM64 are non-deterministic, so a
+separate drivers CD is unreliable), starts `swtpm`, and runs
+`packer init` + `packer build`. A build takes roughly 30 minutes on an
+M-series Mac.
+
+### VMware images (`images/windows-arm64-vmware`)
+
+The VMware sibling reuses the same Windows 11 Pro ARM64 guest and
+provisioners (the Choco/toolchain, OpenChamber, OpenSSH, and hardening
+provisioners are identical to the QEMU template) but is built with the
+[vmware-iso builder](https://github.com/vmware/packer-plugin-vmware)
+(`github.com/vmware/vmware` plugin v2+, Fusion 13.6+ on Apple Silicon):
+
+1. **Fusion hosts the installer** — `guest_os_type "arm-windows11-64"`,
+   hardware version 20, NVMe disk (in-box driver — no WinPE storage driver
+   needed), vmxnet3 NIC on NAT, EFI firmware. The plugin drives Fusion via
+   `vmrun`; the build is headless (VNC on the pinned port 5901) and, like
+   the QEMU image, runs the shared build watchdog.
+2. **The unattend CD carries the only staged driver** — the ARM64 vmxnet3
+   NIC driver (inf/sys/cat), extracted by `build.sh` from the Fusion app
+   bundle (`Contents/Library/isoimages/arm64/drivers-arm64.zip`) into
+   `drivers/staging/`. Windows 11 ARM64 has no in-box VMware NIC driver,
+   so `FirstLogonCommands` order 1 installs it before any network use
+   (WinRM from the host would never come up otherwise); WinPE is offline,
+   so no WinPE driver is staged.
+3. **VMware Tools are attached, not downloaded** — the builder's
+   `tools_mode "attach"` plugs in Fusion's own ARM64 tools ISO
+   (`Contents/Library/isoimages/arm64/windows.iso`), so the tools version
+   always matches the host Fusion; `autounattend.xml` installs them at
+   first logon, *before* WinRM comes up — the tools installer rebinds the
+   NIC and kills a live WinRM session, so a provisioner-based install
+   times out. The tools are what make `vmrun getGuestIPAddress` and
+   HGFS shared folders work at runtime).
+4. **Leaves a runnable vmx + vmdk** at
+   `build/windows-arm64-vmware/output/sandbox-windows-11-vmware.vmx`
+   (disk type 0, monolithic sparse; no build-time snapshot — the runner
+   makes a full `vmrun clone` as the working VM). `build.sh` then upgrades
+   the VM to the hardware version the installed Fusion writes for a new VM
+   (`vmrun upgradevm`, shared helper `scripts/lib/windows-vmware/lib.sh`):
+   the builder's level 20 VM would show a one-time "Upgrade this virtual
+   machine?" prompt on the first GUI start under a newer Fusion (22 on
+   Fusion 26). The runner upgrades its working clone the same way, so
+   artifacts built by older Fusion versions start clean too.
+
+Prerequisites: macOS + Apple Silicon, VMware Fusion 13.6+ (free for
+personal use), Packer, and the same bring-your-own Windows 11 ARM64 ISO
+(`WINDOWS_ISO_PATH`). Build:
+
+```bash
+WINDOWS_ISO_PATH=/path/to/Win11_25H2_English_Arm64_v2.iso \
+  ./scripts/build.sh sandbox-windows-11-vmware
+```
+
+The runtime side is `scripts/run-windows-vmware-sandbox.sh` — no port
+forwarding: the guest sits on Fusion's NAT network (vmnet8) and the host
+is its router, so the runner just discovers the guest IP via VMware Tools
+and exposes the bridges on the host's NAT address (the guest's default
+gateway — Fusion's NAT runs in userspace, no host interface; see
+[docs/windows-vmware.md](docs/windows-vmware.md)).
 
 ### Build watchdog
 
@@ -332,7 +404,8 @@ runs every capture in a subprocess with a hard timeout, so a hung
 VNC/OCR cycle cannot stall the watch. Prerequisites: `pip3 install
 vncdotool` + the Xcode command line tools; `build.sh` skips the watchdog
 with a warning when they are missing. Frames and logs land in
-`packer_cache/watchdog/` (gitignored).
+`build/windows-arm64-<platform>/packer_cache/watchdog/`
+(gitignored).
 
 ### Template variables
 
@@ -360,21 +433,25 @@ with a warning when they are missing. Frames and logs land in
 
 ### Publishing
 
-The macOS images are pushed with `tart push`; Windows images are qcow2
-files, so `images/windows-arm64-qemu/deploy.sh` pushes them to GHCR as an
-OCI artifact with `oras` — `scripts/deploy.sh` delegates to it
+The macOS images are pushed with `tart push`; the Windows images are plain
+files (qcow2 / vmx+vmdk tar.gz), so the platform deploy wrappers
+(`images/windows-arm64-qemu/deploy.sh`,
+`images/windows-arm64-vmware/deploy.sh`) push them to GHCR as OCI
+artifacts with `oras` — `scripts/deploy.sh` delegates to them
 automatically (mirroring the `build.sh` delegation):
 
 ```bash
 # From the repository root; needs `brew install oras` and a GHCR token
 # with write:packages (`oras login ghcr.io`)
 ./scripts/deploy.sh sandbox-windows-11
+./scripts/deploy.sh sandbox-windows-11-vmware
 ```
 
-This pushes `ghcr.io/<owner>/sandbox-windows-11:<image_version>` and
-`:latest`. Consumers pull the qcow2 back by its file name, e.g.
+This pushes `ghcr.io/<owner>/<image>:<image_version>` and `:latest` for
+each. Consumers pull the file back by its name, e.g.
 `scripts/run-windows-sandbox.sh` runs `oras pull` into its state dir when
-no local build output exists.
+no local build output exists (the VMware runner does the same for the
+tar.gz).
 
 ## Adding a new platform
 
