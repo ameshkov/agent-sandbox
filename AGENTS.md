@@ -36,7 +36,7 @@ recipes; it is the authoritative build/release guide.
   user settings into the guest once per VM (versioned marker inside the guest,
   see `docs/macos.md`), installs the sandbox environment rules into the
   guest's agents (`scripts/agent-rules.md`), and verifies OpenChamber.
-- `scripts/run-windows-sandbox.sh` — user-facing runner for the Windows
+- `scripts/run-windows-qemu-sandbox.sh` — user-facing runner for the Windows
   sandbox: boots the qcow2 under QEMU + swtpm (working VM = COW overlay +
   persistent TPM/NVRAM under `~/Library/Application Support/agent-sandbox/`),
   forwards SSH/RDP/WinRM/OpenChamber ports, bridges the host's SSH agent and
@@ -119,13 +119,15 @@ recipes; it is the authoritative build/release guide.
   `[<tag>]` entry, and never overwrites an existing tag. The tag is annotated
   and pushed to origin.
 - CHANGELOG format (`images/mac/CHANGELOG.md`, mirrored for new platforms):
-    - Always keep `## [Unreleased]` on top — never remove it; changes land
-      there between releases.
+    - Always keep `## [Unreleased]` on top — never remove it. *All* new
+      changes land there, under a `###` section (Added/Changed/Fixed/...);
+      never create or edit a release heading while landing changes.
     - A release heading is the tag name: `## [mac-v1.2.0] - <date>` (Keep a
-      Changelog / semver).
+      Changelog / semver). It is created only in the release step, when
+      `image_version` is bumped and the tag is cut — not per change.
     - At the bottom: `[unreleased]` → compare URL against the newest tag, and
       one `[mac-vX.Y.Z]` → `releases/tag/mac-vX.Y.Z` per release. Update both
-      in the same change as the entry.
+      in the same change as the release entry, never for Unreleased changes.
 - Release sequence: bump + changelog entry → commit → `./scripts/tag.sh
   <image>` → `./scripts/build.sh <image>` → `./scripts/deploy.sh <image>`.
   The full guide is in DEVELOPMENT.md → "Releasing a new image version".

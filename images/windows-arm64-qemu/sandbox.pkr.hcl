@@ -792,7 +792,7 @@ if (Test-Path $envFile) {
   }
 
   # ===== OpenSSH Server + RDP =====
-  # sshd gives the host a management channel (scripts/run-windows-sandbox.sh
+  # sshd gives the host a management channel (scripts/run-windows-qemu-sandbox.sh
   # forwards guest 22 to host 2222); RDP gives a desktop session. Password
   # auth is enabled for the Administrator account so the fixed sandbox
   # credentials from the vars file work.

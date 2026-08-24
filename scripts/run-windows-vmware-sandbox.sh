@@ -39,7 +39,7 @@
 #      --foreground also blocks until the VM stops.
 #   3. Bridges the host's SSH agent into the guest when SSH_AUTH_SOCK is
 #      overridden by a password manager (see docs/ssh-agent.md): a host-side
-#      socat turns the agent socket into TCP port 4200 on the host's
+#      socat turns the agent socket into TCP port 4300 on the host's
 #      vmnet8 address (reachable from the guest at that IP), and a
 #      guest-side Node relay (C:\tools\bridge-relay.js, rendered by the
 #      runner from scripts/lib/windows-vmware/bridge-relay.js and served
@@ -49,7 +49,7 @@
 #      scheduled task and auto-starts; the host side only lives for this
 #      run.
 #   4. Bridges the host's Docker engine the same way when one is running
-#      (Docker Desktop, Colima, OrbStack, ...): host socat on TCP 4201,
+#      (Docker Desktop, Colima, OrbStack, ...): host socat on TCP 4301,
 #      guest Node relay serving \\.\pipe\docker_engine, docker context
 #      'host' created and made the default, so `docker` and `docker
 #      compose` in the guest hit the host engine. --no-docker skips.
@@ -71,8 +71,8 @@
 #                          from the image's vars file; override after
 #                          changing it in the guest)
 #   SANDBOX_OPENCHAMBER_PORT guest port of OpenChamber (4000)
-#   SANDBOX_AGENT_PORT     TCP port for the SSH agent bridge (4200)
-#   SANDBOX_DOCKER_PORT    TCP port for the Docker engine bridge (4201)
+#   SANDBOX_AGENT_PORT     TCP port for the SSH agent bridge (4300)
+#   SANDBOX_DOCKER_PORT    TCP port for the Docker engine bridge (4301)
 #   GHCR_OWNER             GHCR owner for pulls (default: from git remote)
 #   NO_COLOR               disable colored output (any non-empty value)
 #
@@ -91,8 +91,8 @@ image_name=sandbox-windows-11-vmware
 platform_dir="$repo_root/images/windows-arm64-vmware"
 vars_file="$platform_dir/vars/${image_name}.pkrvars.hcl"
 host_state_dir="${SANDBOX_STATE_DIR:-$HOME/Library/Application Support/agent-sandbox/windows-11-vmware}"
-agent_port=${SANDBOX_AGENT_PORT:-4200}
-docker_port=${SANDBOX_DOCKER_PORT:-4201}
+agent_port=${SANDBOX_AGENT_PORT:-4300}
+docker_port=${SANDBOX_DOCKER_PORT:-4301}
 openchamber_port=${SANDBOX_OPENCHAMBER_PORT:-4000}
 guest_port=22
 
@@ -942,8 +942,8 @@ Environment:
   SANDBOX_STATE_DIR        working VM state dir
   WINDOWS_PASSWORD         Administrator password in the guest
   SANDBOX_OPENCHAMBER_PORT guest port of OpenChamber (4000)
-  SANDBOX_AGENT_PORT       TCP port for the SSH agent bridge (4200)
-  SANDBOX_DOCKER_PORT      TCP port for the Docker engine bridge (4201)
+  SANDBOX_AGENT_PORT       TCP port for the SSH agent bridge (4300)
+  SANDBOX_DOCKER_PORT      TCP port for the Docker engine bridge (4301)
   GHCR_OWNER               GHCR owner for pulls (git remote)
   NO_COLOR                 disable colored output
 EOF

@@ -273,7 +273,7 @@ against any remote engine.
 **The runner wires the host's engine into the guest automatically.** When a
 Docker engine socket is found on the host (Docker Desktop at
 `~/.docker/run/docker.sock`, Colima, OrbStack, or `/var/run/docker.sock`),
-it bridges it: a host-side `socat` exposes the socket on TCP `4201`
+it bridges it: a host-side `socat` exposes the socket on TCP `4301`
 (bound to the host's vmnet8 address — reachable from the guest), and a
 guest-side Node relay (served by the image's `node.exe`) presents it as
 the `\\.\pipe\docker_engine` named pipe — the exact pipe Docker on Windows
@@ -301,8 +301,8 @@ Notes:
   isn't started yet, the runner skips the bridge — start the engine and
   re-run the script (the setup is idempotent).
 - Pass `--no-docker` to skip; `SANDBOX_DOCKER_PORT` overrides the bridge
-  port (default `4201`; macOS sandbox uses `4101`, so both can run side by
-  side).
+  port (default `4301`; QEMU uses `4201`, macOS `4101`, so all three
+  sandboxes can run side by side).
 - Container-based test frameworks (testcontainers and similar) work out of
   the box: on Windows they dial the default named pipe, which *is* the
   bridged engine.
@@ -311,7 +311,7 @@ Notes:
 
 The runner also bridges a password-manager SSH agent (Bitwarden, 1Password,
 ...) into the guest: a host-side `socat` turns the agent socket into TCP
-`4200` on the host's NAT address (the guest's default gateway), and a
+`4300` on the host's NAT address (the guest's default gateway), and a
 guest-side Node relay serves it as the
 `\\.\pipe\openssh-ssh-agent` named pipe. The guest's `SSH_AUTH_SOCK`
 environment variable points at that pipe, so `ssh`/`git` inside the guest
@@ -324,7 +324,7 @@ Notes:
 - The host listener lives only for the run (it stays up in background mode
   until killed); the guest side persists via the ONLOGON task.
 - Pass `--no-agent` to skip; `SANDBOX_AGENT_PORT` overrides the bridge port
-  (default `4200`; macOS sandbox uses `4100`).
+  (default `4300`; QEMU uses `4200`, macOS `4100`).
 
 ### Shared host folder
 
@@ -372,8 +372,8 @@ Environment variables (defaults in parentheses):
 | `SANDBOX_STATE_DIR` | `~/Library/Application Support/agent-sandbox/windows-11-vmware` | Working VM state (extracted base + clone) |
 | `WINDOWS_PASSWORD` | from the vars file | Administrator password in the guest (override after changing it) |
 | `SANDBOX_OPENCHAMBER_PORT` | `4000` | Guest port of OpenChamber |
-| `SANDBOX_AGENT_PORT` | `4200` | TCP port for the SSH agent bridge |
-| `SANDBOX_DOCKER_PORT` | `4201` | TCP port for the Docker engine bridge |
+| `SANDBOX_AGENT_PORT` | `4300` | TCP port for the SSH agent bridge |
+| `SANDBOX_DOCKER_PORT` | `4301` | TCP port for the Docker engine bridge |
 | `GHCR_OWNER` | from the git remote | GHCR owner used when pulling the image |
 | `NO_COLOR` | unset | Any non-empty value disables colored output |
 | `FUSION_APP_PATH` | `/Applications/VMware Fusion.app` | VMware Fusion install location |

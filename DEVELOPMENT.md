@@ -33,7 +33,7 @@ keep them in sync whenever you change how an image behaves.
 │   ├── lib/macos-settings.sh      # shared: output helpers + user-settings copy logic (runner + sync)
 │   ├── lib/windows-vmware/        # shared: vmrun + hw-version upgrade helpers (lib.sh), guest bridge templates
 │   ├── run-macos-sandbox.sh       # user-facing: pull/run a VM + SSH agent & Docker bridges + user settings + OpenChamber
-│   ├── run-windows-sandbox.sh     # user-facing: boot the Windows qcow2 (QEMU) + SSH agent & Docker bridges + OpenChamber
+│   ├── run-windows-qemu-sandbox.sh     # user-facing: boot the Windows qcow2 (QEMU) + SSH agent & Docker bridges + OpenChamber
 │   ├── run-windows-vmware-sandbox.sh # user-facing: run the Windows VMware sandbox (vmrun) + bridges + OpenChamber
 │   └── sync-macos-sandbox.sh      # user-facing: copy host user settings into the guest on demand
 ├── docs/                          # User-facing, per host OS setup guides
@@ -449,7 +449,7 @@ automatically (mirroring the `build.sh` delegation):
 
 This pushes `ghcr.io/<owner>/<image>:<image_version>` and `:latest` for
 each. Consumers pull the file back by its name, e.g.
-`scripts/run-windows-sandbox.sh` runs `oras pull` into its state dir when
+`scripts/run-windows-qemu-sandbox.sh` runs `oras pull` into its state dir when
 no local build output exists (the VMware runner does the same for the
 tar.gz).
 

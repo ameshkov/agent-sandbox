@@ -188,7 +188,9 @@ fi
 mount_dir=$(mktemp -d -t agent-sandbox-virtio-win.XXXXXX)
 swtpm_pidfile=""
 cleanup() {
-  stop_watchdog
+  # stop_watchdog is defined later in this script; ignore it when the
+  # build aborts before the watchdog even started.
+  declare -F stop_watchdog >/dev/null 2>&1 && stop_watchdog
   hdiutil detach "$mount_dir" -quiet 2>/dev/null || true
   rmdir "$mount_dir" 2>/dev/null || true
   if [ -f "$swtpm_pidfile" ]; then
@@ -204,10 +206,16 @@ hdiutil attach -nobrowse -readonly -mountpoint "$mount_dir" "$VIRTIO_WIN_ISO_PAT
 rm -rf "$staging_dir"
 mkdir -p "$staging_dir"
 
-# Drivers WinPE needs at install time: viostor (virtio-blk — the boot
-# disk), vioscsi (belt-and-braces for virtio-scsi) and NetKVM (the NIC —
-# without it the FirstLogonCommands network step hangs forever).
-winpe_drivers=(viostor vioscsi NetKVM)
+# Drivers staged onto the unattend CD and installed at first logon (the
+# autounattend.xml pnputil loop processes the whole drivers/staging tree):
+# viostor (virtio-blk — the boot disk), vioscsi (belt-and-braces for
+# virtio-scsi), NetKVM (the NIC — without it the FirstLogonCommands
+# network step hangs forever), and viogpudo (the virtio-gpu display-only
+# driver). viogpudo has no matching device during setup, so pnputil just
+# lands it in the driver store; the runtime VM's virtio-gpu-pci binds it
+# on first boot, which is what makes the guest resolution follow the QEMU
+# window (VIRTIO_GPU_EVENT_DISPLAY).
+winpe_drivers=(viostor vioscsi NetKVM viogpudo)
 missing=()
 for d in "${winpe_drivers[@]}"; do
   src="$mount_dir/$d/w11/ARM64"

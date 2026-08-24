@@ -104,7 +104,7 @@ echo "Artifact: $artifact ($(du -h "$artifact" | awk '{print $1}'))"
 
 # Push from the output dir with the bare file name: oras stores the file
 # under the name it is given (consumers `oras pull` it back by that name,
-# e.g. scripts/run-windows-sandbox.sh expects sandbox-windows-11.qcow2),
+# e.g. scripts/run-windows-qemu-sandbox.sh expects sandbox-windows-11.qcow2),
 # and it rejects absolute paths by default.
 (
   cd "$build_dir/output" &&

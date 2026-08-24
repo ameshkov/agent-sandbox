@@ -13,6 +13,35 @@ the next release.
 
 ## [Unreleased]
 
+### Added
+
+- The virtual display is now a virtio-gpu-pci (virtio-gpu) instead of
+  ramfb at runtime: the image stages the ARM64 `viogpudo` (virtio-gpu
+  display-only) driver onto the unattend CD, so first logon lands it in
+  the driver store and the runtime VM's virtio-gpu-pci binds it.
+  Resizing the QEMU window now changes the guest's resolution
+  (`VIRTIO_GPU_EVENT_DISPLAY`) instead of only scaling the framebuffer.
+  The image build itself keeps ramfb (WinPE has no display driver).
+
+### Changed
+
+- The QEMU runner (`scripts/run-windows-qemu-sandbox.sh`) boots the guest
+  in a resizable window: it passes `-display cocoa,zoom-to-fit=on` (the
+  cocoa window is fixed-size otherwise) and replaced `-device ramfb` with
+  `-device virtio-gpu-pci`. Full screen is available from the QEMU
+  window's View menu → Enter Fullscreen.
+- `images/windows-arm64-qemu/build.sh` — the EXIT trap no longer prints
+  `stop_watchdog: command not found` when the build aborts before the
+  watchdog function is defined (it now checks before calling it).
+- `scripts/run-windows-qemu-sandbox.sh` — the working VM is recreated
+  when the pristine image *changes*, not just when its path changes: the
+  backing marker now records path + size + mtime, and the stale overlay /
+  EFI NVRAM / TPM state are discarded (previously a rebuild that replaced
+  the file at the same path stacked the old overlay on the new base — a
+  corrupt disk that dropped Windows to the UEFI shell). The EFI NVRAM is
+  also seeded from the build output's `efivars.fd` when one exists, so
+  Windows' own Boot0000 is used instead of the empty edk2 template.
+
 ## [windows-arm64-qemu-v1.1.0] - 2026-08-24
 
 ### Changed
@@ -89,7 +118,7 @@ the next release.
   web UI as a native service on port 4000, OpenSSH Server + RDP, a Docker
   CLI client (remote engine via the host bridge), and the bridge tooling
   (`socat` + `npiperelay`) as utilities.
-- `scripts/run-windows-sandbox.sh` — the user-facing Windows sandbox
+- `scripts/run-windows-qemu-sandbox.sh` — the user-facing Windows sandbox
   runner, landing together with the user guide `docs/windows-qemu.md`: boots
   the qcow2 under `qemu-system-aarch64` + swtpm (working VM = COW overlay
   with persistent TPM/NVRAM under `~/Library/Application Support/

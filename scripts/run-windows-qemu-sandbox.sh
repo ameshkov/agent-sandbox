@@ -1,9 +1,9 @@
 #!/bin/bash
 #
-# run-windows-sandbox.sh — run and wire up a Windows 11 (ARM64) sandbox VM.
+# run-windows-qemu-sandbox.sh — run and wire up a Windows 11 (ARM64) sandbox VM.
 #
 # Usage:
-#   ./scripts/run-windows-sandbox.sh [--headless] [--foreground]
+#   ./scripts/run-windows-qemu-sandbox.sh [--headless] [--foreground]
 #                                    [--no-agent] [--no-docker] [--reset]
 #
 # The Windows sandbox is a qcow2 disk image (built by
@@ -23,14 +23,17 @@
 #      TPM state must persist for the credentials inside the guest to keep
 #      working) and boots the overlay with the same wiring the image was
 #      built with (see images/windows-arm64-qemu/qemu-with-tpm.sh): ARM
-#      virt machine, HVF accelerator, AAVMF UEFI, ramfb display, xhci +
-#      keyboard + tablet. Guest ports are forwarded to the host:
+#      virt machine, HVF accelerator, AAVMF UEFI, virtio-gpu-pci display,
+#      xhci + keyboard + tablet. Guest ports are forwarded to the host:
 #      SSH 2222, RDP 3389, OpenChamber 4000, WinRM 5985. The guest
 #      auto-logs in (AutoAdminLogon) and the OpenChamber scheduled task
 #      fires at logon, so the web UI comes up without interaction. By
 #      default qemu runs in the background (log:
 #      ~/Library/Logs/agent-sandbox/qemu-windows-11.log); --foreground
-#      keeps the terminal attached instead.
+#      keeps the terminal attached instead. The Cocoa window is resizable
+#      by default (-display cocoa,zoom-to-fit=on): drag it and the guest
+#      scales to fit while keeping its aspect ratio; the window's View
+#      menu offers native full screen and toggling Zoom To Fit.
 #   3. Bridges the host's SSH agent into the guest when SSH_AUTH_SOCK is
 #      overridden by a password manager (see docs/ssh-agent.md): a host-side
 #      socat turns the agent socket into TCP port 4200 on the host
@@ -245,31 +248,47 @@ ensure_working_vm() {
         rm -rf "$host_state_dir"
     fi
 
-    mkdir -p "$host_state_dir/tpm"
+    mkdir -p "$host_state_dir"
+
+    # Identity of the pristine image: path + size + mtime. A rebuild (or a
+    # new pull) replaces the file at the same path, so path alone would
+    # silently stack the old overlay on a different base — a corrupt disk.
+    pristine_id="$image_path|$(stat -f '%z' "$image_path")|$(stat -f '%m' "$image_path")"
 
     if [ -f "$overlay" ] && [ -f "$backing_marker" ] &&
-        [ "$(cat "$backing_marker")" = "$image_path" ]; then
+        [ "$(cat "$backing_marker")" = "$pristine_id" ]; then
         ok "Working VM exists ($overlay)."
         return 0
     fi
 
     if [ -f "$overlay" ]; then
         warn "The backing image changed (new build or pull) — recreating the working VM."
+        warn "Discarding the old overlay, EFI NVRAM, and TPM state (they belong to the previous image)."
         rm -f "$overlay"
+        rm -f "$host_state_dir/efivars.fd"
+        rm -rf "$host_state_dir/tpm"
     fi
 
     cmd "qemu-img create -f qcow2 -F qcow2 -b $image_path $overlay"
     qemu-img create -f qcow2 -F qcow2 -b "$image_path" "$overlay" >/dev/null
-    printf '%s\n' "$image_path" >"$backing_marker"
+    printf '%s\n' "$pristine_id" >"$backing_marker"
 
-    # EFI NVRAM: copy the edk2 template once and reuse it, so Windows' own
-    # boot entries persist across reruns (fresh NVRAM has no Boot0000 and
-    # relies on the \EFI\BOOT\bootaa64.efi fallback the installer writes).
+    mkdir -p "$host_state_dir/tpm"
+
+    # EFI NVRAM: prefer the vars store the image was built with (it holds
+    # Windows' own Boot0000 for exactly this install); otherwise copy the
+    # edk2 template and rely on the \EFI\BOOT\bootaa64.efi fallback the
+    # installer writes (a fresh NVRAM has no Boot0000).
     if [ ! -f "$host_state_dir/efivars.fd" ]; then
-        efi_template=/opt/homebrew/share/qemu/edk2-arm-vars.fd
-        [ -f "$efi_template" ] ||
-            die "EFI NVRAM template not found at $efi_template — is Homebrew's qemu installed?"
-        cp "$efi_template" "$host_state_dir/efivars.fd"
+        if [ -f "${image_path%/*}/efivars.fd" ]; then
+            cp "${image_path%/*}/efivars.fd" "$host_state_dir/efivars.fd"
+            info "EFI NVRAM: seeded from the build output's efivars.fd."
+        else
+            efi_template=/opt/homebrew/share/qemu/edk2-arm-vars.fd
+            [ -f "$efi_template" ] ||
+                die "EFI NVRAM template not found at $efi_template — is Homebrew's qemu installed?"
+            cp "$efi_template" "$host_state_dir/efivars.fd"
+        fi
     fi
     ok "Working VM created ($overlay)."
 }
@@ -345,9 +364,13 @@ launch_qemu() {
 
     # Same wiring the image was built with (qemu-with-tpm.sh), minus the
     # install media: virt machine, HVF, AAVMF UEFI, swtpm TPM 2.0 (ppi=off
-    # avoids a QEMU 11.1 HVF regression), ramfb display, xhci + keyboard +
-    # tablet. The disk is the COW overlay; user-mode networking forwards
-    # the guest ports the image ships (SSH, RDP, OpenChamber, WinRM).
+    # avoids a QEMU 11.1 HVF regression), xhci + keyboard + tablet. The
+    # disk is the COW overlay; user-mode networking forwards the guest
+    # ports the image ships (SSH, RDP, OpenChamber, WinRM). The display is
+    # virtio-gpu-pci, not the ramfb the image was *built* with: the
+    # image's driver store contains the viogpudo (virtio-gpu display-only)
+    # driver, so resizing the QEMU window changes the guest resolution
+    # (VIRTIO_GPU_EVENT_DISPLAY), instead of just scaling the framebuffer.
     qemu_args=(
         -machine "virt,gic-version=max"
         -accel hvf
@@ -362,7 +385,7 @@ launch_qemu() {
         -chardev "socket,id=chrtpm,path=$host_state_dir/swtpm.sock"
         -tpmdev "emulator,id=tpm0,chardev=chrtpm"
         -device "tpm-tis-device,tpmdev=tpm0,ppi=off"
-        -device ramfb
+        -device virtio-gpu-pci
         -device "qemu-xhci,id=usb"
         -device "usb-kbd,bus=usb.0"
         -device "usb-tablet,bus=usb.0"
@@ -370,7 +393,11 @@ launch_qemu() {
     if [ "$headless" = 1 ]; then
         qemu_args+=(-display none)
     else
-        qemu_args+=(-display cocoa)
+        # zoom-to-fit=on: QEMU's cocoa window is created without the
+        # resizable style mask unless this is set — it makes the window
+        # draggable-resizable and scales the guest to fit (the View menu
+        # can toggle it off, and Enter Fullscreen turns on full screen).
+        qemu_args+=(-display cocoa,zoom-to-fit=on)
     fi
 
     qemu_log="$HOME/Library/Logs/agent-sandbox/qemu-windows-11.log"
@@ -909,7 +936,7 @@ print_summary() {
 
 usage() {
     cat <<'EOF'
-Usage: run-windows-sandbox.sh [options]
+Usage: run-windows-qemu-sandbox.sh [options]
 
 Runs the Windows 11 (ARM64) sandbox VM under qemu-system-aarch64 and wires
 up the SSH agent and Docker bridges.

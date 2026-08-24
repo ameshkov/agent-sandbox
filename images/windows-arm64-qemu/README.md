@@ -9,7 +9,7 @@ ARM64-only).
 
 See [docs/macos.md](../../docs/macos.md) for the macOS images and
 [docs/windows-qemu.md](../../docs/windows-qemu.md) for the Windows sandbox user guide
-(boot it with [scripts/run-windows-sandbox.sh](../../scripts/run-windows-sandbox.sh)).
+(boot it with [scripts/run-windows-qemu-sandbox.sh](../../scripts/run-windows-qemu-sandbox.sh)).
 
 ## Prerequisites
 
@@ -81,7 +81,7 @@ such directory.
 | Component | Detail |
 | --- | --- |
 | Windows 11 Pro (ARM64) | Unactivated (watermark); generic Pro key used for Setup |
-| VirtIO drivers | viostor/vioscsi, NetKVM, vioserial, balloon + qemu guest agent (from virtio-win guest tools) |
+| VirtIO drivers | viostor/vioscsi, NetKVM, viogpudo (virtio-gpu display — drives the runtime VM's virtio-gpu-pci) from the unattend CD; vioserial, balloon + qemu guest agent from virtio-win guest tools |
 | Chocolatey | Community package manager (versions pinned in the vars file) |
 | Node.js, Python, Git, gh, ripgrep, jq, curl | Choco packages (versions from the vars file) |
 | Go, Vim, NuGet, make, MinGW-w64 | Choco packages (versions from the vars file) |
@@ -107,10 +107,10 @@ tag via `./scripts/tag.sh <image>`.
 
 ## Running and publishing
 
-- Run the sandbox: `./scripts/run-windows-sandbox.sh` — boots the qcow2
-  under QEMU + swtpm, forwards SSH/RDP/OpenChamber ports, and bridges the
-  host's Docker engine and SSH agent into the guest (see
-  [docs/windows-qemu.md](../../docs/windows-qemu.md)).
+- Run the sandbox: `./scripts/run-windows-qemu-sandbox.sh` — boots the qcow2
+  under QEMU + swtpm in a resizable window, forwards SSH/RDP/OpenChamber
+  ports, and bridges the host's Docker engine and SSH agent into the
+  guest (see [docs/windows-qemu.md](../../docs/windows-qemu.md)).
 - Publish: `./scripts/deploy.sh sandbox-windows-11` pushes the qcow2 to
   `ghcr.io/<owner>/sandbox-windows-11:<version>` + `:latest` as an OCI
   artifact via `oras` (the platform ships its own deploy wrapper —

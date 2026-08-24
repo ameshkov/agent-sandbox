@@ -14,7 +14,10 @@
 #   2. `ramfb` simple linear framebuffer. ARM `virt` machines ship no
 #      graphics card by default; ramfb works because EFI firmware writes
 #      to it directly (via GOP) — virtio-gpu needs guest drivers the
-#      Windows installer doesn't have yet.
+#      Windows installer doesn't have yet. (The build stages the ARM64
+#      viogpudo driver onto the unattend CD anyway, so the *runtime*
+#      runner can boot the built image with virtio-gpu-pci and the guest
+#      driver store resolves it.)
 #   3. USB controller + keyboard + tablet (no input devices otherwise;
 #      usb-tablet gives absolute pointing).
 #   4. virtio-win.iso attached as a CD-ROM via usb-storage, so the built

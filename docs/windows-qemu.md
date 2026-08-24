@@ -60,7 +60,7 @@ The repo ships a runner script that boots the image, forwards the guest
 ports, and wires up the bridges. From the repo root:
 
 ```bash
-./scripts/run-windows-sandbox.sh
+./scripts/run-windows-qemu-sandbox.sh
 ```
 
 On first use it picks the disk image: the local build output
@@ -96,6 +96,13 @@ without a window, `--no-agent` / `--no-docker` to skip a bridge, or
 `--reset` to wipe the working VM and start fresh from the pristine image.
 
 > [!NOTE]
+> The QEMU window drives the guest resolution directly: the runtime VM
+> uses a virtio-gpu-pci display and the image ships the virtio-gpu driver
+> (viogpudo), so drag the window edges to resize and Windows changes its
+> display resolution to match (no scaling). The QEMU window's **View**
+> menu still offers **Enter Fullscreen** (Cmd+F) for native macOS full
+> screen and **Zoom To Fit** to toggle the guest-scaling mode.
+>
 > The working VM is your sandbox: installs, config, and agent state
 > accumulate in the COW overlay and survive restarts (like a Tart clone on
 > the macOS side). `--reset` deletes the overlay, the TPM state, and the EFI
@@ -153,13 +160,13 @@ openchamber restart
   ```
 
   (or `pkill -f qemu-system-aarch64`). Start it again with
-  `./scripts/run-windows-sandbox.sh`.
+  `./scripts/run-windows-qemu-sandbox.sh`.
 
 - **Reset the sandbox** — wipe the working VM and start from the pristine
   image:
 
   ```bash
-  ./scripts/run-windows-sandbox.sh --reset
+  ./scripts/run-windows-qemu-sandbox.sh --reset
   ```
 
 - **Run several sandboxes side by side** — set `SANDBOX_STATE_DIR` to a
@@ -282,8 +289,8 @@ Notes:
   isn't started yet, the runner skips the bridge — start the engine and
   re-run the script (the setup is idempotent).
 - Pass `--no-docker` to skip; `SANDBOX_DOCKER_PORT` overrides the bridge
-  port (default `4201`; macOS sandbox uses `4101`, so both can run side by
-  side).
+  port (default `4201`; VMware uses `4301`, macOS `4101`, so all three
+  sandboxes can run side by side).
 - Container-based test frameworks (testcontainers and similar) work out of
   the box: on Windows they dial the default named pipe, which *is* the
   bridged engine.
@@ -304,7 +311,7 @@ Notes:
 - The host listener lives only for the run (it stays up in background mode
   until killed); the guest side persists via the ONLOGON task.
 - Pass `--no-agent` to skip; `SANDBOX_AGENT_PORT` overrides the bridge port
-  (default `4200`; macOS sandbox uses `4100`).
+  (default `4200`; VMware uses `4300`, macOS `4100`).
 
 ### No shared folder
 
@@ -320,7 +327,7 @@ volume. Your code stays on the host; get it into the sandbox with:
 
 ### Runner script reference
 
-[`scripts/run-windows-sandbox.sh`](../scripts/run-windows-sandbox.sh) is the
+[`scripts/run-windows-qemu-sandbox.sh`](../scripts/run-windows-qemu-sandbox.sh) is the
 automated way to boot, run, and wire up the sandbox. Everything it accepts:
 
 Options:
