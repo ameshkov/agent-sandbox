@@ -80,4 +80,4 @@ openchamber_port = 4000
 # besides :latest). For every release: bump it, add a CHANGELOG.md entry,
 # and create the windows-arm64-qemu-v<version> git tag
 # (./scripts/tag.sh <image>).
-image_version = "1.0.0"
+image_version = "1.1.0"
