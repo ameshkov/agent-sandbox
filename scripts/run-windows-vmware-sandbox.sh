@@ -15,8 +15,8 @@
 #
 #   1. Picks the VM archive: $WINDOWS_VMWARE_IMAGE if set, else the local
 #      build output (build/windows-arm64-vmware/output/
-#      sandbox-windows-11-vmware.tar.gz, created on demand), else pulls
-#      sandbox-windows-11-vmware:latest from GHCR via oras (asks first).
+#      sandbox-windows-11-arm64-vmware.tar.gz, created on demand), else pulls
+#      sandbox-windows-11-arm64-vmware:latest from GHCR via oras (asks first).
 #      The pristine VM is never written to: the archive is extracted into
 #      ~/Library/Application Support/agent-sandbox/windows-11-arm64-vmware/ and
 #      a full clone becomes the working VM, so the working VM survives
@@ -63,7 +63,7 @@
 # are macOS-flavored and not installed into Windows guests.
 #
 # Environment (defaults in parentheses):
-#   WINDOWS_VMWARE_IMAGE   path to a local sandbox-windows-11-vmware.tar.gz
+#   WINDOWS_VMWARE_IMAGE   path to a local sandbox-windows-11-arm64-vmware.tar.gz
 #                          to run instead of the discovered/pulled one
 #   SANDBOX_STATE_DIR      working VM state dir
 #                          (~/Library/Application Support/agent-sandbox/windows-11-arm64-vmware)
@@ -87,15 +87,15 @@ repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 
 # --- configuration ----------------------------------------------------------
 
-image_name=sandbox-windows-11-vmware
+image_name=sandbox-windows-11-arm64-vmware
 platform_dir="$repo_root/images/windows-arm64-vmware"
 vars_file="$platform_dir/vars/${image_name}.pkrvars.hcl"
 host_state_dir="${SANDBOX_STATE_DIR:-$HOME/Library/Application Support/agent-sandbox/windows-11-arm64-vmware}"
 # The working clone's display name in Fusion's VM library. `vmrun clone`
-# inherits the source vmx's displayName ("sandbox-windows-11-vmware"), so
+# inherits the source vmx's displayName ("sandbox-windows-11-arm64-vmware"), so
 # without a rename the working VM would be indistinguishable from the
 # pristine base (both would show under the base's name).
-vm_display_name="agent-sandbox-windows-11-vmware"
+vm_display_name="agent-sandbox-windows-11-arm64-vmware"
 agent_port=${SANDBOX_AGENT_PORT:-4300}
 docker_port=${SANDBOX_DOCKER_PORT:-4301}
 openchamber_port=${SANDBOX_OPENCHAMBER_PORT:-4000}
@@ -950,7 +950,7 @@ Options:
   -h, --help     Show this help
 
 Environment:
-  WINDOWS_VMWARE_IMAGE     path to a local sandbox-windows-11-vmware.tar.gz
+  WINDOWS_VMWARE_IMAGE     path to a local sandbox-windows-11-arm64-vmware.tar.gz
   SANDBOX_STATE_DIR        working VM state dir
   WINDOWS_PASSWORD         Administrator password in the guest
   SANDBOX_OPENCHAMBER_PORT guest port of OpenChamber (4000)

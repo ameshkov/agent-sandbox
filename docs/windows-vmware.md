@@ -71,14 +71,14 @@ VM, and wires up the bridges. From the repo root:
 ```
 
 On first use it picks the image archive: the local build output
-(`build/windows-arm64-vmware/output/sandbox-windows-11-vmware.tar.gz`)
-when present, otherwise it asks to pull `sandbox-windows-11-vmware:latest`
+(`build/windows-arm64-vmware/output/sandbox-windows-11-arm64-vmware.tar.gz`)
+when present, otherwise it asks to pull `sandbox-windows-11-arm64-vmware:latest`
 from GHCR via [oras](https://oras.land/) (one-time, ~20 GB —
 `brew install oras`). It then extracts the pristine VM and clones a
 working VM under
 `~/Library/Application Support/agent-sandbox/windows-11-arm64-vmware/`
 (the clone's display name in Fusion's library is
-`agent-sandbox-windows-11-vmware` — the base keeps the image's name) —
+`agent-sandbox-windows-11-arm64-vmware` — the base keeps the image's name) —
 the pristine image is never written to. On the first clone the runner
 also upgrades the working VM's virtual hardware to the version your
 Fusion supports (`vmrun upgradevm`, recorded once per clone) — without
@@ -199,7 +199,7 @@ openchamber restart
   (override with `SANDBOX_STATE_DIR`). The next run re-pulls the archive
   and re-clones. Without `--yes` it asks before deleting. Note: Fusion's VM
   library may still list the deleted working VM
-  (`agent-sandbox-windows-11-vmware`) — remove the stale entry in the
+  (`agent-sandbox-windows-11-arm64-vmware`) — remove the stale entry in the
   Fusion UI (harmless).
 
 - **Run several sandboxes side by side** — set `SANDBOX_STATE_DIR` to a
@@ -390,7 +390,7 @@ Environment variables (defaults in parentheses):
 
 | Variable | Default | What it does |
 | --- | --- | --- |
-| `WINDOWS_VMWARE_IMAGE` | — | Path to a local `sandbox-windows-11-vmware.tar.gz` to run instead of the discovered/pulled one |
+| `WINDOWS_VMWARE_IMAGE` | — | Path to a local `sandbox-windows-11-arm64-vmware.tar.gz` to run instead of the discovered/pulled one |
 | `SANDBOX_STATE_DIR` | `~/Library/Application Support/agent-sandbox/windows-11-arm64-vmware` | Working VM state (extracted base + clone) |
 | `WINDOWS_PASSWORD` | from the vars file | Administrator password in the guest (override after changing it) |
 | `SANDBOX_OPENCHAMBER_PORT` | `4000` | Guest port of OpenChamber |

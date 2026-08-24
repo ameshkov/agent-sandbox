@@ -13,7 +13,7 @@
 
   Schema components carry processorArchitecture="arm64". The
   Administrator password must stay in sync with the winrm_password
-  variable in vars/sandbox-windows-11.pkrvars.hcl — change both together.
+  variable in vars/sandbox-windows-11-arm64-qemu.pkrvars.hcl — change both together.
 
   References:
   - https://learn.microsoft.com/en-us/windows-hardware/customize/desktop/unattend/

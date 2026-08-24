@@ -46,7 +46,7 @@ else
   vars_files=("$platform_dir"/vars/*.pkrvars.hcl)
   if [ "${#vars_files[@]}" -ne 1 ]; then
     echo "ERROR: expected exactly one vars file in $platform_dir/vars/," >&2
-    echo "       pass the image name explicitly (e.g. sandbox-windows-11-vmware)." >&2
+    echo "       pass the image name explicitly (e.g. sandbox-windows-11-arm64-vmware)." >&2
     exit 1
   fi
   image_name=$(basename "${vars_files[0]}" .pkrvars.hcl)

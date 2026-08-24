@@ -12,8 +12,8 @@
 # What it does:
 #
 #   1. Picks the disk image: $WINDOWS_IMAGE if set, else the local build
-#      output (build/windows-arm64-qemu/output/sandbox-windows-11.qcow2),
-#      else pulls sandbox-windows-11:latest from GHCR via oras (asks
+#      output (build/windows-arm64-qemu/output/sandbox-windows-11-arm64-qemu.qcow2),
+#      else pulls sandbox-windows-11-arm64-qemu:latest from GHCR via oras (asks
 #      first). The pristine image is never written to: a qcow2 copy-on-write
 #      overlay plus a persistent TPM state and EFI NVRAM store live in
 #      ~/Library/Application Support/agent-sandbox/windows-11-arm64-qemu/, so the
@@ -59,7 +59,7 @@
 # the OpenChamber web UI instead.
 #
 # Environment (defaults in parentheses):
-#   WINDOWS_IMAGE            path to a local sandbox-windows-11.qcow2 to
+#   WINDOWS_IMAGE            path to a local sandbox-windows-11-arm64-qemu.qcow2 to
 #                            run instead of the discovered/pulled one
 #   SANDBOX_STATE_DIR        working VM state dir
 #                            (~/Library/Application Support/agent-sandbox/windows-11-arm64-qemu)
@@ -88,7 +88,7 @@ repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 
 # --- configuration ----------------------------------------------------------
 
-image_name=sandbox-windows-11
+image_name=sandbox-windows-11-arm64-qemu
 platform_dir="$repo_root/images/windows-arm64-qemu"
 vars_file="$platform_dir/vars/${image_name}.pkrvars.hcl"
 host_state_dir="${SANDBOX_STATE_DIR:-$HOME/Library/Application Support/agent-sandbox/windows-11-arm64-qemu}"
@@ -958,7 +958,7 @@ Options:
   -h, --help     Show this help
 
 Environment:
-  WINDOWS_IMAGE              path to a local sandbox-windows-11.qcow2
+  WINDOWS_IMAGE              path to a local sandbox-windows-11-arm64-qemu.qcow2
   SANDBOX_STATE_DIR          working VM state dir
   WINDOWS_PASSWORD           Administrator password in the guest
   SANDBOX_SSH_PORT           host port for guest SSH (2222)

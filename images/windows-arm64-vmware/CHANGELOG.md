@@ -55,6 +55,14 @@ the next release.
 
 ### Changed
 
+- The image was renamed from `sandbox-windows-11-vmware` to
+  `sandbox-windows-11-arm64-vmware` (vars file, template `vm_name` —
+  `sandbox-windows-<windows_version>-arm64-vmware` — the GHCR package
+  name, the runner's `image_name` and the working VM's display name):
+  the platform is now part of the image name, matching the state-dir
+  naming (`~/Library/Application Support/agent-sandbox/
+  windows-11-arm64-vmware`). Older releases stay published under the old
+  name.
 - Build artifacts moved out of the image directory into a top-level
   `build/windows-arm64-<platform>/` directory: `output/` for
   the built vmx + vmdk + nvram, `packer_cache/` for watchdog scratch and
@@ -89,11 +97,11 @@ the next release.
   not say which platform the state under `agent-sandbox/` belongs to.
   Override with `SANDBOX_STATE_DIR` as before.
 - `scripts/run-windows-vmware-sandbox.sh` — the working clone now gets a
-  distinct display name, `agent-sandbox-windows-11-vmware` (set in the
-  cloned vmx before the first start), instead of inheriting the pristine
-  image's `sandbox-windows-11-vmware`: `vmrun clone` copies the source
-  vmx's `displayName`, so before this the working VM was indistinguishable
-  from the base in Fusion's VM library.
+  distinct display name, `agent-sandbox-windows-11-arm64-vmware` (set in
+  the cloned vmx before the first start), instead of inheriting the
+  pristine image's `sandbox-windows-11-arm64-vmware`: `vmrun clone`
+  copies the source vmx's `displayName`, so before this the working VM
+  was indistinguishable from the base in Fusion's VM library.
 - `scripts/run-windows-vmware-sandbox.sh` — the summary's stop hints now
   point at `./scripts/stop-windows-vmware-sandbox.sh` instead of a bare
   `vmrun stop` and a hand-written `lsof | xargs kill` for the bridge

@@ -64,8 +64,8 @@ ports, and wires up the bridges. From the repo root:
 ```
 
 On first use it picks the disk image: the local build output
-(`build/windows-arm64-qemu/output/sandbox-windows-11.qcow2`) when
-present, otherwise it asks to pull `sandbox-windows-11:latest` from GHCR
+(`build/windows-arm64-qemu/output/sandbox-windows-11-arm64-qemu.qcow2`) when
+present, otherwise it asks to pull `sandbox-windows-11-arm64-qemu:latest` from GHCR
 via [oras](https://oras.land/) (one-time, ~14 GB — `brew install oras`).
 It then
 creates a working VM — a copy-on-write overlay plus persistent TPM and EFI
@@ -365,7 +365,7 @@ Environment variables (defaults in parentheses):
 
 | Variable | Default | What it does |
 | --- | --- | --- |
-| `WINDOWS_IMAGE` | — | Path to a local `sandbox-windows-11.qcow2` to run instead of the discovered/pulled one |
+| `WINDOWS_IMAGE` | — | Path to a local `sandbox-windows-11-arm64-qemu.qcow2` to run instead of the discovered/pulled one |
 | `SANDBOX_STATE_DIR` | `~/Library/Application Support/agent-sandbox/windows-11-arm64-qemu` | Working VM state (overlay, TPM, EFI NVRAM) |
 | `WINDOWS_PASSWORD` | from the vars file | Administrator password in the guest (override after changing it) |
 | `SANDBOX_SSH_PORT` | `2222` | Host port forwarded to guest SSH |

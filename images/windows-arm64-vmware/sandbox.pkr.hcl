@@ -21,7 +21,7 @@ packer {
 
 variable "windows_version" {
   type        = string
-  description = "Windows guest version, e.g. '11'; part of the image name (sandbox-windows-<windows_version>-vmware)."
+  description = "Windows guest version, e.g. '11'; part of the image name (sandbox-windows-<windows_version>-arm64-vmware)."
 }
 
 variable "image_version" {
@@ -252,7 +252,7 @@ variable "openchamber_port" {
 # would only complicate disk compaction and re-clones.
 
 source "vmware-iso" "windows" {
-  vm_name          = "sandbox-windows-${var.windows_version}-vmware"
+  vm_name          = "sandbox-windows-${var.windows_version}-arm64-vmware"
   output_directory = "${var.build_dir}/output"
 
   # The wrapper (images/windows-arm64-vmware/build.sh) verifies the ISO

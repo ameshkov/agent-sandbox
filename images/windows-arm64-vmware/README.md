@@ -47,7 +47,7 @@ bundle; `FUSION_APP_PATH` overrides a non-standard install).
 ```bash
 # From the repository root
 WINDOWS_ISO_PATH=/path/to/Win11_25H2_English_Arm64_v2.iso \
-  ./scripts/build.sh sandbox-windows-11-vmware
+  ./scripts/build.sh sandbox-windows-11-arm64-vmware
 ```
 
 `scripts/build.sh` delegates to `images/windows-arm64-vmware/build.sh` when a
@@ -122,9 +122,9 @@ tag via `./scripts/tag.sh <image>`.
   the archive, clones a working VM with `vmrun`, discovers the guest IP
   via VMware Tools, and bridges the host's Docker engine and SSH agent
   into the guest (see [docs/windows-vmware.md](../../docs/windows-vmware.md)).
-- Publish: `./scripts/deploy.sh sandbox-windows-11-vmware` packs the
+- Publish: `./scripts/deploy.sh sandbox-windows-11-arm64-vmware` packs the
   output directory into `${image_name}.tar.gz` and pushes it to
-  `ghcr.io/<owner>/sandbox-windows-11-vmware:<version>` + `:latest` as an
+  `ghcr.io/<owner>/sandbox-windows-11-arm64-vmware:<version>` + `:latest` as an
   OCI artifact via `oras` (the platform ships its own deploy wrapper —
   `images/windows-arm64-vmware/deploy.sh` — because `tart push` only works
   for Tart VMs). Needs `brew install oras` and a GHCR token with

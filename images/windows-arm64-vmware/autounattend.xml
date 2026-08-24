@@ -27,7 +27,7 @@
 
   Schema components carry processorArchitecture="arm64". The
   Administrator password must stay in sync with the winrm_password
-  variable in vars/sandbox-windows-11-vmware.pkrvars.hcl — change both
+  variable in vars/sandbox-windows-11-arm64-vmware.pkrvars.hcl — change both
   together.
 
   References:

@@ -38,7 +38,7 @@ See [docs/macos.md](../../docs/macos.md) for the macOS images and
 ```bash
 # From the repository root
 WINDOWS_ISO_PATH=/path/to/Win11_24H2_English_Arm64.iso \
-  ./scripts/build.sh sandbox-windows-11
+  ./scripts/build.sh sandbox-windows-11-arm64-qemu
 ```
 
 `scripts/build.sh` delegates to `images/windows-arm64-qemu/build.sh` when a platform
@@ -72,7 +72,7 @@ A build takes roughly 30 minutes on an M-series Mac (Windows Setup itself
 dominates; HVF runs the guest at near-native speed). Everything per image
 lives in a top-level `build/` directory (gitignored):
 `build/windows-arm64-<platform>/output/`
-(`sandbox-windows-11.qcow2`, compressed with zstd), plus `packer_cache/`
+(`sandbox-windows-11-arm64-qemu.qcow2`, compressed with zstd), plus `packer_cache/`
 and `drivers/staging/`. The macOS/tart images build no files and have no
 such directory.
 
@@ -111,8 +111,8 @@ tag via `./scripts/tag.sh <image>`.
   under QEMU + swtpm in a resizable window, forwards SSH/RDP/OpenChamber
   ports, and bridges the host's Docker engine and SSH agent into the
   guest (see [docs/windows-qemu.md](../../docs/windows-qemu.md)).
-- Publish: `./scripts/deploy.sh sandbox-windows-11` pushes the qcow2 to
-  `ghcr.io/<owner>/sandbox-windows-11:<version>` + `:latest` as an OCI
+- Publish: `./scripts/deploy.sh sandbox-windows-11-arm64-qemu` pushes the qcow2 to
+  `ghcr.io/<owner>/sandbox-windows-11-arm64-qemu:<version>` + `:latest` as an OCI
   artifact via `oras` (the platform ships its own deploy wrapper —
   `images/windows-arm64-qemu/deploy.sh` — because `tart push` only works
   for Tart VMs). Needs `brew install oras` and a GHCR token with

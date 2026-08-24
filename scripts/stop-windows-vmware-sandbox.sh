@@ -39,7 +39,7 @@ agent_port=${SANDBOX_AGENT_PORT:-4300}
 docker_port=${SANDBOX_DOCKER_PORT:-4301}
 
 # Deterministic state-dir paths, same as the runner's.
-work_vmx="$host_state_dir/working/sandbox-windows-11-vmware.vmx"
+work_vmx="$host_state_dir/working/sandbox-windows-11-arm64-vmware.vmx"
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 

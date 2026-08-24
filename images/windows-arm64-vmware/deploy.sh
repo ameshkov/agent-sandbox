@@ -43,7 +43,7 @@ else
   vars_files=("$platform_dir"/vars/*.pkrvars.hcl)
   if [ "${#vars_files[@]}" -ne 1 ]; then
     echo "ERROR: expected exactly one vars file in $platform_dir/vars/," >&2
-    echo "       pass the image name explicitly (e.g. sandbox-windows-11-vmware)." >&2
+    echo "       pass the image name explicitly (e.g. sandbox-windows-11-arm64-vmware)." >&2
     exit 1
   fi
   image_name=$(basename "${vars_files[0]}" .pkrvars.hcl)
@@ -126,7 +126,7 @@ echo "Artifact: $artifact ($(du -h "$artifact" | awk '{print $1}'))"
 # Push from the output dir with the bare file name: oras stores the file
 # under the name it is given (consumers `oras pull` it back by that name,
 # e.g. scripts/run-windows-vmware-sandbox.sh expects
-# sandbox-windows-11-vmware.tar.gz), and it rejects absolute paths by
+# sandbox-windows-11-arm64-vmware.tar.gz), and it rejects absolute paths by
 # default.
 (
   cd "$build_dir/output" &&

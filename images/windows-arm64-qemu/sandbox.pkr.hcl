@@ -21,7 +21,7 @@ packer {
 
 variable "windows_version" {
   type        = string
-  description = "Windows guest version, e.g. '11'; part of the image name (sandbox-windows-<windows_version>)."
+  description = "Windows guest version, e.g. '11'; part of the image name (sandbox-windows-<windows_version>-arm64-qemu)."
 }
 
 variable "image_version" {
@@ -272,7 +272,7 @@ variable "efi_firmware_vars" {
 # See images/windows-arm64-qemu/README.md and DEVELOPMENT.md for the full flow.
 
 source "qemu" "windows" {
-  vm_name          = "sandbox-windows-${var.windows_version}.qcow2"
+  vm_name          = "sandbox-windows-${var.windows_version}-arm64-qemu.qcow2"
   output_directory = "${var.build_dir}/output"
 
   # The wrapper (images/windows-arm64-qemu/build.sh) verifies the ISO against

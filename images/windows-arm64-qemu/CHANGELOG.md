@@ -34,6 +34,13 @@ the next release.
 
 ### Changed
 
+- The image was renamed from `sandbox-windows-11` to
+  `sandbox-windows-11-arm64-qemu` (vars file, template `vm_name` —
+  `sandbox-windows-<windows_version>-arm64-qemu.qcow2` — the GHCR package
+  name and the runner's `image_name`): the platform is now part of the
+  image name, matching the state-dir naming
+  (`~/Library/Application Support/agent-sandbox/windows-11-arm64-qemu`).
+  Older releases stay published under the old name.
 - The QEMU runner (`scripts/run-windows-qemu-sandbox.sh`) boots the guest
   in a resizable window: it passes `-display cocoa,zoom-to-fit=on` (the
   cocoa window is fixed-size otherwise) and replaced `-device ramfb` with
