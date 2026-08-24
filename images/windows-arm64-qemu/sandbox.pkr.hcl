@@ -681,6 +681,16 @@ build {
       # native-stderr bug). All failure handling is explicit below.
       $ErrorActionPreference = 'Continue'
       $ProgressPreference = 'SilentlyContinue'
+      # The image ships with Windows' default Restricted execution policy —
+      # every build-time powershell invocation passes -ExecutionPolicy
+      # Bypass, so nothing is persisted. But opencode/ocr are npm shims
+      # (opencode.ps1 in %APPDATA%\npm): a Restricted shell refuses to run
+      # them ("running scripts is disabled on this system"). Bake in
+      # RemoteSigned machine-wide (this provisioner runs elevated, so the
+      # LocalMachine scope persists in the image) and keep the runners'
+      # runtime set as a fallback for images built before this change.
+      Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope LocalMachine -Force
+      Write-Host "PowerShell execution policy: $(Get-ExecutionPolicy -Scope LocalMachine)"
       $machinePath = [System.Environment]::GetEnvironmentVariable('Path','Machine').TrimEnd(';')
       $env:Path = $machinePath + ';' + [System.Environment]::GetEnvironmentVariable('Path','User')
       # The openchamber scheduled task launches at logon and locks its
@@ -906,6 +916,7 @@ if (Test-Path $envFile) {
       Write-Host '=== Versions ==='
       $os = Get-CimInstance Win32_OperatingSystem
       Write-Host "Windows: $($os.Caption) build $($os.BuildNumber)"
+      Write-Host "PowerShell execution policy: $(Get-ExecutionPolicy -Scope LocalMachine)"
       node --version
       npm --version
       python --version

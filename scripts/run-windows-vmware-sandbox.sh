@@ -18,7 +18,7 @@
 #      sandbox-windows-11-vmware.tar.gz, created on demand), else pulls
 #      sandbox-windows-11-vmware:latest from GHCR via oras (asks first).
 #      The pristine VM is never written to: the archive is extracted into
-#      ~/Library/Application Support/agent-sandbox/windows-11-vmware/ and
+#      ~/Library/Application Support/agent-sandbox/windows-11-arm64-vmware/ and
 #      a full clone becomes the working VM, so the working VM survives
 #      reboots of the guest and reruns of this script. --reset deletes the
 #      working state and starts from the pristine clone. The clone is
@@ -66,7 +66,7 @@
 #   WINDOWS_VMWARE_IMAGE   path to a local sandbox-windows-11-vmware.tar.gz
 #                          to run instead of the discovered/pulled one
 #   SANDBOX_STATE_DIR      working VM state dir
-#                          (~/Library/Application Support/agent-sandbox/windows-11-vmware)
+#                          (~/Library/Application Support/agent-sandbox/windows-11-arm64-vmware)
 #   WINDOWS_PASSWORD       Administrator password in the guest (read
 #                          from the image's vars file; override after
 #                          changing it in the guest)
@@ -90,7 +90,12 @@ repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 image_name=sandbox-windows-11-vmware
 platform_dir="$repo_root/images/windows-arm64-vmware"
 vars_file="$platform_dir/vars/${image_name}.pkrvars.hcl"
-host_state_dir="${SANDBOX_STATE_DIR:-$HOME/Library/Application Support/agent-sandbox/windows-11-vmware}"
+host_state_dir="${SANDBOX_STATE_DIR:-$HOME/Library/Application Support/agent-sandbox/windows-11-arm64-vmware}"
+# The working clone's display name in Fusion's VM library. `vmrun clone`
+# inherits the source vmx's displayName ("sandbox-windows-11-vmware"), so
+# without a rename the working VM would be indistinguishable from the
+# pristine base (both would show under the base's name).
+vm_display_name="agent-sandbox-windows-11-vmware"
 agent_port=${SANDBOX_AGENT_PORT:-4300}
 docker_port=${SANDBOX_DOCKER_PORT:-4301}
 openchamber_port=${SANDBOX_OPENCHAMBER_PORT:-4000}
@@ -298,7 +303,13 @@ ensure_working_vm() {
         warn "full clone failed (Fusion may have rejected the destination path)."
         return 1
     }
-    ok "Working VM cloned ($work_vmx)."
+    # The clone inherited the base's displayName — give it a distinct name
+    # before the first start, so it shows as its own VM in Fusion's library.
+    cmd "set displayName \"$vm_display_name\" in $work_vmx"
+    if ! set_vm_display_name "$work_vmx" "$vm_display_name"; then
+        warn "could not set the working VM's display name (Fusion will show the base's name)."
+    fi
+    ok "Working VM cloned ($work_vmx; display name '$vm_display_name')."
 }
 
 # Upgrades the working VM to the hardware version the installed Fusion
@@ -684,8 +695,9 @@ send_guest_bridge_files() {
     write_guest_file 'C:\tools\bridge-relay.js' "$relay_b64" || return 1
     write_guest_file 'C:\tools\bridges.ps1' "$bridges_b64" || return 1
     write_guest_file 'C:\tools\start-relays.cmd' "$cmd_b64" || return 1
-    # The scripts (incl. the task's) must be able to load: the image's
-    # default Restricted policy would block them.
+    # The scripts (incl. the task's) must be able to load. Images since
+    # the execution-policy fix bake in machine-wide RemoteSigned; this
+    # runtime set is kept for images built before the fix (Restricted).
     guest_ps "Set-ExecutionPolicy -Scope CurrentUser RemoteSigned -Force -ErrorAction SilentlyContinue" >/dev/null 2>&1 || true
 }
 
@@ -903,12 +915,12 @@ print_summary() {
         printf '    %-14s %s\n' 'OpenChamber:' "${c_yellow}not responding on http://$guest_ip:$openchamber_port${c_reset}"
     fi
     printf '    %-14s %s\n' 'State:' "$host_state_dir (extracted base + working clone; --reset re-clones)"
-    printf '    %-14s %s\n' 'Stop:' "vmrun -T fusion stop '$work_vmx'"
+    printf '    %-14s %s\n' 'Stop:' "./scripts/stop-windows-vmware-sandbox.sh (or: vmrun -T fusion stop '$work_vmx')"
     if [ "$agent_bridged" = 1 ]; then
-        printf '    %-14s %s\n' 'Bridge:' "host socat on TCP $agent_port stays up — kill with: lsof -tiTCP:$agent_port -sTCP:LISTEN | xargs kill"
+        printf '    %-14s %s\n' 'Bridge:' "host socat on TCP $agent_port stays up — stop it with: ./scripts/stop-windows-vmware-sandbox.sh"
     fi
     if [ "$docker_bridged" = 1 ]; then
-        printf '    %-14s %s\n' 'Bridge:' "host socat on TCP $docker_port stays up — kill with: lsof -tiTCP:$docker_port -sTCP:LISTEN | xargs kill"
+        printf '    %-14s %s\n' 'Bridge:' "host socat on TCP $docker_port stays up — stop it with: ./scripts/stop-windows-vmware-sandbox.sh"
     fi
 }
 

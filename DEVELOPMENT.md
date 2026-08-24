@@ -35,6 +35,12 @@ keep them in sync whenever you change how an image behaves.
 │   ├── run-macos-sandbox.sh       # user-facing: pull/run a VM + SSH agent & Docker bridges + user settings + OpenChamber
 │   ├── run-windows-qemu-sandbox.sh     # user-facing: boot the Windows qcow2 (QEMU) + SSH agent & Docker bridges + OpenChamber
 │   ├── run-windows-vmware-sandbox.sh # user-facing: run the Windows VMware sandbox (vmrun) + bridges + OpenChamber
+│   ├── stop-macos-sandbox.sh      # user-facing: stop the macOS VM (tart stop) + kill the host bridges
+│   ├── stop-windows-qemu-sandbox.sh    # user-facing: stop the Windows QEMU VM (qemu + swtpm) + kill the host bridges
+│   ├── stop-windows-vmware-sandbox.sh  # user-facing: stop the Windows VMware VM (vmrun stop) + kill the host bridges
+│   ├── delete-macos-sandbox.sh      # user-facing: delete the macOS VM (stop + tart delete, --pristine for the image)
+│   ├── delete-windows-qemu-sandbox.sh    # user-facing: delete the Windows QEMU state (stop + rm the state dir)
+│   ├── delete-windows-vmware-sandbox.sh  # user-facing: delete the Windows VMware state (stop + rm the state dir)
 │   └── sync-macos-sandbox.sh      # user-facing: copy host user settings into the guest on demand
 ├── docs/                          # User-facing, per host OS setup guides
 │   ├── macos.md                   # macOS (Apple Silicon) — pull & run, details

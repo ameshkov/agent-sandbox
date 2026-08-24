@@ -15,6 +15,15 @@ the next release.
 
 ### Added
 
+- `scripts/stop-windows-qemu-sandbox.sh` — stops the sandbox: qemu (via
+  the runner's `qemu.pid`) and swtpm, plus the host SSH agent / Docker
+  bridge listeners the runner leaves up. Honors the runner's
+  `SANDBOX_STATE_DIR` / `SANDBOX_AGENT_PORT` / `SANDBOX_DOCKER_PORT`
+  overrides.
+- `scripts/delete-windows-qemu-sandbox.sh` — deletes the sandbox: stops it
+  first (delegating to `stop-windows-qemu-sandbox.sh`), then removes the
+  state dir (working disk overlay + TPM/EFI NVRAM + pulled image cache).
+  Asks before deleting unless `--yes`.
 - The virtual display is now a virtio-gpu-pci (virtio-gpu) instead of
   ramfb at runtime: the image stages the ARM64 `viogpudo` (virtio-gpu
   display-only) driver onto the unattend CD, so first logon lands it in
@@ -41,6 +50,25 @@ the next release.
   corrupt disk that dropped Windows to the UEFI shell). The EFI NVRAM is
   also seeded from the build output's `efivars.fd` when one exists, so
   Windows' own Boot0000 is used instead of the empty edk2 template.
+- `scripts/run-windows-qemu-sandbox.sh` — the default working-VM state
+  dir moved to `~/Library/Application Support/agent-sandbox/
+  windows-11-arm64-qemu` (was `windows-11`): the old name did not say
+  which platform the state under `agent-sandbox/` belongs to (the VMware
+  image's dir sits next to it). Override with `SANDBOX_STATE_DIR` as
+  before.
+- `scripts/run-windows-qemu-sandbox.sh` — the summary's stop hints now
+  point at `./scripts/stop-windows-qemu-sandbox.sh` instead of a bare
+  `kill $(cat …/qemu.pid)` and a hand-written `lsof | xargs kill` for the
+  bridge listeners.
+
+### Fixed
+
+- The image now bakes in machine-wide PowerShell `RemoteSigned` instead
+  of shipping Windows' default `Restricted` policy: `opencode` (an npm
+  shim — `opencode.ps1` in `%APPDATA%\npm`) refused to start in a
+  PowerShell session with "running scripts is disabled on this system".
+  The runners' runtime `Set-ExecutionPolicy` stays as a fallback for
+  images built before this change.
 
 ## [windows-arm64-qemu-v1.1.0] - 2026-08-24
 

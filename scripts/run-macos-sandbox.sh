@@ -14,8 +14,9 @@
 #      applied when the VM is first cloned). By default the VM runs in the
 #      background: 'tart run' is nohup'd to a log file, the script exits
 #      after the summary, and the VM keeps running (stop it later with
-#      'tart stop'). Pass --foreground to keep the terminal attached and
-#      block until the VM stops instead. Windowed runs capture system
+#      ./scripts/stop-macos-sandbox.sh). Pass --foreground to keep the
+#      terminal attached and block until the VM stops instead. Windowed
+#      runs capture system
 #      shortcuts (Cmd+Space, Cmd+Tab, ...) into the guest by default, so
 #      Spotlight and the app switcher work inside the VM. When the VM is
 #      already running, the script asks whether to restart it.
@@ -1027,22 +1028,22 @@ print_summary() {
     # and stops the VM too. In background mode the script has already
     # returned, so the terminal is free — plain 'tart stop' suffices.
     if [ "$detached" = 1 ]; then
-        stop_hint="run 'tart stop $vm'"
+        stop_hint="run ./scripts/stop-macos-sandbox.sh"
     elif [ "$headless" = 1 ]; then
-        stop_hint="run 'tart stop $vm' in another terminal"
+        stop_hint="run ./scripts/stop-macos-sandbox.sh in another terminal"
     elif [ -n "$tart_pid" ]; then
-        stop_hint="press Cmd+C in this terminal, or run 'tart stop $vm' in another terminal"
+        stop_hint="press Cmd+C in this terminal, or run ./scripts/stop-macos-sandbox.sh in another terminal"
     else
-        stop_hint="run 'tart stop $vm'"
+        stop_hint="run ./scripts/stop-macos-sandbox.sh"
     fi
     printf '    %-12s %s\n' 'Stop:' "$stop_hint"
     if [ "$detached" = 1 ] && [ -n "$tart_pid" ]; then
         printf '    %-12s %s\n' 'Background:' "VM keeps running after this script exits (tart log: $tart_log)"
         if [ "$agent_bridged" = 1 ]; then
-            printf '    %-12s %s\n' 'Bridge:' "host socat listener on TCP $agent_port stays up — kill with: lsof -tiTCP:$agent_port -sTCP:LISTEN | xargs kill"
+            printf '    %-12s %s\n' 'Bridge:' "host socat listener on TCP $agent_port stays up — stop it with: ./scripts/stop-macos-sandbox.sh"
         fi
         if [ "$docker_bridged" = 1 ]; then
-            printf '    %-12s %s\n' 'Bridge:' "host Docker socat listener on TCP $docker_port stays up — kill with: lsof -tiTCP:$docker_port -sTCP:LISTEN | xargs kill"
+            printf '    %-12s %s\n' 'Bridge:' "host Docker socat listener on TCP $docker_port stays up — stop it with: ./scripts/stop-macos-sandbox.sh"
         fi
     fi
 }
@@ -1056,8 +1057,8 @@ Usage: run-macos-sandbox.sh [options]
 Pulls (if needed), runs, and wires up a macOS sandbox VM.
 
 By default the VM runs in the background: the script exits after the summary
-and the VM keeps running (stop it later with 'tart stop <vm>'; tart output
-goes to ~/Library/Logs/agent-sandbox/tart-<vm>.log).
+and the VM keeps running (stop it later with ./scripts/stop-macos-sandbox.sh;
+tart output goes to ~/Library/Logs/agent-sandbox/tart-<vm>.log).
 
 Options:
   --headless     Run without a window (tart run --no-graphics)

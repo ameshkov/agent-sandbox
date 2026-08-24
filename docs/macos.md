@@ -185,13 +185,33 @@ in an isolated sandbox, with your code safely on the host.
 - **Stop the sandbox** — graceful shutdown of the guest, up to 30 seconds:
 
   ```bash
-  tart stop sandbox-macos
+  ./scripts/stop-macos-sandbox.sh
   ```
 
-  `sandbox-macos` is the default working VM name (override with
-  `SANDBOX_VM`). If the guest hangs, `tart stop` force-terminates it after
-  the timeout (pass `--timeout <seconds>` to wait longer). Start it again
-  with `./scripts/run-macos-sandbox.sh`.
+  This stops the working VM (`tart stop`, graceful with a force fallback)
+  and the host SSH agent / Docker bridge listeners the runner left up — a
+  bare `tart stop` would leave the socat listeners running. `sandbox-macos`
+  is the default working VM name (override with `SANDBOX_VM`; the stop
+  script honors the same `SANDBOX_AGENT_PORT` / `SANDBOX_DOCKER_PORT`
+  overrides). If the guest hangs, `tart stop` force-terminates it after a
+  timeout; the stop script passes none, so wait longer manually with
+  `tart stop <vm> --timeout <seconds>`. Start it again with
+  `./scripts/run-macos-sandbox.sh`.
+
+- **Delete the sandbox** — remove the VM(s) from the Tart VM store, disk
+  included:
+
+  ```bash
+  ./scripts/delete-macos-sandbox.sh --yes
+  ```
+
+  This stops the sandbox first (delegating to `stop-macos-sandbox.sh`),
+  then `tart delete`s the working VM — the next run re-clones it from the
+  pristine image. Without `--pristine`, the pristine image (~50 GB,
+  re-pulled from GHCR on the next run) is kept when deleting interactively
+  — press `y` at the prompt or pass `--pristine` / `--yes` to delete it
+  too. Options are the same `SANDBOX_VM` / `SANDBOX_IMAGE` overrides as the
+  runner.
 
 ---
 
@@ -550,8 +570,10 @@ Options:
   shortcuts are only captured into the guest in windowed runs)
 - `--foreground` — keep the terminal attached and block until the VM stops
   (Cmd+C in the terminal stops it). Default is background: the script exits
-  after the summary and the VM keeps running (`tart stop <vm>` to stop it,
-  tart output in `~/Library/Logs/agent-sandbox/tart-<vm>.log`)
+  after the summary and the VM keeps running
+  ([`stop-macos-sandbox.sh`](../scripts/stop-macos-sandbox.sh) to stop it,
+  [`delete-macos-sandbox.sh`](../scripts/delete-macos-sandbox.sh) to delete
+  it, tart output in `~/Library/Logs/agent-sandbox/tart-<vm>.log`)
 - `--no-agent` — skip the SSH agent bridge setup
 - `--no-docker` — skip the Docker engine bridge setup
 - `--no-settings` — skip copying the host's user settings into the guest

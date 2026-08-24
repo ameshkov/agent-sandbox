@@ -15,6 +15,15 @@ the next release.
 
 ### Added
 
+- `scripts/stop-windows-vmware-sandbox.sh` — stops the sandbox:
+  `vmrun -T fusion stop` on the working VM (graceful via VMware Tools with
+  a hard power-off fallback), plus the host SSH agent / Docker bridge
+  listeners the runner leaves up. Honors the runner's `SANDBOX_STATE_DIR` /
+  `SANDBOX_AGENT_PORT` / `SANDBOX_DOCKER_PORT` overrides.
+- `scripts/delete-windows-vmware-sandbox.sh` — deletes the sandbox: stops
+  it first (delegating to `stop-windows-vmware-sandbox.sh`), then removes
+  the state dir (extracted pristine base + working clone + pulled image
+  cache). Asks before deleting unless `--yes`.
 - The toolchain and VS provisioners re-read PATH from the registry at
   the start of their scripts: after the tools reboot a fresh WinRM
   process can inherit a stale PATH (observed once: 'choco' not
@@ -74,6 +83,30 @@ the next release.
   one into the guest with its own small SSH exec (one combined payload
   overran the Windows OpenSSH exec-request command line); the guest only
   rewrites a file when its content changed.
+- `scripts/run-windows-vmware-sandbox.sh` — the default working-VM state
+  dir moved to `~/Library/Application Support/agent-sandbox/
+  windows-11-arm64-vmware` (was `windows-11-vmware`): the old name did
+  not say which platform the state under `agent-sandbox/` belongs to.
+  Override with `SANDBOX_STATE_DIR` as before.
+- `scripts/run-windows-vmware-sandbox.sh` — the working clone now gets a
+  distinct display name, `agent-sandbox-windows-11-vmware` (set in the
+  cloned vmx before the first start), instead of inheriting the pristine
+  image's `sandbox-windows-11-vmware`: `vmrun clone` copies the source
+  vmx's `displayName`, so before this the working VM was indistinguishable
+  from the base in Fusion's VM library.
+- `scripts/run-windows-vmware-sandbox.sh` — the summary's stop hints now
+  point at `./scripts/stop-windows-vmware-sandbox.sh` instead of a bare
+  `vmrun stop` and a hand-written `lsof | xargs kill` for the bridge
+  listeners.
+
+### Fixed
+
+- The image now bakes in machine-wide PowerShell `RemoteSigned` instead
+  of shipping Windows' default `Restricted` policy: `opencode` (an npm
+  shim — `opencode.ps1` in `%APPDATA%\npm`) refused to start in a
+  PowerShell session with "running scripts is disabled on this system".
+  The runners' runtime `Set-ExecutionPolicy` stays as a fallback for
+  images built before this change.
 
 ## [windows-arm64-vmware-v1.0.0] - 2026-08-23
 

@@ -49,6 +49,19 @@ recipes; it is the authoritative build/release guide.
   Docker engine into the guest the same way, optionally shares a host
   folder (HGFS, `--work-dir`), and verifies OpenChamber. See
   `docs/windows-vmware.md`.
+- `scripts/stop-macos-sandbox.sh`, `scripts/stop-windows-qemu-sandbox.sh`,
+  `scripts/stop-windows-vmware-sandbox.sh` — user-facing counterparts to the
+  `run-*` scripts: stop the sandbox VM (`tart stop` / `vmrun stop`, the QEMU
+  one kills qemu + swtpm via the runner's pid files) and kill the host socat
+  bridge listeners the runner left up.
+- `scripts/delete-macos-sandbox.sh`,
+  `scripts/delete-windows-qemu-sandbox.sh`,
+  `scripts/delete-windows-vmware-sandbox.sh` — delete the sandbox: stop it
+  (delegating to the matching `stop-*` script), then remove the VM/state —
+  `tart delete` for the macOS VMs (optionally the pristine image with
+  `--pristine`), `rm -rf` of the state dir for the Windows ones (working VM
+  disk/clone + TPM/NVRAM/overlay + pulled image cache). Asks first unless
+  `--yes`.
 - `scripts/agent-rules.md` — sandbox environment rules installed into the
   guest's coding agents (opencode global `AGENTS.md`, Copilot CLI
   `copilot-instructions.md`): Docker remote-engine topology, shared-directory

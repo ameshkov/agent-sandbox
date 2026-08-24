@@ -16,7 +16,7 @@
 #      else pulls sandbox-windows-11:latest from GHCR via oras (asks
 #      first). The pristine image is never written to: a qcow2 copy-on-write
 #      overlay plus a persistent TPM state and EFI NVRAM store live in
-#      ~/Library/Application Support/agent-sandbox/windows-11/, so the
+#      ~/Library/Application Support/agent-sandbox/windows-11-arm64-qemu/, so the
 #      working VM survives reboots of the guest and reruns of this script.
 #      --reset deletes the working state and starts from the pristine image.
 #   2. Starts swtpm (TPM 2.0 — Windows 11 requires it, and the image's
@@ -62,7 +62,7 @@
 #   WINDOWS_IMAGE            path to a local sandbox-windows-11.qcow2 to
 #                            run instead of the discovered/pulled one
 #   SANDBOX_STATE_DIR        working VM state dir
-#                            (~/Library/Application Support/agent-sandbox/windows-11)
+#                            (~/Library/Application Support/agent-sandbox/windows-11-arm64-qemu)
 #   WINDOWS_PASSWORD         Administrator password in the guest (read
 #                            from the image's vars file; override after
 #                            changing it in the guest)
@@ -91,7 +91,7 @@ repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 image_name=sandbox-windows-11
 platform_dir="$repo_root/images/windows-arm64-qemu"
 vars_file="$platform_dir/vars/${image_name}.pkrvars.hcl"
-host_state_dir="${SANDBOX_STATE_DIR:-$HOME/Library/Application Support/agent-sandbox/windows-11}"
+host_state_dir="${SANDBOX_STATE_DIR:-$HOME/Library/Application Support/agent-sandbox/windows-11-arm64-qemu}"
 agent_port=${SANDBOX_AGENT_PORT:-4200}
 docker_port=${SANDBOX_DOCKER_PORT:-4201}
 openchamber_port=${SANDBOX_OPENCHAMBER_PORT:-4000}
@@ -641,7 +641,9 @@ start_host_bridge() {
 #     EOF-handling options, and it only CONNECTS to existing pipes.)
 #   - writes C:\tools\bridges.ps1 — the idempotent bridge logic (start the
 #     relays, set SSH_AUTH_SOCK, docker context 'host');
-#   - sets the execution policy to RemoteSigned (the image's default
+#   - sets the execution policy to RemoteSigned (images since the
+#     execution-policy fix bake in machine-wide RemoteSigned; this runtime
+#     set is a fallback for images built before the fix, whose default
 #     Restricted policy would block scripts from loading);
 #   - registers an ONLOGON scheduled task that runs bridges.ps1 at every
 #     logon (AutoAdminLogon fires it at boot) — and /Runs it right now.
@@ -919,13 +921,13 @@ print_summary() {
     fi
     printf '    %-14s %s\n' 'State:' "$host_state_dir (overlay + TPM + EFI NVRAM; --reset wipes it)"
     if [ "$detached" = 1 ] && [ -n "$qemu_pid" ]; then
-        printf '    %-14s %s\n' 'Stop:' "kill $qemu_pid (or 'kill \$(cat $host_state_dir/qemu.pid)')"
+        printf '    %-14s %s\n' 'Stop:' "./scripts/stop-windows-qemu-sandbox.sh (or: kill \$(cat $host_state_dir/qemu.pid))"
         printf '    %-14s %s\n' 'Background:' "VM keeps running after this script exits (qemu log: $qemu_log)"
         if [ "$agent_bridged" = 1 ]; then
-            printf '    %-14s %s\n' 'Bridge:' "host socat on TCP $agent_port stays up — kill with: lsof -tiTCP:$agent_port -sTCP:LISTEN | xargs kill"
+            printf '    %-14s %s\n' 'Bridge:' "host socat on TCP $agent_port stays up — stop it with: ./scripts/stop-windows-qemu-sandbox.sh"
         fi
         if [ "$docker_bridged" = 1 ]; then
-            printf '    %-14s %s\n' 'Bridge:' "host socat on TCP $docker_port stays up — kill with: lsof -tiTCP:$docker_port -sTCP:LISTEN | xargs kill"
+            printf '    %-14s %s\n' 'Bridge:' "host socat on TCP $docker_port stays up — stop it with: ./scripts/stop-windows-qemu-sandbox.sh"
         fi
     else
         printf '    %-14s %s\n' 'Stop:' 'press Cmd+C in this terminal'

@@ -76,12 +76,14 @@ when present, otherwise it asks to pull `sandbox-windows-11-vmware:latest`
 from GHCR via [oras](https://oras.land/) (one-time, ~20 GB —
 `brew install oras`). It then extracts the pristine VM and clones a
 working VM under
-`~/Library/Application Support/agent-sandbox/windows-11-vmware` — the
-pristine image is never written to. On the first clone the runner also
-upgrades the working VM's virtual hardware to the version your Fusion
-supports (`vmrun upgradevm`, recorded once per clone) — without it a
-newer Fusion shows its one-time "Upgrade this virtual machine?" dialog on
-the first windowed start. The guest boots headless or in a
+`~/Library/Application Support/agent-sandbox/windows-11-arm64-vmware/`
+(the clone's display name in Fusion's library is
+`agent-sandbox-windows-11-vmware` — the base keeps the image's name) —
+the pristine image is never written to. On the first clone the runner
+also upgrades the working VM's virtual hardware to the version your
+Fusion supports (`vmrun upgradevm`, recorded once per clone) — without
+it a newer Fusion shows its one-time "Upgrade this virtual machine?"
+dialog on the first windowed start. The guest boots headless or in a
 Fusion window (default), and the runner discovers its NAT IP via VMware
 Tools:
 
@@ -168,10 +170,13 @@ openchamber restart
 - **Stop the sandbox** — from the host:
 
   ```bash
-  vmrun -T fusion stop "$HOME/Library/Application Support/agent-sandbox/windows-11-vmware/working/sandbox-windows-11-vmware.vmx"
+  ./scripts/stop-windows-vmware-sandbox.sh
   ```
 
-  Start it again with `./scripts/run-windows-vmware-sandbox.sh`.
+  This stops the working VM (`vmrun -T fusion stop`, graceful via VMware
+  Tools with a hard power-off fallback) and kills the host SSH agent /
+  Docker bridge listeners. Start it again with
+  `./scripts/run-windows-vmware-sandbox.sh`.
 
 - **Reset the sandbox** — wipe the working VM and start from the pristine
   image:
@@ -179,6 +184,23 @@ openchamber restart
   ```bash
   ./scripts/run-windows-vmware-sandbox.sh --reset
   ```
+
+- **Delete the sandbox** — remove the state from the host (extracted
+  pristine base + working clone + pulled image cache) and free the disk
+  space:
+
+  ```bash
+  ./scripts/delete-windows-vmware-sandbox.sh --yes
+  ```
+
+  This stops the working VM first (delegating to
+  `stop-windows-vmware-sandbox.sh`), then removes
+  `~/Library/Application Support/agent-sandbox/windows-11-arm64-vmware/`
+  (override with `SANDBOX_STATE_DIR`). The next run re-pulls the archive
+  and re-clones. Without `--yes` it asks before deleting. Note: Fusion's VM
+  library may still list the deleted working VM
+  (`agent-sandbox-windows-11-vmware`) — remove the stale entry in the
+  Fusion UI (harmless).
 
 - **Run several sandboxes side by side** — set `SANDBOX_STATE_DIR` to a
   different directory (the guest IPs differ per NAT lease; the runner
@@ -369,7 +391,7 @@ Environment variables (defaults in parentheses):
 | Variable | Default | What it does |
 | --- | --- | --- |
 | `WINDOWS_VMWARE_IMAGE` | — | Path to a local `sandbox-windows-11-vmware.tar.gz` to run instead of the discovered/pulled one |
-| `SANDBOX_STATE_DIR` | `~/Library/Application Support/agent-sandbox/windows-11-vmware` | Working VM state (extracted base + clone) |
+| `SANDBOX_STATE_DIR` | `~/Library/Application Support/agent-sandbox/windows-11-arm64-vmware` | Working VM state (extracted base + clone) |
 | `WINDOWS_PASSWORD` | from the vars file | Administrator password in the guest (override after changing it) |
 | `SANDBOX_OPENCHAMBER_PORT` | `4000` | Guest port of OpenChamber |
 | `SANDBOX_AGENT_PORT` | `4300` | TCP port for the SSH agent bridge |

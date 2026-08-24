@@ -69,7 +69,7 @@ present, otherwise it asks to pull `sandbox-windows-11:latest` from GHCR
 via [oras](https://oras.land/) (one-time, ~14 GB — `brew install oras`).
 It then
 creates a working VM — a copy-on-write overlay plus persistent TPM and EFI
-state under `~/Library/Application Support/agent-sandbox/windows-11` — the
+state under `~/Library/Application Support/agent-sandbox/windows-11-arm64-qemu` — the
 pristine image is never written to. The guest boots headless or in a QEMU
 window (default), and SSH/RDP/OpenChamber ports are forwarded to the host:
 
@@ -156,7 +156,14 @@ openchamber restart
 - **Stop the sandbox** — from the host:
 
   ```bash
-  kill $(cat "$HOME/Library/Application Support/agent-sandbox/windows-11/qemu.pid")
+  ./scripts/stop-windows-qemu-sandbox.sh
+  ```
+
+  This stops qemu (via the `qemu.pid` the runner writes), swtpm and the
+  host SSH agent / Docker bridge listeners. The manual fallback is:
+
+  ```bash
+  kill $(cat "$HOME/Library/Application Support/agent-sandbox/windows-11-arm64-qemu/qemu.pid")
   ```
 
   (or `pkill -f qemu-system-aarch64`). Start it again with
@@ -168,6 +175,19 @@ openchamber restart
   ```bash
   ./scripts/run-windows-qemu-sandbox.sh --reset
   ```
+
+- **Delete the sandbox** — remove the state from the host (the working disk
+  overlay, the TPM and EFI NVRAM, and the pulled image cache) and free the
+  disk space:
+
+  ```bash
+  ./scripts/delete-windows-qemu-sandbox.sh --yes
+  ```
+
+  This stops qemu + swtpm first (delegating to `stop-windows-qemu-sandbox.sh`),
+  then removes `~/Library/Application Support/agent-sandbox/windows-11-arm64-qemu/`
+  (override with `SANDBOX_STATE_DIR`). The next run re-pulls the image and
+  starts fresh. Without `--yes` it asks before deleting.
 
 - **Run several sandboxes side by side** — set `SANDBOX_STATE_DIR` to a
   different directory and `SANDBOX_SSH_PORT` / `SANDBOX_RDP_PORT` /
@@ -346,7 +366,7 @@ Environment variables (defaults in parentheses):
 | Variable | Default | What it does |
 | --- | --- | --- |
 | `WINDOWS_IMAGE` | — | Path to a local `sandbox-windows-11.qcow2` to run instead of the discovered/pulled one |
-| `SANDBOX_STATE_DIR` | `~/Library/Application Support/agent-sandbox/windows-11` | Working VM state (overlay, TPM, EFI NVRAM) |
+| `SANDBOX_STATE_DIR` | `~/Library/Application Support/agent-sandbox/windows-11-arm64-qemu` | Working VM state (overlay, TPM, EFI NVRAM) |
 | `WINDOWS_PASSWORD` | from the vars file | Administrator password in the guest (override after changing it) |
 | `SANDBOX_SSH_PORT` | `2222` | Host port forwarded to guest SSH |
 | `SANDBOX_RDP_PORT` | `3389` | Host port forwarded to guest RDP |

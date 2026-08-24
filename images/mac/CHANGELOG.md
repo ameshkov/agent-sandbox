@@ -14,6 +14,15 @@ is never removed — changes land there until the next release.
 
 ### Added
 
+- `scripts/stop-macos-sandbox.sh` — stops the sandbox: `tart stop` on the
+  working VM plus the host SSH agent / Docker bridge listeners the runner
+  leaves up (a bare `tart stop` left the socat listeners running). Honors
+  the runner's `SANDBOX_VM` / `SANDBOX_AGENT_PORT` / `SANDBOX_DOCKER_PORT`
+  overrides.
+- `scripts/delete-macos-sandbox.sh` — deletes the sandbox: stops it first
+  (delegating to `stop-macos-sandbox.sh`), then `tart delete`s the working
+  VM, and the pristine image too with `--pristine` (or a `y` at the
+  prompt). Asks before deleting unless `--yes`.
 - `scripts/run-macos-sandbox.sh` now installs sandbox environment rules into
   the guest's coding agents — opencode's global `AGENTS.md`
   (`~/.config/opencode/AGENTS.md`) and the Copilot CLI's
@@ -26,6 +35,12 @@ is never removed — changes land there until the next release.
   SSH agent section is included only when the bridge is up. The runner
   asks before installing or updating the rules, and files the user
   modified are replaced only after a confirmation that defaults to no.
+
+### Changed
+
+- `scripts/run-macos-sandbox.sh` — the summary's stop hints now point at
+  `./scripts/stop-macos-sandbox.sh` instead of a bare `tart stop` and a
+  hand-written `lsof | xargs kill` for the bridge listeners.
 
 ## [mac-v1.6.0] - 2026-08-20
 

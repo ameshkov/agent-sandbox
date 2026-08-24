@@ -1,6 +1,7 @@
 #!/bin/bash
 # scripts/lib/windows-vmware/lib.sh — shared helpers for the Windows VMware
-# sandbox: vmrun resolution and the post-build VM hardware-version upgrade.
+# sandbox: vmrun resolution, the post-build VM hardware-version upgrade,
+# and the vmx displayName helper.
 #
 # Sourced by images/windows-arm64-vmware/build.sh (upgrade the built VM) and
 # scripts/run-windows-vmware-sandbox.sh (upgrade the working clone).
@@ -40,6 +41,23 @@ vmrun() {
 vmware_hw_version() {
     sed -n 's/^[[:space:]]*virtualhw\.version[[:space:]]*=[[:space:]]*"\([0-9]*\)"[[:space:]]*$/\1/p' "$1" \
         | head -n1
+}
+
+# set_vm_display_name <vmx> <name> — sets the VM's displayName (the name
+# Fusion's VM library shows), replacing the existing displayName line or
+# appending one when the vmx has none. `vmrun clone` inherits the source
+# vmx's displayName, so the working clone would otherwise show up under the
+# pristine image's name.
+set_vm_display_name() {
+    local vmx=$1 name=$2 tmp
+    tmp=$(mktemp "${TMPDIR:-/tmp}/vmx-displayname.XXXXXX") || return 1
+    awk -v name="$name" '
+        /^[[:space:]]*displayName[[:space:]]*=/ {
+            print "displayName = \"" name "\""; seen = 1; next
+        }
+        { print }
+        END { if (!seen) print "displayName = \"" name "\"" }
+    ' "$vmx" >"$tmp" && mv "$tmp" "$vmx"
 }
 
 # upgrade_vm_hardware <vmx> [label] — upgrades the VM to the hardware version
