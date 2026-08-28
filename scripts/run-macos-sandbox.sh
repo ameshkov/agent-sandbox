@@ -158,6 +158,25 @@ get_vm_ip() {
     printf '%s' "$vm_ip"
 }
 
+# Prints the host's gateway address on Tart's VM network: the host is always
+# .1 on the shared /24 (see docs/ssh-agent.md). The VM's IP may only become
+# available after its state flips to 'running' (see get_vm_ip), so a single
+# 'tart ip' call can fail right after boot — retry it a few times before
+# giving up, so a slow DHCP lease does not silently skip the bridges.
+get_vm_gateway() {
+    n=0
+    while [ "$n" -lt 5 ]; do
+        ip=$(get_vm_ip)
+        if [ -n "$ip" ]; then
+            printf '%s\n' "$ip" | awk -F. '{print $1"."$2"."$3".1"}'
+            return 0
+        fi
+        n=$((n + 1))
+        sleep 2
+    done
+    return 1
+}
+
 # --- step 1: pull / clone ---------------------------------------------------
 
 pull_image() {
@@ -313,8 +332,9 @@ start_host_bridge() {
     fi
 
     # The host's address on Tart's VM network: every VM is on the same /24 and
-    # the host is always .1 (see docs/ssh-agent.md).
-    gw=$(tart ip "$vm" | awk -F. '{print $1"."$2"."$3".1"}')
+    # the host is always .1 (see docs/ssh-agent.md). get_vm_gateway retries
+    # the IP fetch — it can fail right after boot.
+    gw=$(get_vm_gateway || true)
     if [ -z "$gw" ]; then
         warn "could not determine the host gateway address ('tart ip $vm' failed)."
         return 1
@@ -504,7 +524,7 @@ start_host_docker_bridge() {
         return 0
     fi
 
-    gw=$(tart ip "$vm" | awk -F. '{print $1"."$2"."$3".1"}')
+    gw=$(get_vm_gateway || true)
     if [ -z "$gw" ]; then
         warn "could not determine the host gateway address ('tart ip $vm' failed)."
         return 1

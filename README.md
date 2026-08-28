@@ -6,8 +6,9 @@ OpenChamber, Docker CLI bridged to host) runs on your Mac via
 [Tart](https://tart.run/). Your code stays on the host — you share a working
 directory into the VM and let a coding agent work on it in an isolated sandbox.
 
-**Currently supported:** macOS host on Apple Silicon → macOS (Tart) and
-Windows 11 ARM64 (QEMU, VMware) guests. Linux hosts are coming soon.
+**Currently supported:** macOS host on Apple Silicon → macOS (Tart),
+Windows 11 ARM64 (QEMU, VMware) and Ubuntu 24.04 LTS ARM64 (VMware)
+guests. Linux hosts are coming soon.
 
 ## Get started
 
@@ -16,7 +17,7 @@ Pick the guide for your operating system:
 | Operating system | Guide |
 | --- | --- |
 | macOS (Apple Silicon) | [Set up your macOS sandbox](docs/macos.md) |
-| Linux | [Coming soon](docs/linux.md) |
+| Linux (Ubuntu, VMware) | [Set up your Ubuntu sandbox](docs/ubuntu-vmware.md) |
 | Windows (QEMU) | [Set up your Windows sandbox](docs/windows-qemu.md) |
 | Windows (VMware) | [Set up your Windows VMware sandbox](docs/windows-vmware.md) |
 

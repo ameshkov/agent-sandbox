@@ -42,6 +42,15 @@ is never removed — changes land there until the next release.
   `./scripts/stop-macos-sandbox.sh` instead of a bare `tart stop` and a
   hand-written `lsof | xargs kill` for the bridge listeners.
 
+### Fixed
+
+- `scripts/run-macos-sandbox.sh` — the SSH agent and Docker bridges no
+  longer skip their setup when `tart ip` fails right after boot. Both
+  `start_host_bridge` and `start_host_docker_bridge` derived the host
+  gateway from a single `tart ip` call, which can fail before the VM's IP
+  is assigned; they now go through a shared `get_vm_gateway` helper that
+  retries the IP fetch (up to 5 attempts, 2 s apart) before giving up.
+
 ## [mac-v1.6.0] - 2026-08-20
 
 ### Added

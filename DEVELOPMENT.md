@@ -27,24 +27,31 @@ keep them in sync whenever you change how an image behaves.
 ├── DEVELOPMENT.md                # This document
 ├── scripts/                       # Shared build, deploy & tag scripts (repo root)
 │   ├── agent-rules.md             # sandbox environment rules for the guest's agents (installed by the runner)
+│   ├── agent-rules-linux.md       # Ubuntu-guest flavor of the sandbox environment rules
 │   ├── build.sh                   # ./scripts/build.sh [<image>]  — packer init + build
 │   ├── deploy.sh                  # ./scripts/deploy.sh [<image>] — push to GHCR
 │   ├── tag.sh                     # ./scripts/tag.sh [<image>]    — create & push the release git tag
 │   ├── lib/macos-settings.sh      # shared: output helpers + user-settings copy logic (runner + sync)
-│   ├── lib/windows-vmware/        # shared: vmrun + hw-version upgrade helpers (lib.sh), guest bridge templates
+│   ├── lib/vmware.sh              # shared: vmrun + hw-version upgrade helpers (both VMware platforms)
+│   ├── lib/windows-vmware/        # shared: lib.sh shim (-> ../vmware.sh), guest bridge templates
+│   ├── lib/ubuntu-vmware/         # shared: guest bridge templates (systemd socat relays) + settings copy logic
 │   ├── run-macos-sandbox.sh       # user-facing: pull/run a VM + SSH agent & Docker bridges + user settings + OpenChamber
 │   ├── run-windows-qemu-sandbox.sh     # user-facing: boot the Windows qcow2 (QEMU) + SSH agent & Docker bridges + OpenChamber
 │   ├── run-windows-vmware-sandbox.sh # user-facing: run the Windows VMware sandbox (vmrun) + bridges + OpenChamber
+│   ├── run-ubuntu-vmware-sandbox.sh   # user-facing: run the Ubuntu VMware sandbox (vmrun) + bridges + rules + settings + OpenChamber
 │   ├── stop-macos-sandbox.sh      # user-facing: stop the macOS VM (tart stop) + kill the host bridges
 │   ├── stop-windows-qemu-sandbox.sh    # user-facing: stop the Windows QEMU VM (qemu + swtpm) + kill the host bridges
 │   ├── stop-windows-vmware-sandbox.sh  # user-facing: stop the Windows VMware VM (vmrun stop) + kill the host bridges
+│   ├── stop-ubuntu-vmware-sandbox.sh   # user-facing: stop the Ubuntu VMware VM (vmrun stop) + kill the host bridges
 │   ├── delete-macos-sandbox.sh      # user-facing: delete the macOS VM (stop + tart delete, --pristine for the image)
 │   ├── delete-windows-qemu-sandbox.sh    # user-facing: delete the Windows QEMU state (stop + rm the state dir)
 │   ├── delete-windows-vmware-sandbox.sh  # user-facing: delete the Windows VMware state (stop + rm the state dir)
-│   └── sync-macos-sandbox.sh      # user-facing: copy host user settings into the guest on demand
+│   ├── delete-ubuntu-vmware-sandbox.sh   # user-facing: delete the Ubuntu VMware state (stop + rm the state dir)
+│   ├── sync-macos-sandbox.sh      # user-facing: copy host user settings into the guest on demand
+│   └── sync-ubuntu-vmware-sandbox.sh # user-facing: copy host user settings into the Ubuntu guest on demand
 ├── docs/                          # User-facing, per host OS setup guides
 │   ├── macos.md                   # macOS (Apple Silicon) — pull & run, details
-│   ├── linux.md                   # placeholder (not supported yet)
+│   ├── ubuntu-vmware.md           # Ubuntu 24.04 (ARM64) guest under VMware Fusion — run, details
 │   ├── windows-qemu.md            # Windows 11 (ARM64) guest under QEMU — run, details
 │   ├── windows-vmware.md          # Windows 11 (ARM64) guest under VMware Fusion — run, details
 │   └── ssh-agent.md               # share the host's SSH agent with the guest
@@ -65,16 +72,25 @@ keep them in sync whenever you change how an image behaves.
     │   ├── README.md
     │   ├── CHANGELOG.md
     │   └── vars/
-    │       └── sandbox-windows-11.pkrvars.hcl
-    └── windows-arm64-vmware/      # Windows 11 (ARM64) guest images, VMware (host: Apple Silicon)
+    │       └── sandbox-windows-11-arm64-qemu.pkrvars.hcl
+    ├── windows-arm64-vmware/      # Windows 11 (ARM64) guest images, VMware (host: Apple Silicon)
+    │   ├── sandbox.pkr.hcl        # Packer template (vmware-iso plugin)
+    │   ├── autounattend.xml       # Windows unattended install config
+    │   ├── build.sh               # Platform build wrapper (Fusion driver staging + packer)
+    │   ├── deploy.sh              # Platform deploy wrapper (tar.gz + oras push)
+    │   ├── README.md
+    │   ├── CHANGELOG.md
+    │   └── vars/
+    │       └── sandbox-windows-11-arm64-vmware.pkrvars.hcl
+    └── ubuntu-arm64-vmware/       # Ubuntu 24.04 (ARM64) guest image, VMware (host: Apple Silicon)
         ├── sandbox.pkr.hcl        # Packer template (vmware-iso plugin)
-        ├── autounattend.xml       # Windows unattended install config
-        ├── build.sh               # Platform build wrapper (Fusion driver staging + packer)
+        ├── autoinstall/           # Subiquity autoinstall seed: user-data + meta-data (served over HTTP)
+        ├── build.sh               # Platform build wrapper (ISO check + packer + hw upgrade)
         ├── deploy.sh              # Platform deploy wrapper (tar.gz + oras push)
         ├── README.md
         ├── CHANGELOG.md
         └── vars/
-            └── sandbox-windows-11-vmware.pkrvars.hcl
+            └── sandbox-ubuntu-24-04-arm64-vmware.pkrvars.hcl
 ```
 
 ## macOS images
@@ -297,7 +313,7 @@ is not in the repo) with `autounattend.xml` answering Setup. The builder:
     with hardening (Defender realtime scan, telemetry/indexer services,
     hibernation), a version banner, and cleanup.
 4. Leaves a qcow2 disk image at
-   `build/windows-arm64-qemu/output/sandbox-windows-11.qcow2`,
+   `build/windows-arm64-qemu/output/sandbox-windows-11-arm64-qemu.qcow2`,
    compressed with zstd. Per-image build artifacts (output/,
    packer_cache/, drivers/staging/) live in a top-level
    `build/windows-arm64-<platform>/` directory; the tart
@@ -318,7 +334,7 @@ is not in the repo) with `autounattend.xml` answering Setup. The builder:
 ```bash
 # From the repository root; the ISO is required
 WINDOWS_ISO_PATH=/path/to/Win11_24H2_English_Arm64.iso \
-  ./scripts/build.sh sandbox-windows-11
+  ./scripts/build.sh sandbox-windows-11-arm64-qemu
 ```
 
 `scripts/build.sh` delegates to `images/windows-arm64-qemu/build.sh` (a
@@ -362,7 +378,7 @@ provisioners are identical to the QEMU template) but is built with the
    times out. The tools are what make `vmrun getGuestIPAddress` and
    HGFS shared folders work at runtime).
 4. **Leaves a runnable vmx + vmdk** at
-   `build/windows-arm64-vmware/output/sandbox-windows-11-vmware.vmx`
+   `build/windows-arm64-vmware/output/sandbox-windows-11-arm64-vmware.vmx`
    (disk type 0, monolithic sparse; no build-time snapshot — the runner
    makes a full `vmrun clone` as the working VM). `build.sh` then upgrades
    the VM to the hardware version the installed Fusion writes for a new VM
@@ -378,7 +394,7 @@ personal use), Packer, and the same bring-your-own Windows 11 ARM64 ISO
 
 ```bash
 WINDOWS_ISO_PATH=/path/to/Win11_25H2_English_Arm64_v2.iso \
-  ./scripts/build.sh sandbox-windows-11-vmware
+  ./scripts/build.sh sandbox-windows-11-arm64-vmware
 ```
 
 The runtime side is `scripts/run-windows-vmware-sandbox.sh` — no port
@@ -417,7 +433,7 @@ with a warning when they are missing. Frames and logs land in
 
 | Variable | Type | Default | Description |
 | --- | --- | --- | --- |
-| `windows_version` | string | — | Windows guest version, e.g. `11`; part of the image name (`sandbox-windows-<windows_version>`) |
+| `windows_version` | string | — | Windows guest version, e.g. `11`; part of the image name (`sandbox-windows-<windows_version>-arm64-qemu` / `-arm64-vmware`) |
 | `image_version` | string | — | Semantic version this image is published under; bump it + add a `CHANGELOG.md` entry per release |
 | `iso_path` | string | — | Absolute path to the Windows 11 ARM64 ISO (set by the build wrapper, not in the vars file) |
 | `iso_sha256` | string | `` | SHA256 of the Windows ISO (verified by the build wrapper; empty = skip) |
@@ -449,8 +465,8 @@ automatically (mirroring the `build.sh` delegation):
 ```bash
 # From the repository root; needs `brew install oras` and a GHCR token
 # with write:packages (`oras login ghcr.io`)
-./scripts/deploy.sh sandbox-windows-11
-./scripts/deploy.sh sandbox-windows-11-vmware
+./scripts/deploy.sh sandbox-windows-11-arm64-qemu
+./scripts/deploy.sh sandbox-windows-11-arm64-vmware
 ```
 
 This pushes `ghcr.io/<owner>/<image>:<image_version>` and `:latest` for
@@ -459,10 +475,139 @@ each. Consumers pull the file back by its name, e.g.
 no local build output exists (the VMware runner does the same for the
 tar.gz).
 
+## Ubuntu images
+
+### How they are built
+
+`images/ubuntu-arm64-vmware/sandbox.pkr.hcl` reuses the
+[vmware-iso mechanics of the Windows VMware image](#vmware-images-imageswindows-arm64-vmware)
+(Fusion on Apple Silicon, `guest_os_type "arm-ubuntu-64"`, hardware
+version 20, NVMe disk, vmxnet3 NIC under NAT, EFI firmware, headless with
+VNC pinned to 5901) with a Linux installer: Ubuntu Server 24.04 ARM64 is
+autoinstalled by Subiquity, not unattended:
+
+1. **The boot is typed by the build watchdog, not the Packer
+   boot_command.** The firmware's No-Media/PXE probe cycle before grub
+   appears is variable-length (measured 20-40 s on Fusion), so plugin
+   typing fired before grub was up and the menu's default entry booted
+   the interactive installer. `scripts/watch-build.py` (with the
+   `WATCH_BUILD_BOOT_CMD` env var, rendered by the wrapper) detects the
+   grub menu/shell in the VNC OCR and types the autoinstall kernel line
+   `linux /casper/vmlinuz autoinstall
+   ds=nocloud-net;s=http://<vmnet8-host>:8004/ ---` (the seed server is
+   `python3 -m http.server 8004` over `autoinstall/`, started by
+   `build.sh`; the plugin's own http_directory uses a random port and
+   does not accept an `http_port` override). Subiquity then configures
+   LVM over the whole disk, user `admin` (password hash — keep in sync
+   with `ssh_password` in the vars file), openssh-server with password
+   auth, open-vm-tools — and reboots into the installed system.
+2. **No Fusion driver/tools staging** — the vmxnet3 NIC driver ships in
+   Ubuntu's base `linux-modules` package (verified for 24.04 arm64; NVMe
+   is in-box too), and Fusion ships *no* Linux tools ISO for arm64 guests
+   (`isoimages/arm64/` has only `windows.iso`), so open-vm-tools come from
+   the Ubuntu archive. open-vm-tools are what make `vmrun
+   getGuestIPAddress` and HGFS work at runtime.
+3. **Provisions over SSH** — the same toolchain story as the other
+   sandboxes: apt base toolchain (build-essential, git, curl, jq,
+   ripgrep, vim, tmux, socat, python3, ruby; browser/X libs), hash-pinned
+   direct downloads (GitHub CLI deb, Go tarball, VS Code deb, Chrome for
+   Testing zip, Firefox release tarball, Docker CLI + compose + buildx
+   static binaries), nvm (Node), rustup (Rust), and npm globals
+   (opencode-ai, ocr, @openchamber/web). The guest also ships a desktop:
+   `ubuntu-desktop-minimal` + `open-vm-tools-desktop`, `graphical.target`
+   as the default boot target and GDM3 auto-login as `admin` (Xorg
+   session — software rendering, a Fusion arm64 guest has no GPU accel).
+   OpenChamber runs as a systemd **user** service
+   (`agent-sandbox-openchamber`) on `0.0.0.0:4000` with
+   `loginctl enable-linger` — the Linux equivalent of the macOS
+   LaunchAgent / Windows ONLOGON task.
+4. **Leaves a runnable vmx + vmdk** at
+   `build/ubuntu-arm64-vmware/output/sandbox-ubuntu-24-04-arm64-vmware.vmx`
+   (disk type 0, monolithic sparse; no build-time snapshot — the runner
+   makes a full `vmrun clone` as the working VM). `build.sh` then upgrades
+   the VM to the hardware version the installed Fusion writes for a new VM
+   (`vmrun upgradevm`, shared helper `scripts/lib/vmware.sh` — same
+   rationale as the Windows image).
+
+The runtime side is `scripts/run-ubuntu-vmware-sandbox.sh` — same
+mechanics as the Windows VMware runner (NAT + vmnet8, guest IP via
+open-vm-tools, no port forwarding), with Linux guests: the bridges are
+systemd **user** services (`socat` relays rendered from
+`scripts/lib/ubuntu-vmware/guest-setup.sh` with the run's host alias and
+ports, services persist via linger), the shared folder mounts at
+`/mnt/hgfs/work`, and the runner also installs the sandbox agent rules
+(`scripts/agent-rules-linux.md`). Bridge ports: SSH agent **4400**, Docker
+**4401** (macOS 4100/4101, QEMU 4200/4201, Windows VMware 4300/4301 — all
+four sandboxes can run side by side).
+
+### Prerequisites (local builds)
+
+- macOS host with **Apple Silicon** (Fusion cannot run ARM64 guests on
+  Intel).
+- [VMware Fusion](https://www.vmware.com/products/desktop-hypervisor/workstation-and-fusion)
+  13.6+ (free for personal use).
+- [Packer](https://www.packer.io/): `brew install hashicorp/tap/packer`
+  (the VMware plugin is installed automatically by `packer init`).
+- The Ubuntu Server 24.04 ARM64 ISO (see
+  `images/ubuntu-arm64-vmware/README.md` for the download steps) —
+  `UBUNTU_ISO_PATH` must be set when building.
+
+### Building an image
+
+```bash
+# From the repository root; the ISO is required
+UBUNTU_ISO_PATH=/path/to/ubuntu-24.04.4-live-server-arm64.iso \
+  ./scripts/build.sh sandbox-ubuntu-24-04-arm64-vmware
+```
+
+`scripts/build.sh` delegates to `images/ubuntu-arm64-vmware/build.sh`,
+which verifies the ISO against `iso_sha256` from the vars file, runs
+`packer init` + `packer build` (with the VNC build watchdog on port 5901
+as an optional guard), and upgrades the output VM with `vmrun upgradevm`.
+A build takes roughly 20 minutes on an M-series Mac; everything per image
+lives in `build/ubuntu-arm64-vmware/` (gitignored).
+
+### Template variables
+
+| Variable | Type | Default | Description |
+| --- | --- | --- | --- |
+| `ubuntu_version` | string | — | Ubuntu guest version, e.g. `24-04`; part of the image name (`sandbox-ubuntu-<ubuntu_version>-arm64-vmware`) |
+| `image_version` | string | — | Semantic version this image is published under; bump it + add a `CHANGELOG.md` entry per release |
+| `iso_path` | string | — | Absolute path to the Ubuntu Server ARM64 ISO (set by the build wrapper, not in the vars file) |
+| `iso_sha256` | string | `` | SHA256 of the Ubuntu ISO (verified by the build wrapper; empty = skip) |
+| `ssh_username` | string | `admin` | SSH provisioning user; must match `autoinstall/user-data` |
+| `ssh_password` | string | `sandbox1` | SSH provisioning password; must match the crypt hash in `autoinstall/user-data` |
+| `node_version` / `python_version` | string | `22` / `3.12` | Node major (nvm) and Python (apt archive) versions |
+| `github_cli_version` / `go_version` / `rust_version` / `vscode_version` / `chrome_version` / `firefox_version` / `open_code_review_version` | string | pinned | Pinned toolchain versions (+ SHA256 vars for the direct downloads) |
+| `docker_version` / `docker_compose_version` / `docker_buildx_version` | string | pinned | Docker CLI + plugin versions (+ SHA256 vars) |
+| `disk_size` | number | `100` | VM disk size in GB |
+| `cpu_count` | number | `4` | CPU count of the VM |
+| `memory_gb` | number | `8` | RAM of the VM in GB |
+| `openchamber_ui_password` | string | `sandbox` | Password protecting the OpenChamber web UI |
+| `openchamber_port` | number | `4000` | TCP port of the OpenChamber web UI in the guest |
+
+### Publishing
+
+Same as the Windows VMware image: `scripts/deploy.sh` delegates to the
+platform wrapper (`images/ubuntu-arm64-vmware/deploy.sh`), which packs
+the output directory into a tar.gz and pushes it to GHCR as an OCI
+artifact with `oras`:
+
+```bash
+# From the repository root; needs `brew install oras` and a GHCR token
+# with write:packages (`oras login ghcr.io`)
+./scripts/deploy.sh sandbox-ubuntu-24-04-arm64-vmware
+```
+
+This pushes `ghcr.io/<owner>/<image>:<image_version>` and `:latest`.
+Consumers pull the file back by its name (`scripts/run-ubuntu-vmware-sandbox.sh`
+runs `oras pull` into its state dir when no local build output exists).
+Release tags are `ubuntu-arm64-vmware-v<version>` (`./scripts/tag.sh`).
+
 ## Adding a new platform
 
-To add a new host/guest combination (e.g. macOS host → Linux guest), create a
-new `images/<platform>/` directory following the macOS pattern:
+To add a new host/guest combination (e.g. macOS host → FreeBSD guest), create
+a new `images/<platform>/` directory following the macOS pattern:
 
 1. Packer template with the appropriate builder (e.g. QEMU, or the
    [qocker](https://github.com/AdGuardSoftwareLimited/qocker) Vmfile approach
@@ -480,7 +625,9 @@ new `images/<platform>/` directory following the macOS pattern:
 ## Housekeeping
 
 - Keep the "What's in the image" table in [docs/macos.md](docs/macos.md) in
-  sync with the template.
+  sync with the template (or the platform's `README.md`, e.g.
+  [images/ubuntu-arm64-vmware/README.md](images/ubuntu-arm64-vmware/README.md)
+  and [docs/ubuntu-vmware.md](docs/ubuntu-vmware.md)).
 - Test every image change locally before pushing — a broken image costs a
   ~1-hour rebuild.
 - Name VMs exactly after images (`sandbox-macos-<macos-version>`); never

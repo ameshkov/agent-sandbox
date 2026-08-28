@@ -1,0 +1,34 @@
+#cloud-config
+#
+# Subiquity autoinstall seed for the Ubuntu sandbox image — served by
+# Packer's HTTP server (http_directory, ds=nocloud-net) and fetched by the
+# installer kernel, as configured by the boot_command in
+# sandbox.pkr.hcl.
+#
+# Keep in sync with sandbox.pkr.hcl:
+#   - identity.password is the crypt hash of var.ssh_password ("sandbox1"),
+#   - identity.username is var.ssh_username ("admin"),
+#   - the ssh block enables sshd + password auth for Packer's communicator.
+#
+# Everything else (toolchain, OpenChamber, ...) is installed by the
+# provisioners — this seed only gets a bootable system with SSH + tools
+# (open-vm-tools must be present before the first boot so `vmrun
+# getGuestIPAddress` works immediately in the sandbox runner).
+autoinstall:
+  version: 1
+  locale: en_US.UTF-8
+  keyboard:
+    layout: us
+  timezone: UTC
+  identity:
+    hostname: ubuntu-sandbox
+    username: admin
+    password: "$6$rand0mS4lt$fgNjBzoL2PEvCW.OGnGIH/13sT54EDF3C0SB2WHzcQla4uvGel3BErD87ZhQTW/7eFv.Mtoaenc7t0UzKEh6q0"
+  ssh:
+    install-server: true
+    allow-pw: true
+  storage:
+    layout:
+      name: lvm
+  packages:
+    - open-vm-tools

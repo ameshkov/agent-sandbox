@@ -25,6 +25,17 @@ recipes; it is the authoritative build/release guide.
   `deploy.sh` wrappers (the ARM64 vmxnet3 driver staging + the VMware Tools
   attach come from the Fusion app bundle; the published artifact is a tar.gz
   of the output vmx/vmdk). Same guest and toolchain as the QEMU image.
+- `images/ubuntu-arm64-vmware/` — Ubuntu 24.04 LTS (ARM64) sandbox image:
+  Packer `vmware-iso` template with an `autoinstall/` cloud-init seed
+  (user-data + meta-data; served by a wrapper-started HTTP server on port
+  8004, fetched via the kernel's `ds=nocloud-net`; the grub autoinstall
+  command is typed by the VNC build watchdog via `WATCH_BUILD_BOOT_CMD`
+  because the plugin's own boot typing raced the firmware's probe cycle)
+  and `build.sh` / `deploy.sh` wrappers. No Fusion driver/tools staging
+  (vmxnet3 + NVMe are in-box in the Ubuntu kernel; open-vm-tools come
+  from the Ubuntu archive — Fusion ships no Linux tools ISO for arm64
+  guests). Same bare-metal mechanics as the Windows VMware image: NAT +
+  vmxnet3 + EFI, tar.gz OCI artifact.
 - `scripts/build.sh`, `scripts/deploy.sh`, `scripts/tag.sh` — wrappers that
   discover images from `images/*/vars/*.pkrvars.hcl`; they resolve the repo
   root themselves, so run them from anywhere. `build.sh` delegates to a
@@ -49,43 +60,68 @@ recipes; it is the authoritative build/release guide.
   Docker engine into the guest the same way, optionally shares a host
   folder (HGFS, `--work-dir`), and verifies OpenChamber. See
   `docs/windows-vmware.md`.
+- `scripts/run-ubuntu-vmware-sandbox.sh` — user-facing runner for the
+  Ubuntu VMware sandbox: same vmrun cloning/IP/NAT mechanics as the
+  Windows runner, with Linux guests — bridges the host's SSH agent and
+  Docker engine as systemd **user** services (`socat` relays rendered from
+  `scripts/lib/ubuntu-vmware/`, linger enabled in the image), shares a host
+  folder (HGFS, `--work-dir` → `/mnt/hgfs/work`), installs the sandbox
+  agent rules (`scripts/agent-rules-linux.md`) into the guest's
+  opencode/Copilot configs, copies the host's user settings into the guest
+  once per VM (versioned marker, `--no-settings` skips; same file set as
+  the macOS runner), and verifies OpenChamber. See `docs/ubuntu-vmware.md`.
 - `scripts/stop-macos-sandbox.sh`, `scripts/stop-windows-qemu-sandbox.sh`,
-  `scripts/stop-windows-vmware-sandbox.sh` — user-facing counterparts to the
+  `scripts/stop-windows-vmware-sandbox.sh`,
+  `scripts/stop-ubuntu-vmware-sandbox.sh` — user-facing counterparts to the
   `run-*` scripts: stop the sandbox VM (`tart stop` / `vmrun stop`, the QEMU
   one kills qemu + swtpm via the runner's pid files) and kill the host socat
   bridge listeners the runner left up.
 - `scripts/delete-macos-sandbox.sh`,
   `scripts/delete-windows-qemu-sandbox.sh`,
-  `scripts/delete-windows-vmware-sandbox.sh` — delete the sandbox: stop it
+  `scripts/delete-windows-vmware-sandbox.sh`,
+  `scripts/delete-ubuntu-vmware-sandbox.sh` — delete the sandbox: stop it
   (delegating to the matching `stop-*` script), then remove the VM/state —
   `tart delete` for the macOS VMs (optionally the pristine image with
-  `--pristine`), `rm -rf` of the state dir for the Windows ones (working VM
-  disk/clone + TPM/NVRAM/overlay + pulled image cache). Asks first unless
-  `--yes`.
+  `--pristine`), `rm -rf` of the state dir for the Windows/Ubuntu ones
+  (working VM disk/clone + TPM/NVRAM/overlay + pulled image cache). Asks
+  first unless `--yes`.
 - `scripts/agent-rules.md` — sandbox environment rules installed into the
   guest's coding agents (opencode global `AGENTS.md`, Copilot CLI
   `copilot-instructions.md`): Docker remote-engine topology, shared-directory
   path mapping, SSH agent bridge. The runner templates in the actual
   work-dir/mount paths, drops the SSH section when no agent bridge is up,
   asks before installing or updating the rules, and only replaces
-  user-modified files after a confirmation.
+  user-modified files after a confirmation. `scripts/agent-rules-linux.md`
+  is the Ubuntu-guest flavor (installed by `run-ubuntu-vmware-sandbox.sh`).
 - `scripts/sync-macos-sandbox.sh` — user-facing: copies the host's user
   settings (opencode config/agents/skills/commands/plugins, Copilot
   config/skills, SSH/Git dotfiles)
   into the guest on demand and restarts OpenChamber; requires a running VM.
+- `scripts/sync-ubuntu-vmware-sandbox.sh` — the Ubuntu-guest counterpart of
+  the sync script above: same file set (guest paths mapped to the Linux
+  layout), same marker, same OpenChamber restart; requires a running
+  sandbox VM.
 - `scripts/lib/macos-settings.sh` — shared code for the two scripts above:
   output helpers, VM helpers, and the user-settings copy logic
   (`collect_settings_files`, marker, OpenChamber restart). Keep the settings
   logic here, not in the scripts.
+- `scripts/lib/vmware.sh` — shared vmrun helpers for the VMware sandboxes
+  (vmrun resolution, post-build hardware-version upgrade, vmx displayName);
+  sourced by the VMware platform `build.sh` files and both VMware runners.
 - `scripts/lib/windows-vmware/` — shared helpers for the VMware Windows
-  sandbox: `lib.sh` (vmrun resolution + the post-build hardware-version
-  upgrade used by both the platform `build.sh` and the runner) and the
+  sandbox: `lib.sh` (shim forwarding to `../vmware.sh`) and the
   guest-side bridge templates (`bridge-relay.js`, `bridges.ps1`,
   `start-relays.cmd`, `guest-setup.ps1`) that the runner renders into the
   guest.
-- `docs/` — user guides. `macos.md`, `windows-qemu.md`, `windows-vmware.md` and
-  `ssh-agent.md` are real; `linux.md` is a placeholder (only macOS host →
-  macOS/Windows guest is supported today).
+- `scripts/lib/ubuntu-vmware/` — the Ubuntu VMware sandbox's shared
+  templates/libs: the guest bridge template (`guest-setup.sh`: systemd user
+  services + profile.d exports, rendered with the run's host alias and
+  bridge ports by the runner) and the host-side user-settings copy logic
+  (`settings.sh`: SSH/scp transport, guest-layout mapping, gitconfig
+  sanitization for `/home/admin`, marker; shared by the runner and the
+  sync script).
+- `docs/` — user guides. `macos.md`, `windows-qemu.md`, `windows-vmware.md`,
+  `ubuntu-vmware.md` and `ssh-agent.md` are real.
 - `images/mac/CHANGELOG.md` — per-image changelog, keep in sync with
   `image_version`; always keeps an `[Unreleased]` section on top and links to
   the release tags (`mac-v<version>`) at the bottom.
@@ -95,13 +131,16 @@ recipes; it is the authoritative build/release guide.
 - Build one image: `./scripts/build.sh sandbox-macos-tahoe` (all images if no
   arg). Fails if a VM with that name already exists — `tart delete
   sandbox-macos-tahoe` first. The Windows images are built with
-  `WINDOWS_ISO_PATH=/path/to/iso ./scripts/build.sh sandbox-windows-11`
-  (QEMU) or `./scripts/build.sh sandbox-windows-11-vmware` (VMware) —
+  `WINDOWS_ISO_PATH=/path/to/iso ./scripts/build.sh sandbox-windows-11-arm64-qemu`
+  (QEMU) or `./scripts/build.sh sandbox-windows-11-arm64-vmware` (VMware),
+  and the Ubuntu image with
+  `UBUNTU_ISO_PATH=/path/to/iso ./scripts/build.sh sandbox-ubuntu-24-04-arm64-vmware` —
   `build.sh` delegates to the platform wrapper (`images/windows-arm64-qemu/build.sh`
   for swtpm + ISO staging, `images/windows-arm64-vmware/build.sh` for the
-  Fusion ARM64 driver staging; both run a VNC build watchdog,
-  `scripts/watch-build.sh`, that auto-dismisses Windows Setup dialogs —
-  needs `pip3 install vncdotool`), see the platform READMEs.
+  Fusion ARM64 driver staging, `images/ubuntu-arm64-vmware/build.sh` for
+  the ISO check + autoinstall build; the Windows builds run a VNC build
+  watchdog, `scripts/watch-build.sh`, that auto-dismisses Windows Setup
+  dialogs — needs `pip3 install vncdotool`), see the platform READMEs.
 - Fast HCL check without a build (from `images/mac/`):
   `packer validate -var-file=vars/<image>.pkrvars.hcl sandbox.pkr.hcl`.
 - Publish: `./scripts/deploy.sh <image>` — pushes `<version>` + `:latest` to
@@ -147,8 +186,11 @@ recipes; it is the authoritative build/release guide.
 
 ## Conventions & gotchas
 
-- Image name = vars file name = VM name = `sandbox-macos-<macos-version>`.
-  The Xcode version is **not** part of the name (it only selects the base
+- Image name = vars file name = VM name = `sandbox-macos-<macos-version>`
+  (macOS) or `sandbox-windows-<windows_version>-arm64-qemu` /
+  `sandbox-windows-<windows_version>-arm64-vmware` (Windows) or
+  `sandbox-ubuntu-<ubuntu_version>-arm64-vmware` (Ubuntu). The Xcode
+  version is **not** part of the mac name (it only selects the base
   image). Never introduce a separate naming scheme.
 - Every release: bump `image_version` in the vars file, add a CHANGELOG entry,
   commit, create the release tag, then `build.sh` + `deploy.sh` — see
@@ -163,7 +205,8 @@ recipes; it is the authoritative build/release guide.
 - SSH provisioning credentials are fixed by the Cirrus base images:
   `admin`/`admin`.
 - `scripts/deploy.sh` pushes images flat as `ghcr.io/<owner>/<image>` — the
-  platform is part of the image name (`sandbox-macos-…`, `sandbox-linux-…`),
+  platform is part of the image name (`sandbox-macos-…`,
+  `sandbox-windows-…-arm64-qemu`, `sandbox-windows-…-arm64-vmware`),
   so no path mapping is needed; mirror the `mac` layout (template + `vars/` +
   README + CHANGELOG) when a new platform lands.
 - Docs are part of the deliverable and must stay in sync with the template:

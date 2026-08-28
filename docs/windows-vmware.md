@@ -323,8 +323,8 @@ Notes:
   isn't started yet, the runner skips the bridge — start the engine and
   re-run the script (the setup is idempotent).
 - Pass `--no-docker` to skip; `SANDBOX_DOCKER_PORT` overrides the bridge
-  port (default `4301`; QEMU uses `4201`, macOS `4101`, so all three
-  sandboxes can run side by side).
+  port (default `4301`; QEMU uses `4201`, macOS `4101`, Ubuntu `4401`, so
+  all four sandboxes can run side by side).
 - Container-based test frameworks (testcontainers and similar) work out of
   the box: on Windows they dial the default named pipe, which *is* the
   bridged engine.
@@ -346,7 +346,7 @@ Notes:
 - The host listener lives only for the run (it stays up in background mode
   until killed); the guest side persists via the ONLOGON task.
 - Pass `--no-agent` to skip; `SANDBOX_AGENT_PORT` overrides the bridge port
-  (default `4300`; QEMU uses `4200`, macOS `4100`).
+  (default `4300`; QEMU uses `4200`, macOS `4100`, Ubuntu `4400`).
 
 ### Shared host folder
 
