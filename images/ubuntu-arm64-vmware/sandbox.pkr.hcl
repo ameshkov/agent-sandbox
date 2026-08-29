@@ -615,8 +615,12 @@ GDM
       # Root-side guarantees (the user shell below has privileges to write
       # only what its owner owns): create the XDG dirs with explicit
       # ownership so first-run writes (opencode's ~/.local/share) can
-      # never hit an EACCES.
+      # never hit an EACCES. `.local` must be listed as its own operand:
+      # install -d only applies -o/-g to the operands, and an intermediate
+      # `.local` would be created root-owned (breaking `tar -C $HOME` and
+      # any write the sandbox user makes directly into ~/.local).
       install -d -o ${var.ssh_username} -g ${var.ssh_username} \
+        /home/${var.ssh_username}/.local \
         /home/${var.ssh_username}/.local/share \
         /home/${var.ssh_username}/.local/state \
         /home/${var.ssh_username}/.config /home/${var.ssh_username}/.cache

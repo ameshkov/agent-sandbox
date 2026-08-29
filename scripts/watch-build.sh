@@ -22,7 +22,7 @@
 # with a hard timeout, so a hung VNC/OCR cycle cannot stall the watch.
 #
 # Usage:
-#   scripts/watch-build.sh <vnc-port> [outdir]
+#   scripts/watch-build.sh [options] <vnc-port> [outdir]
 #
 # <outdir> defaults to build/windows-arm64-qemu/packer_cache/watchdog
 # (gitignored build artifacts). Frames and the compiled OCR helper land
@@ -41,13 +41,53 @@ set -euo pipefail
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 
-port="${1:?usage: watch-build.sh <vnc-port> [outdir]}"
-outdir="${2:-$repo_root/build/windows-arm64-qemu/packer_cache/watchdog}"
-
 die() {
     printf '%s\n' "watch-build.sh: $*" >&2
     exit 1
 }
+
+usage() {
+    cat <<'EOF'
+Usage: watch-build.sh [options] <vnc-port> [outdir]
+
+VNC watchdog for the headless Windows sandbox build. Polls the build's VNC
+framebuffer, OCRs each frame (Apple Vision, see watch-build-ocr.swift),
+and answers the prompts the Packer boot_command's stray Enter keys can
+leave stuck: clicks "No" on Windows Setup's "Are you sure you want to
+quit?" dialog, presses a key when "Press any key to boot from CD or DVD" is
+on screen, and boots the Windows ISO from the UEFI shell. Ubuntu builds also
+type the autoinstall grub command when WATCH_BUILD_BOOT_CMD is set.
+
+Arguments:
+  vnc-port            VNC port of the Packer build (required)
+  outdir              frame/output directory (default:
+                      build/windows-arm64-qemu/packer_cache/watchdog)
+
+Options:
+  -h, --help   Show this help
+
+Environment:
+  WATCH_BUILD_BOOT_CMD  Ubuntu autoinstall grub command (one per line)
+
+Prerequisites:
+  python3 with the vncdotool module:  pip3 install vncdotool
+  Xcode command line tools (swiftc) — the OCR helper is compiled on first
+  use.
+EOF
+}
+
+case "${1:-}" in
+    -h | --help) usage; exit 0 ;;
+    -*) die "unknown option: $1" ;;
+esac
+
+if [ $# -lt 1 ]; then
+    usage >&2
+    exit 1
+fi
+
+port="$1"
+outdir="${2:-$repo_root/build/windows-arm64-qemu/packer_cache/watchdog}"
 
 python3 -c 'import vncdotool' 2>/dev/null ||
     die "the vncdotool module is missing — install it with: pip3 install vncdotool"

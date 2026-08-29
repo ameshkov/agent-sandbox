@@ -14,8 +14,6 @@ set -eu
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 
-requested="${1:-}"
-
 # Prints the name of every image (i.e. the name of every vars file).
 list_images() {
     for vars_file in "$repo_root"/images/*/vars/*.pkrvars.hcl; do
@@ -23,6 +21,41 @@ list_images() {
         basename "$vars_file" .pkrvars.hcl
     done
 }
+
+usage() {
+    cat <<'EOF'
+Usage: build.sh [options] [image]
+
+Builds sandbox images with Packer. Without an <image> argument, builds every
+image discovered from the per-image vars files under
+images/<platform>/vars/<image>.pkrvars.hcl; the Packer template is the
+platform's *.pkr.hcl file. Platforms may ship their own build wrapper
+(images/<platform>/build.sh), which is used when present. See
+DEVELOPMENT.md for details.
+
+Arguments:
+  image                  image name to build
+
+Options:
+  -h, --help   Show this help
+
+Available images:
+EOF
+    list_images | sed 's/^/  /'
+    cat <<'EOF'
+
+Examples:
+  ./scripts/build.sh                    # build every image
+  ./scripts/build.sh sandbox-macos-tahoe  # build the macOS image
+EOF
+}
+
+case "${1:-}" in
+    -h | --help) usage; exit 0 ;;
+    -*) echo "Unknown option: $1" >&2; usage >&2; exit 1 ;;
+esac
+
+requested="${1:-}"
 
 # Prints the path of the vars file for the given image, or exits if missing.
 find_vars_file() {

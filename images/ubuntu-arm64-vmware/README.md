@@ -159,7 +159,10 @@ tag via `./scripts/tag.sh <image>`.
   grub is variable-length, so the plugin's own boot_command typing was
   unreliable and could boot the interactive Subiquity installer — a build
   then hangs waiting for SSH; check the VNC watchdog frames in
-  `build/ubuntu-arm64-vmware/packer_cache/watchdog/`).
+  `build/ubuntu-arm64-vmware/packer_cache/watchdog/`). The watchdog polls
+  every 3 s until the command is typed (grub's menu countdown is ~20 s
+  wide — the slow ~2 min-per-frame poll could miss it entirely), then
+  relaxes to the slow cadence.
 - **Keep `autoinstall/user-data` in sync with the vars file**: the seed
   bakes the sandbox user (name + crypt hash of `ssh_password`). Change
   the credentials in the vars file *and* the `identity:` block together.

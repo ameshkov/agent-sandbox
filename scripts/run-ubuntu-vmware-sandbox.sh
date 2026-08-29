@@ -52,8 +52,9 @@
 #      guest socket /tmp/docker.sock, DOCKER_HOST exported in
 #      /etc/profile.d/agent-sandbox.sh, so `docker` and `docker compose`
 #      in the guest hit the host engine. --no-docker skips.
-#   5. Optionally shares a host directory into the guest (--work-dir PATH,
-#      HGFS via open-vm-tools; visible as /mnt/hgfs/work in the guest).
+#   5. Optionally shares a host directory into the guest (SANDBOX_WORK_DIR
+#      or --work-dir PATH, HGFS via open-vm-tools; visible as
+#      /mnt/hgfs/work in the guest).
 #   6. Installs the sandbox agent rules (scripts/agent-rules-linux.md)
 #      into the guest's coding agents — opencode's global AGENTS.md and
 #      the Copilot CLI's copilot-instructions.md.
@@ -81,6 +82,8 @@
 #   SANDBOX_OPENCHAMBER_PORT guest port of OpenChamber (4000)
 #   SANDBOX_AGENT_PORT     TCP port for the SSH agent bridge (4400)
 #   SANDBOX_DOCKER_PORT    TCP port for the Docker engine bridge (4401)
+#   SANDBOX_WORK_DIR       host dir to share into the guest; --work-dir
+#                          overrides it. Empty disables the share.
 #   GHCR_OWNER             GHCR owner for pulls (default: from git remote)
 #   NO_COLOR               disable colored output (any non-empty value)
 #
@@ -115,7 +118,9 @@ skip_agent=0
 skip_docker=0
 skip_settings=0
 reset_vm=0
-work_dir=""
+# The shared host directory: SANDBOX_WORK_DIR (empty = no share), the
+# --work-dir flag overrides it.
+work_dir=${SANDBOX_WORK_DIR:-}
 
 work_vmx=
 guest_ip=
@@ -769,6 +774,11 @@ setup_shared_folder() {
         return 0
     fi
 
+    if [ ! -d "$work_dir" ]; then
+        warn "work directory '$work_dir' does not exist — skipping the shared-directory share."
+        return 0
+    fi
+
     if ! vmrun list 2>/dev/null | grep -q "$work_vmx"; then
         warn "shared folder skipped — the VM is not running."
         return 0
@@ -1042,6 +1052,8 @@ print_summary() {
     printf '    %-14s %s\n' 'SSH:' "ssh $guest_user@$guest_ip (password: $guest_password)"
     if [ -n "$work_dir" ]; then
         printf '    %-14s %s\n' 'Shared:' "/mnt/hgfs/work -> $work_dir"
+    else
+        printf '    %-14s %s\n' 'Shared:' 'not shared'
     fi
     if [ "$agent_bridged" = 1 ]; then
         if [ "$guest_bridge_up" = 1 ]; then
@@ -1119,7 +1131,8 @@ Options:
   --no-docker    Skip the Docker engine bridge setup
   --no-settings  Skip copying the host's user settings into the guest
   --work-dir P   Share the host directory P into the guest as
-                 /mnt/hgfs/work (VMware Tools HGFS)
+                 /mnt/hgfs/work (VMware Tools HGFS); overrides
+                 SANDBOX_WORK_DIR
   --reset        Delete the working VM state (extracted base + clone) and
                  start fresh from the pristine image
   -h, --help     Show this help
@@ -1131,6 +1144,8 @@ Environment:
   SANDBOX_OPENCHAMBER_PORT guest port of OpenChamber (4000)
   SANDBOX_AGENT_PORT       TCP port for the SSH agent bridge (4400)
   SANDBOX_DOCKER_PORT      TCP port for the Docker engine bridge (4401)
+  SANDBOX_WORK_DIR         host dir to share into the guest (empty = no
+                           share); --work-dir overrides it
   GHCR_OWNER               GHCR owner for pulls (git remote)
   NO_COLOR                 disable colored output
 EOF

@@ -497,10 +497,16 @@ autoinstalled by Subiquity, not unattended:
    ds=nocloud-net;s=http://<vmnet8-host>:8004/ ---` (the seed server is
    `python3 -m http.server 8004` over `autoinstall/`, started by
    `build.sh`; the plugin's own http_directory uses a random port and
-   does not accept an `http_port` override). Subiquity then configures
-   LVM over the whole disk, user `admin` (password hash — keep in sync
-   with `ssh_password` in the vars file), openssh-server with password
-   auth, open-vm-tools — and reboots into the installed system.
+   does not accept an `http_port` override). While the command is untyped
+   the watchdog polls every 3 s — grub's menu countdown is only ~20 s
+   wide, and the watchdog's slow cadence (90 s worker + 20 s sleep ≈ one
+   frame per ~2 min) could miss the menu so completely that the
+   interactive Subiquity installer booted and the build hung on "Timeout
+   waiting for SSH" (observed on 2026-08-29); once `.boot-typed` exists
+   (or after a 4 min cap) the slow cadence resumes. Subiquity then
+   configures LVM over the whole disk, user `admin` (password hash — keep
+   in sync with `ssh_password` in the vars file), openssh-server with
+   password auth, open-vm-tools — and reboots into the installed system.
 2. **No Fusion driver/tools staging** — the vmxnet3 NIC driver ships in
    Ubuntu's base `linux-modules` package (verified for 24.04 arm64; NVMe
    is in-box too), and Fusion ships *no* Linux tools ISO for arm64 guests

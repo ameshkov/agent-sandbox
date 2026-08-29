@@ -10,7 +10,11 @@
 # paths map to different guest paths — the VS Code user config
 # (~/Library/Application Support/Code/User/) and the mcp-compress-router
 # settings (also under ~/Library/Application Support/) live under the
-# Linux XDG dirs (~/.config/Code/User/, ~/.config/mcp-compress-router/).
+# Linux XDG dirs (~/.config/Code/User/, ~/.local/share/mcp-compress-router/).
+# mcp-compress-router uses its XDG *data* dir on Linux (its
+# defaultConfigDir: ~/.local/share/mcp-compress-router), not the config
+# dir — that is where it looks for mcp.json/.jsonc and stores
+# credentials.json, tools-cache.json and .env.
 # The guest home is /home/admin (the image's fixed sandbox user).
 #
 # Sourced, not executed. Everything below is definitions only — sourcing
@@ -36,7 +40,7 @@
 # files are added to collect_settings_files, or when the copy logic changes
 # (e.g. the .gitconfig sanitization below): guests whose marker is older
 # than this are offered the copy again.
-settings_version=1
+settings_version=3
 
 # The sandbox user in the guest is fixed by the base image: admin, whose
 # home is /home/admin. Host home paths are rewritten to it verbatim.
@@ -175,8 +179,10 @@ guest_settings_installed() {
 # The copy is staged into a temporary tree in the GUEST's layout first:
 #   - paths under the macOS "Library/Application Support/Code/User/" land in
 #     the Linux "~/.config/Code/User/" (VS Code on Linux), and the
-#     mcp-compress-router settings land in "~/.config/mcp-compress-router/"
-#     (XDG config) — everything else keeps the same relative path,
+#     mcp-compress-router settings land in "~/.local/share/mcp-compress-router/"
+#     (its Linux XDG *data* dir — mcp-compress-router's defaultConfigDir:
+#     ~/.local/share/mcp-compress-router on Linux, never ~/.config) —
+#     everything else keeps the same relative path,
 #   - .gitconfig is the one file that can carry host-specific paths (the host
 #     home directory, e.g. /Users/ameshkov, baked into the config) and the
 #     guest's user differs (admin), so it is sanitized before the copy: every
@@ -203,7 +209,12 @@ copy_settings_to_guest() {
                 g=".config/Code/User/${f#Library/Application Support/Code/User/}"
                 ;;
             "Library/Application Support/mcp-compress-router"*)
-                g=".config/mcp-compress-router"
+                # mcp-compress-router's defaultConfigDir on Linux is the
+                # XDG *data* dir (~/.local/share/mcp-compress-router), not
+                # ~/.config: that is the only place it reads mcp.json/.jsonc
+                # from, and where credentials.json, tools-cache.json and
+                # .env go. The macOS app-support dir maps there one-to-one.
+                g=".local/share/mcp-compress-router"
                 ;;
             *)
                 g="$f"
@@ -238,10 +249,17 @@ copy_settings_to_guest() {
     fi
 
     archive="$staging/settings.tar.gz"
-    # --no-xattrs: macOS tar stamps every file with the
+    # macOS trees can carry AppleDouble companions (._share, ._opencode,
+    # ...) — leftover junk from files without xattr support (or from a
+    # sync off an exFAT/network drive) that macOS cp/tar both treat as
+    # ordinary files. They are pure noise on Linux: worth nothing, and
+    # packing them made the guest's tar abort when ~/.local was not
+    # writable. Strip them (and .DS_Store) from the staged tree before
+    # packing. --no-xattrs: macOS tar stamps every file with the
     # com.apple.provenance xattr, and the guest's GNU tar would warn per
     # file ("Ignoring unknown extended header keyword"). Modes traveled
     # through cp -p and don't need xattrs.
+    find "$tree" \( -name '._*' -o -name '.DS_Store' \) -delete 2>/dev/null || true
     if ! tar --no-xattrs -czf "$archive" -C "$tree" .; then
         warn "could not pack the staged settings."
         rm -rf "$staging"
@@ -257,7 +275,21 @@ copy_settings_to_guest() {
         return 1
     fi
     if ! settings_ssh '
+        # Images up to and including this release ship ~/.local owned by
+        # root (install -d left the intermediate root-owned), so tar could
+        # not write into it (EACCES) or restore its timestamps (Cannot
+        # utime). Chown it back to the sandbox user first — ignore
+        # failures (newer images have it right; the tar must still run).
+        printf "%s\n" '"$guest_password"' | sudo -S chown -R "$USER:$USER" "$HOME/.local" 2>/dev/null || true
         tar -C "$HOME" -xzf /tmp/agent-sandbox-settings.tar.gz || exit 1
+        # Older syncs put mcp-compress-router in ~/.config (wrong: on Linux
+        # it reads its XDG *data* dir, ~/.local/share). Drop the stale copy
+        # — the archive now carries the right location.
+        rm -rf "$HOME/.config/mcp-compress-router" 2>/dev/null || true
+        # Drop any AppleDouble junk a previous partial copy left behind.
+        find "$HOME/.local" "$HOME/.config" "$HOME/.copilot" \
+            "$HOME/.opencodereview" "$HOME/.ssh" -name "._*" \
+            -delete 2>/dev/null || true
         chmod 700 "$HOME/.ssh" 2>/dev/null || true
         rm -f /tmp/agent-sandbox-settings.tar.gz
     '; then

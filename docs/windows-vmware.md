@@ -5,8 +5,8 @@
 > pre-installed, plus the OpenCodeReview code-review CLI and the OpenChamber
 > web UI to run and supervise agent sessions from your host browser — running
 > under VMware Fusion on your Apple Silicon Mac. A host directory can be
-> shared into the guest (`--work-dir`), and the guest is reachable directly
-> at its NAT IP (no port forwarding).
+> shared into the guest (`SANDBOX_WORK_DIR` or `--work-dir`), and the guest
+> is reachable directly at its NAT IP (no port forwarding).
 >
 > **Quick setup** — three steps and you're done:
 >
@@ -27,7 +27,7 @@ This is the VMware (Fusion) variant. It exists alongside the
 | Hypervisor | VMware Fusion (free) | QEMU + HVF |
 | Performance | Near-native | Near-native |
 | Guest tools | VMware Tools (in-image) | virtio drivers |
-| Shared host folder | Yes (HGFS, `--work-dir`) | No |
+| Shared host folder | Yes (HGFS, `SANDBOX_WORK_DIR` / `--work-dir`) | No |
 | Extra tools | Fusion only | qemu + swtpm |
 | Publish artifact | vmx + vmdk (tar.gz) | qcow2 |
 
@@ -109,8 +109,9 @@ OpenChamber web UI only starts at logon (see
 A Fusion window opens and the guest logs in automatically. Pass
 `--foreground` to keep the terminal attached (Cmd+C stops the VM),
 `--headless` to run without a window, `--no-agent` / `--no-docker` to
-skip a bridge, `--work-dir /path` to share a host folder, or `--reset`
-to wipe the working VM and start fresh from the pristine image.
+skip a bridge, `SANDBOX_WORK_DIR` (or `--work-dir /path`) to share a host
+folder, or `--reset` to wipe the working VM and start fresh from the
+pristine image.
 
 > [!NOTE]
 > The working VM is your sandbox: installs, config, and agent state
@@ -145,9 +146,11 @@ use it from the host or inside the VM:
 
 - **Code review (OpenCodeReview)**: the image ships the `ocr` CLI — see the
   [OpenCodeReview quick start](https://github.com/alibaba/open-code-review#quick-start).
-- **Shared folder**: if you passed `--work-dir /path`, the folder is
-  available in the guest at `\\vmware-host\Shared Folders\work` — map it to
-  a drive letter in the guest, or use it from PowerShell/VS Code directly.
+- **Shared folder**: if you shared a host directory (see
+  [Shared host folder](#shared-host-folder)), it is available in the guest
+  at `\\vmware-host\Shared Folders\work` — map it to a drive letter in the
+  guest, or use it from PowerShell/VS Code directly. The runner's summary
+  also prints the exact mapping.
 
 ### Configure the environment
 
@@ -351,16 +354,20 @@ Notes:
 ### Shared host folder
 
 Unlike the QEMU sandbox, the VMware image ships VMware Tools, so a host
-directory can be shared into the guest (HGFS). Pass `--work-dir` on the
-runner:
+directory can be shared into the guest (HGFS). Set it with
+`SANDBOX_WORK_DIR` (works for every platform runner) or pass `--work-dir`
+on the runner (overrides the env var):
 
 ```bash
+SANDBOX_WORK_DIR="$HOME/projects" ./scripts/run-windows-vmware-sandbox.sh
 ./scripts/run-windows-vmware-sandbox.sh --work-dir "$HOME/projects"
 ```
 
 The folder appears in the guest at `\\vmware-host\Shared Folders\work` —
 map it to a drive letter (`net use W: \\vmware-host\Shared Folders\work`)
-for everything to see it. Notes:
+for everything to see it. The runner's summary prints the mapping
+(`Shared: \\vmware-host\Shared Folders\work -> <host path>`) — or
+`Shared: not shared` when nothing is shared. Notes:
 
 - Best-effort: the runner warns and continues when the share could not be
   registered (e.g. tools not fully up yet). Re-run the runner afterwards.
@@ -382,7 +389,8 @@ Options:
 - `--no-agent` — skip the SSH agent bridge setup
 - `--no-docker` — skip the Docker engine bridge setup
 - `--work-dir PATH` — share the host directory into the guest as
-  `\\vmware-host\Shared Folders\work` (VMware Tools HGFS)
+  `\\vmware-host\Shared Folders\work` (VMware Tools HGFS); overrides
+  `SANDBOX_WORK_DIR`
 - `--reset` — delete the working VM state (extracted base + clone) and
   start fresh from the pristine image
 
@@ -396,6 +404,7 @@ Environment variables (defaults in parentheses):
 | `SANDBOX_OPENCHAMBER_PORT` | `4000` | Guest port of OpenChamber |
 | `SANDBOX_AGENT_PORT` | `4300` | TCP port for the SSH agent bridge |
 | `SANDBOX_DOCKER_PORT` | `4301` | TCP port for the Docker engine bridge |
+| `SANDBOX_WORK_DIR` | unset | Host directory to share into the guest (`\\vmware-host\Shared Folders\work`); empty disables the share, `--work-dir` overrides it |
 | `GHCR_OWNER` | from the git remote | GHCR owner used when pulling the image |
 | `NO_COLOR` | unset | Any non-empty value disables colored output |
 | `FUSION_APP_PATH` | `/Applications/VMware Fusion.app` | VMware Fusion install location |

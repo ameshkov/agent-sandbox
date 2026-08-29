@@ -257,10 +257,20 @@ boot"
 
 stop_watchdog() {
   if [ -n "$watchdog_pid" ]; then
+    # Kill the in-flight worker subprocesses first: the supervisor's
+    # subprocess.run leaves them alive when it is killed, and a hung
+    # worker keeps its VNC connection open (observed: stale
+    # `watch-build.py --worker` processes from a failed Ubuntu build
+    # holding onto VNC port 5901, blocking the next build).
+    pkill -P "$watchdog_pid" 2>/dev/null || true
     kill "$watchdog_pid" 2>/dev/null || true
     wait "$watchdog_pid" 2>/dev/null || true
     watchdog_pid=""
   fi
+  # Belt and braces: a worker that outlived its supervisor (e.g. a build
+  # interrupted while a worker was mid-cycle) keeps polling the gone VNC;
+  # match on the --worker subcommand.
+  pkill -f 'watch-build.py --worker' 2>/dev/null || true
 }
 
 cleanup() {

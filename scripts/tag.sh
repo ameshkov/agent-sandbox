@@ -24,8 +24,6 @@ set -eu
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 
-requested="${1:-}"
-
 # Prints the name of every image (i.e. the name of every vars file).
 list_images() {
     for vars_file in "$repo_root"/images/*/vars/*.pkrvars.hcl; do
@@ -33,6 +31,46 @@ list_images() {
         basename "$vars_file" .pkrvars.hcl
     done
 }
+
+usage() {
+    cat <<'EOF'
+Usage: tag.sh [options] [image]
+
+Creates and pushes the git release tag for an image. Without an <image>
+argument, tags every image discovered from the per-image vars files under
+images/<platform>/vars/<image>.pkrvars.hcl. The tag is
+<platform>-v<image_version>, where <platform> is the image's directory
+under images/ (e.g. `mac` → `mac-v1.2.0`) and <image_version> is read from
+the image's vars file.
+
+Run this right after committing a release and before build.sh + deploy.sh.
+The script enforces the release convention: the working tree must be clean,
+the platform's CHANGELOG.md must have a `[<tag>]` entry, and the tag must
+not exist yet. See DEVELOPMENT.md → "Releasing a new image version".
+
+Arguments:
+  image                  image name to tag
+
+Options:
+  -h, --help   Show this help
+
+Available images:
+EOF
+    list_images | sed 's/^/  /'
+    cat <<'EOF'
+
+Examples:
+  ./scripts/tag.sh                    # tag every image
+  ./scripts/tag.sh sandbox-macos-tahoe  # tag the macOS image
+EOF
+}
+
+case "${1:-}" in
+    -h | --help) usage; exit 0 ;;
+    -*) echo "Unknown option: $1" >&2; usage >&2; exit 1 ;;
+esac
+
+requested="${1:-}"
 
 # Prints the path of the vars file for the given image, or exits if missing.
 find_vars_file() {

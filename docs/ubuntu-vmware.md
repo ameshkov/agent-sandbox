@@ -5,8 +5,9 @@
 > (OpenCode) pre-installed, plus the OpenCodeReview code-review CLI and the
 > OpenChamber web UI to run and supervise agent sessions from your host
 > browser — running under VMware Fusion on your Apple Silicon Mac. A host
-> directory can be shared into the guest (`--work-dir`), and the guest is
-> reachable directly at its NAT IP (no port forwarding).
+> directory can be shared into the guest (`SANDBOX_WORK_DIR` or
+> `--work-dir`), and the guest is reachable directly at its NAT IP (no port
+> forwarding).
 >
 > **Quick setup** — three steps and you're done:
 >
@@ -26,7 +27,7 @@ Windows sandboxes:
 | --- | --- | --- | --- | --- |
 | Hypervisor | VMware Fusion (free) | Tart | QEMU + HVF | VMware Fusion (free) |
 | Guest | Ubuntu 24.04 LTS (ARM64) server | macOS (Apple Silicon) | Windows 11 Pro ARM64 | Windows 11 Pro ARM64 |
-| Shared host folder | Yes (HGFS, `--work-dir`) | Yes | No | Yes (HGFS, `--work-dir`) |
+| Shared host folder | Yes (HGFS, `SANDBOX_WORK_DIR` / `--work-dir`) | Yes | No | Yes (HGFS, `SANDBOX_WORK_DIR` / `--work-dir`) |
 | Guest desktop | Yes (GNOME, auto-login; Fusion window) | Yes | Yes (RDP) | Yes (RDP) |
 | Publish artifact | vmx + vmdk (tar.gz) | Tart VM | qcow2 | vmx + vmdk (tar.gz) |
 
@@ -109,8 +110,8 @@ interactive logon is needed for OpenChamber to come up (see
 Pass `--foreground` to keep the terminal attached (Cmd+C stops the VM),
 `--headless` to run without a window, `--no-agent` / `--no-docker` to
 skip a bridge, `--no-settings` to skip the host user-settings copy,
-`--work-dir /path` to share a host folder, or `--reset` to wipe the
-working VM and start fresh from the pristine image.
+`SANDBOX_WORK_DIR` (or `--work-dir /path`) to share a host folder, or
+`--reset` to wipe the working VM and start fresh from the pristine image.
 
 > [!NOTE]
 > The working VM is your sandbox: installs, config, and agent state
@@ -149,8 +150,9 @@ use it from the host or inside the VM:
 
 - **Code review (OpenCodeReview)**: the image ships the `ocr` CLI — see the
   [OpenCodeReview quick start](https://github.com/alibaba/open-code-review#quick-start).
-- **Shared folder**: if you passed `--work-dir /path`, the folder is
-  available in the guest at `/mnt/hgfs/work`.
+- **Shared folder**: if you shared a host directory (see
+  [Shared host folder](#shared-host-folder)), it is available in the guest
+  at `/mnt/hgfs/work`. The runner's summary also prints the exact mapping.
 - **Desktop (in the VM window)**: the guest boots to GNOME (auto-login as
   `admin`) — run without `--headless` and the Fusion window is the desktop,
   with VS Code, Firefox and the OpenChamber UI in the guest browser.
@@ -364,14 +366,19 @@ Notes:
 ### Shared host folder
 
 The image ships open-vm-tools (vmhgfs-fuse), so a host directory can be
-shared into the guest (HGFS). Pass `--work-dir` on the runner:
+shared into the guest (HGFS). Set it with `SANDBOX_WORK_DIR` (works for
+every platform runner) or pass `--work-dir` on the runner (overrides the
+env var):
 
 ```bash
+SANDBOX_WORK_DIR="$HOME/projects" ./scripts/run-ubuntu-vmware-sandbox.sh
 ./scripts/run-ubuntu-vmware-sandbox.sh --work-dir "$HOME/projects"
 ```
 
 The folder appears in the guest at `/mnt/hgfs/work` (mounted by the runner
-on each run). Notes:
+on each run). The runner's summary prints the mapping
+(`Shared: /mnt/hgfs/work -> <host path>`) — or `Shared: not shared` when
+nothing is shared. Notes:
 
 - Best-effort: the runner warns and continues when the share could not be
   mounted (e.g. tools not fully up yet). Mount it manually in the guest:
@@ -407,7 +414,7 @@ XDG layout):
 | `~/Library/Application Support/Code/User/settings.json` | `~/.config/Code/User/settings.json` | VS Code settings, including per-extension settings (`github.copilot.*`, ...) |
 | `~/Library/Application Support/Code/User/keybindings.json` | `~/.config/Code/User/keybindings.json` | Custom keyboard shortcuts |
 | `~/Library/Application Support/Code/User/snippets/` | `~/.config/Code/User/snippets/` | User code snippets |
-| `~/Library/Application Support/mcp-compress-router/` | `~/.config/mcp-compress-router/` | mcp-compress-router settings: the MCP server config (`mcp.json`) with its endpoints and credentials, plus the stored credentials and tool-schema cache |
+| `~/Library/Application Support/mcp-compress-router/` | `~/.local/share/mcp-compress-router/` | mcp-compress-router settings: the MCP server config (`mcp.json`) with its endpoints and credentials, plus the stored credentials and tool-schema cache. On Linux the router uses its XDG data dir (`~/.local/share/mcp-compress-router/`), not `~/.config/` |
 | `~/.ssh/allowed_signers` | same path | SSH signing verification |
 | `~/.ssh/known_hosts` | same path | SSH host keys you already trust |
 | `~/.ssh/*.sh` | same path | SSH helper scripts (e.g. for signing) |
@@ -498,7 +505,7 @@ Options:
 - `--no-docker` — skip the Docker engine bridge setup
 - `--no-settings` — skip copying the host's user settings into the guest
 - `--work-dir PATH` — share the host directory into the guest as
-  `/mnt/hgfs/work` (VMware Tools HGFS)
+  `/mnt/hgfs/work` (VMware Tools HGFS); overrides `SANDBOX_WORK_DIR`
 - `--reset` — delete the working VM state (extracted base + clone) and
   start fresh from the pristine image
 
@@ -512,6 +519,7 @@ Environment variables (defaults in parentheses):
 | `SANDBOX_OPENCHAMBER_PORT` | `4000` | Guest port of OpenChamber |
 | `SANDBOX_AGENT_PORT` | `4400` | TCP port for the SSH agent bridge |
 | `SANDBOX_DOCKER_PORT` | `4401` | TCP port for the Docker engine bridge |
+| `SANDBOX_WORK_DIR` | unset | Host directory to share into the guest (`/mnt/hgfs/work`); empty disables the share, `--work-dir` overrides it |
 | `GHCR_OWNER` | from the git remote | GHCR owner used when pulling the image |
 | `NO_COLOR` | unset | Any non-empty value disables colored output |
 | `FUSION_APP_PATH` | `/Applications/VMware Fusion.app` | VMware Fusion install location |

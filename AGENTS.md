@@ -58,14 +58,15 @@ recipes; it is the authoritative build/release guide.
   working VM with `vmrun` (Fusion NAT; no port forwarding — the guest IP
   comes from `vmrun getGuestIPAddress`), bridges the host's SSH agent and
   Docker engine into the guest the same way, optionally shares a host
-  folder (HGFS, `--work-dir`), and verifies OpenChamber. See
-  `docs/windows-vmware.md`.
+  folder (HGFS, `SANDBOX_WORK_DIR` / `--work-dir`), and verifies
+  OpenChamber. See `docs/windows-vmware.md`.
 - `scripts/run-ubuntu-vmware-sandbox.sh` — user-facing runner for the
   Ubuntu VMware sandbox: same vmrun cloning/IP/NAT mechanics as the
   Windows runner, with Linux guests — bridges the host's SSH agent and
   Docker engine as systemd **user** services (`socat` relays rendered from
   `scripts/lib/ubuntu-vmware/`, linger enabled in the image), shares a host
-  folder (HGFS, `--work-dir` → `/mnt/hgfs/work`), installs the sandbox
+  folder (HGFS, `SANDBOX_WORK_DIR` / `--work-dir` → `/mnt/hgfs/work`),
+  installs the sandbox
   agent rules (`scripts/agent-rules-linux.md`) into the guest's
   opencode/Copilot configs, copies the host's user settings into the guest
   once per VM (versioned marker, `--no-settings` skips; same file set as

@@ -21,6 +21,56 @@ set -eu
 
 repo_root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 
+# Prints the name of every image (i.e. the name of every vars file).
+list_images() {
+    for vars_file in "$repo_root"/images/*/vars/*.pkrvars.hcl; do
+        [ -f "$vars_file" ] || continue
+        basename "$vars_file" .pkrvars.hcl
+    done
+}
+
+usage() {
+    cat <<'EOF'
+Usage: deploy.sh [options] [image]
+
+Pushes locally built sandbox images to GHCR. Without an <image> argument,
+pushes every image discovered from the per-image vars files under
+images/<platform>/vars/<image>.pkrvars.hcl. Each image is pushed under
+ghcr.io/<owner>/<image>:<image_version> and :latest, where <owner> is
+derived from the git remote (override with the GHCR_OWNER env var) and
+<image_version> is read from the image's vars file. Platforms may ship
+their own deploy wrapper (images/<platform>/deploy.sh), which is used when
+present. See DEVELOPMENT.md for details.
+
+Arguments:
+  image                  image name to push
+
+Options:
+  -h, --help   Show this help
+
+Available images:
+EOF
+    list_images | sed 's/^/  /'
+    cat <<'EOF'
+
+Environment:
+  GHCR_OWNER   GHCR owner override (derived from the git remote by default)
+
+Examples:
+  ./scripts/deploy.sh                    # push every image
+  ./scripts/deploy.sh sandbox-macos-tahoe  # push the macOS image
+
+Prerequisite: authenticate against GHCR once with packages:write — for the
+macOS images run 'tart login ghcr.io'; the Windows images use 'oras login
+ghcr.io'.
+EOF
+}
+
+case "${1:-}" in
+    -h | --help) usage; exit 0 ;;
+    -*) echo "Unknown option: $1" >&2; usage >&2; exit 1 ;;
+esac
+
 requested="${1:-}"
 
 owner="${GHCR_OWNER:-}"
@@ -35,14 +85,6 @@ if [ -z "$owner" ]; then
     echo "Set the GHCR_OWNER env var, e.g. GHCR_OWNER=my-org ./scripts/deploy.sh" >&2
     exit 1
 fi
-
-# Prints the name of every image (i.e. the name of every vars file).
-list_images() {
-    for vars_file in "$repo_root"/images/*/vars/*.pkrvars.hcl; do
-        [ -f "$vars_file" ] || continue
-        basename "$vars_file" .pkrvars.hcl
-    done
-}
 
 # Prints the path of the vars file for the given image, or exits if missing.
 find_vars_file() {

@@ -17,11 +17,17 @@ scripts/watch-build-ocr.swift), and:
     the grub menu or shell appears (WATCH_BUILD_BOOT_CMD env var, one
     grub command per line; the env var is read per frame, so it can be
     filled in after the build started, e.g. once the HTTP port is known).
-    The grub command is typed only once per build (a marker file in the
-    frame directory records it; the build wrapper removes the marker when
-    the watchdog starts), and only after grub is actually on screen — the
-    firmware's (variable-length) No-Media/PXE probe cycle no longer races
-    the Packer boot_command typing.
+    While the command is still untyped (no .boot-typed marker in the frame
+    directory), the supervisor polls every 3 s — grub's menu countdown is
+    ~20 s wide and the slow cadence (~2 min per frame) can miss it, which
+    makes the interactive Subiquity installer boot instead of autoinstall
+    and the build hang waiting for SSH. Once the command is typed (or the
+    fast-poll cap passes), the slow cadence resumes. The grub command is
+    typed only once per build (a marker file in the frame directory
+    records it; the build wrapper removes the marker when the watchdog
+    starts), and only after grub is actually on screen — the firmware's
+    (variable-length) No-Media/PXE probe cycle no longer races the Packer
+    boot_command typing.
 
 The supervisor runs every capture in a subprocess with a hard timeout, so a
 hung VNC/OCR cycle cannot stall the watch. See scripts/watch-build.sh for
@@ -29,7 +35,7 @@ the entry point and prerequisites (python3 + vncdotool + swiftc).
 
 Usage:
   watch-build.py <vnc-port> <outdir> <ocr-binary>
-  watch-build.py --worker <vnc-port> <outdir> <ocr-binary> <frame>
+  watch-build.py       --worker <vnc-port> <outdir> <ocr-binary> <frame>
 """
 
 import os
@@ -41,6 +47,25 @@ import time
 # Fallback "No" button center for the 800x600 framebuffer (top-left origin),
 # used when the OCR did not return a position for the button.
 NO_BUTTON_FALLBACK = (487, 381)
+
+# --- poll pacing -----------------------------------------------------------
+#
+# Until the Ubuntu autoinstall command is typed (or the hard cap below
+# passes), the supervisor polls fast so at least one worker lands inside
+# grub's ~20 s menu countdown. The slow cadence (90 s worker + 20 s sleep)
+# scans a frame roughly every 2 minutes, so it can miss the menu entirely —
+# the default entry then boots the interactive Subiquity installer and the
+# build hangs waiting for SSH ("Timeout waiting for SSH" after the 60 m
+# ssh_timeout; observed in the Ubuntu 24.04 build on 2026-08-29).
+# Once .boot-typed exists the slow cadence resumes — the only screens left
+# are the installer / Windows dialogs, which change on the minute timescale.
+# The worker timeout stays at 90 s even in the fast phase: the worker's own
+# OCR timeout (50 s) and connect timeout (10 s) bound a slow worker, and a
+# kill mid-typing would corrupt the grub shell input line.
+FAST_POLL_INTERVAL = 3
+FAST_POLL_MAX_SECONDS = 240
+SLOW_POLL_INTERVAL = 20
+SLOW_POLL_WORKER_TIMEOUT = 90
 
 # Ubuntu autoinstall boot command (rendered by the build wrapper; see the
 # module docstring). Read per worker invocation, so the value can be
@@ -190,6 +215,9 @@ def run_worker(port, outdir, ocr, frame):
 
 def main():
     args = sys.argv[1:]
+    if args and args[0] in ('-h', '--help'):
+        print(__doc__)
+        return
     if args and args[0] == '--worker':
         # Re-exec'd by the supervisor: one capture cycle.
         _, port, outdir, ocr, frame = args
@@ -200,20 +228,28 @@ def main():
     os.makedirs(outdir, exist_ok=True)
     log(f'watching VNC port {port} (frames in {outdir})')
     i = 0
+    fast_until = time.time() + FAST_POLL_MAX_SECONDS
     try:
         while True:
             frame = os.path.join(outdir, f'w{i:04d}.png')
+            # Fast-poll while the Ubuntu autoinstall command still has to be
+            # typed (grub's menu countdown is only ~20 s wide); relax once
+            # typed or when a boot never reaches grub (hard cap, so a stuck
+            # interactive installer is watched at the gentle cadence).
+            boot_marker = os.path.join(outdir, '.boot-typed')
+            fast = bool(BOOT_CMD) and not os.path.exists(boot_marker) \
+                and time.time() < fast_until
             try:
                 subprocess.run(
                     [sys.executable, os.path.abspath(__file__), '--worker',
                      port, outdir, ocr, frame],
-                    timeout=90)
+                    timeout=SLOW_POLL_WORKER_TIMEOUT)
             except subprocess.TimeoutExpired:
                 log('worker timed out — skipping this frame')
             except Exception as e:  # noqa: BLE001 - keep watching
                 log(f'error: {e}')
             i += 1
-            time.sleep(20)
+            time.sleep(FAST_POLL_INTERVAL if fast else SLOW_POLL_INTERVAL)
     except KeyboardInterrupt:
         log('stopping')
 

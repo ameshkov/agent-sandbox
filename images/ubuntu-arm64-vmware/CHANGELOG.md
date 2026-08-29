@@ -27,6 +27,50 @@ the next release.
   mcp-compress-router, `.gitconfig` rewritten for `/home/admin`,
   OpenChamber restart). See `docs/ubuntu-vmware.md`.
 
+### Fixed
+
+- **Host user settings copy no longer fails on the root-owned `~/.local`** —
+  the sync unpack hit `tar: Cannot utime` / `Permission denied` and aborted:
+  the image's `install -d -o admin -g admin
+  /home/admin/.local/share ...` left the *intermediate* `.local` directory
+  root-owned (install only applies `-o/-g` to its operands), so the sandbox
+  user could not write into `~/.local` or restore its timestamps during
+  `tar -C $HOME` extraction. `install -d` now lists `/home/admin/.local`
+  as its own operand, and the runner's settings copy
+  (`scripts/lib/ubuntu-vmware/settings.sh`) chowns `~/.local` back to the
+  sandbox user before unpacking (via `sudo -S` with the guest password the
+  runner already knows), so existing images are fixed on the next run
+  without a rebuild. The copy also strips macOS AppleDouble companions
+  (`._*`) and `.DS_Store` from the staged archive and cleans up any `._*`
+  junk a previous partial copy left in the guest — the AppleDouble files
+  were packed as ordinary files, and one of them (`._share`) is what first
+  made the extraction hit the root-owned directory.
+- **mcp-compress-router settings land where the router looks for them** —
+  the settings copy mapped the host's
+  `~/Library/Application Support/mcp-compress-router/` to
+  `~/.config/mcp-compress-router/`, but mcp-compress-router's
+  `defaultConfigDir` on Linux is the XDG **data** dir,
+  `~/.local/share/mcp-compress-router/` (a different path from macOS and
+  Windows), so the synced `mcp.json`/credentials were never picked up.
+  The mapping now targets `~/.local/share/mcp-compress-router/` (where
+  `mcp.json`/`.jsonc`, `credentials.json`, `tools-cache.json` and `.env`
+  all live), the settings version was bumped so already-provisioned
+  guests re-copy, and the unpack drops the stale `~/.config` copy.
+- **The build watchdog no longer misses the grub menu** — the Ubuntu build
+  can fail with "Timeout waiting for SSH" when the grub autoinstall
+  command is never typed: grub's menu countdown is ~20 s wide, but
+  `scripts/watch-build.py` polled once per ~2 min (90 s worker timeout +
+  20 s sleep), so the menu default booted the interactive Subiquity
+  installer and the build sat on the installer's proxy screen until SSH
+  timed out. The supervisor now fast-polls (3 s interval — the worker
+  timeout stays at 90 s, since a kill mid-typing would corrupt the grub
+  shell input line) while the autoinstall command is untyped (no
+  `.boot-typed` marker), falling back to the old slow cadence once typed
+  or after a 4 min cap; the relaying is unchanged. `build.sh`'s
+  `stop_watchdog` also kills the supervisor's in-flight `--worker`
+  children (they survive a supervisor kill and keep the VNC port open,
+  blocking the next build).
+
 ## [ubuntu-arm64-vmware-v1.1.0] - 2026-08-25
 
 ### Added
