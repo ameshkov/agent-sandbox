@@ -465,6 +465,29 @@ wait_for_sshd() {
     die "timed out waiting for $label (no SSH on $guest_ip:$guest_port)."
 }
 
+# Waits until the guest's VMware Tools report "running" (vmrun
+# checkToolsState). The shared-folder registration talks to the tools, and
+# right after the guest boots they can still be starting when
+# getGuestIPAddress and sshd already answer — vmrun addSharedFolder then
+# fails with "The VMware Tools are not running in the virtual machine".
+# Wait for the state before registering the share.
+wait_for_tools() {
+    n=0
+    printf '%s' "    Waiting for VMware Tools to be running"
+    while [ "$n" -lt 60 ]; do
+        state=$(vmware_tools_state "$work_vmx") || true
+        if [ "$state" = "running" ]; then
+            printf ' %s\n' "${c_green}done${c_reset}"
+            return 0
+        fi
+        n=$((n + 1))
+        printf '.'
+        sleep 5
+    done
+    printf ' %s\n' "${c_yellow}failed${c_reset}"
+    return 1
+}
+
 # --- guest shell ------------------------------------------------------------
 
 # Runs a remote command in the guest via SSH (expect drives the password
@@ -785,9 +808,11 @@ setup_shared_folder() {
     fi
 
     info "Sharing $work_dir into the guest as 'work' (/mnt/hgfs/work)."
-    if ! vmrun addSharedFolder "$work_vmx" work "$work_dir" 2>/dev/null; then
-        warn "addSharedFolder failed — is the share already registered? Continuing."
+    if ! wait_for_tools; then
+        warn "VMware Tools did not report running — skipping the shared-directory share (re-run to retry)."
+        return 0
     fi
+    add_shared_folder || true
     vmrun enableSharedFolders "$work_vmx" runtime 2>/dev/null || true
     # Mount the share inside the guest (the mount needs root — expect
     # answers the sudo -S password prompt on the pty-less session's stdin).
@@ -797,6 +822,32 @@ setup_shared_folder() {
     else
         ok "Shared folder mounted at /mnt/hgfs/work."
     fi
+}
+
+# Registers the share with vmrun. The tools state can flip back right
+# after wait_for_tools returns (vmtoolsd settles around logon), so the
+# add is retried a few times. A share persisted by a previous run of the
+# same working VM is fine: "Already exists" means it is registered.
+add_shared_folder() {
+    n=0
+    while [ "$n" -lt 4 ]; do
+        n=$((n + 1))
+        if err=$(vmrun addSharedFolder "$work_vmx" work "$work_dir" 2>&1); then
+            return 0
+        fi
+        case "$err" in
+            *"Already exists"*)
+                ok "Shared folder already registered (from a previous run — the share persists in the vmx)."
+                return 0
+                ;;
+        esac
+        if [ "$n" -lt 4 ]; then
+            warn "addSharedFolder failed ($err) — retrying in 10 s (attempt $n/4)."
+            sleep 10
+        fi
+    done
+    warn "addSharedFolder failed after $n attempts ($err) — is VMware Tools up? Continuing."
+    return 1
 }
 
 # --- step 6 (cont.): agent rules ---------------------------------------------

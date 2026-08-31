@@ -4,9 +4,10 @@
 > guest with a full coding toolchain and an AI coding agent (OpenCode)
 > pre-installed, plus the OpenCodeReview code-review CLI and the OpenChamber
 > web UI to run and supervise agent sessions from your host browser — running
-> under VMware Fusion on your Apple Silicon Mac. A host directory can be
-> shared into the guest (`SANDBOX_WORK_DIR` or `--work-dir`), and the guest
-> is reachable directly at its NAT IP (no port forwarding).
+> under VMware Fusion on your Apple Silicon Mac and reachable directly
+> at its NAT IP (no port forwarding). Shared host folders are not
+> supported for Windows 11 ARM guests on Apple silicon (see
+> [Shared host folder](#shared-host-folder)).
 >
 > **Quick setup** — three steps and you're done:
 >
@@ -27,13 +28,13 @@ This is the VMware (Fusion) variant. It exists alongside the
 | Hypervisor | VMware Fusion (free) | QEMU + HVF |
 | Performance | Near-native | Near-native |
 | Guest tools | VMware Tools (in-image) | virtio drivers |
-| Shared host folder | Yes (HGFS, `SANDBOX_WORK_DIR` / `--work-dir`) | No |
+| Shared host folder | No (not supported for Win11 ARM on Apple silicon) | No |
 | Extra tools | Fusion only | qemu + swtpm |
 | Publish artifact | vmx + vmdk (tar.gz) | qcow2 |
 
 Both images install the same Windows 11 Pro ARM64 guest and toolchain; pick
-either. Fusion is the better fit if you want a shared folder or already
-use Fusion; QEMU needs no extra VMware install.
+either. Fusion is the better fit if you already use Fusion; QEMU needs no
+extra VMware install.
 
 ## Quick setup
 
@@ -109,9 +110,8 @@ OpenChamber web UI only starts at logon (see
 A Fusion window opens and the guest logs in automatically. Pass
 `--foreground` to keep the terminal attached (Cmd+C stops the VM),
 `--headless` to run without a window, `--no-agent` / `--no-docker` to
-skip a bridge, `SANDBOX_WORK_DIR` (or `--work-dir /path`) to share a host
-folder, or `--reset` to wipe the working VM and start fresh from the
-pristine image.
+skip a bridge, or `--reset` to wipe the working VM and start fresh from
+the pristine image.
 
 > [!NOTE]
 > The working VM is your sandbox: installs, config, and agent state
@@ -146,11 +146,9 @@ use it from the host or inside the VM:
 
 - **Code review (OpenCodeReview)**: the image ships the `ocr` CLI — see the
   [OpenCodeReview quick start](https://github.com/alibaba/open-code-review#quick-start).
-- **Shared folder**: if you shared a host directory (see
-  [Shared host folder](#shared-host-folder)), it is available in the guest
-  at `\\vmware-host\Shared Folders\work` — map it to a drive letter in the
-  guest, or use it from PowerShell/VS Code directly. The runner's summary
-  also prints the exact mapping.
+- **Shared folder**: not supported for this guest (see
+  [Shared host folder](#shared-host-folder)) — move files in and out with
+  an SMB share, SSH/SCP, or the OpenChamber UI instead.
 
 ### Configure the environment
 
@@ -223,7 +221,7 @@ and runs under Fusion via `vmrun`. It ships:
 | Component | Detail |
 | --- | --- |
 | Windows 11 Pro (ARM64) | Unactivated (watermark); generic Pro key used for Setup |
-| VMware Tools | ARM64 tools (from the Fusion install); enables guest IP discovery + shared folders |
+| VMware Tools | ARM64 tools (from the Fusion install); enables guest IP discovery (no HGFS for Win11 ARM guests) |
 | VMware drivers | vmxnet3 ARM64 NIC driver; NVMe disk uses the in-box driver |
 | Chocolatey | Community package manager (versions pinned in the vars file) |
 | Node.js, Python, Git, gh, ripgrep, jq, curl | Choco packages (versions from the vars file) |
@@ -353,26 +351,30 @@ Notes:
 
 ### Shared host folder
 
-Unlike the QEMU sandbox, the VMware image ships VMware Tools, so a host
-directory can be shared into the guest (HGFS). Set it with
-`SANDBOX_WORK_DIR` (works for every platform runner) or pass `--work-dir`
-on the runner (overrides the env var):
+Not supported. VMware Fusion does not support shared folders (HGFS) for
+Windows 11 ARM guests on Apple silicon — VMware Tools for Windows Arm
+ships no HGFS driver, so the guest can never mount
+`\\vmware-host\Shared Folders\work` even though the host publishes the
+share. See VMware's
+[guest OS support matrix](https://techdocs.broadcom.com/us/en/vmware-cis/desktop-hypervisors/fusion-pro/13-0/using-vmware-fusion/sharing-files-between-windows-and-your-mac/guest-operating-systems-that-support-shared-folders.html)
+("Shared Folder is not supported for Windows 11 ARM GOS on Apple Silicon
+hosts") and
+[KB 315602](https://knowledge.broadcom.com/external/article/315602).
 
-```bash
-SANDBOX_WORK_DIR="$HOME/projects" ./scripts/run-windows-vmware-sandbox.sh
-./scripts/run-windows-vmware-sandbox.sh --work-dir "$HOME/projects"
-```
+`SANDBOX_WORK_DIR` and `--work-dir` are still accepted for consistency
+with the other platform runners, but the runner detects the unsupported
+combo and skips the share with a warning — it no longer claims the
+folder is shared. Alternatives that do work:
 
-The folder appears in the guest at `\\vmware-host\Shared Folders\work` —
-map it to a drive letter (`net use W: \\vmware-host\Shared Folders\work`)
-for everything to see it. The runner's summary prints the mapping
-(`Shared: \\vmware-host\Shared Folders\work -> <host path>`) — or
-`Shared: not shared` when nothing is shared. Notes:
-
-- Best-effort: the runner warns and continues when the share could not be
-  registered (e.g. tools not fully up yet). Re-run the runner afterwards.
-- The share is read/write. Use git, RDP clipboard, or the OpenChamber UI
-  as the alternative transport (see the QEMU guide).
+- **SMB from the Mac**: enable File Sharing for a folder in macOS
+  (System Settings → General → Sharing → File Sharing), then from the
+  guest map `\\172.16.26.1\<share>` and authenticate with your Mac
+  login/password — the host is the NAT router on vmnet8
+  (`172.16.26.1`).
+- **SSH/SCP**: the guest runs OpenSSH — use `scp` from the host or
+  `ssh Administrator@<guest-ip>` to copy files in and out.
+- **RDP clipboard, git push/pull, or the OpenChamber UI** (upload/
+  download), the same alternative transports as the QEMU sandbox.
 
 ### Runner script reference
 
@@ -390,7 +392,9 @@ Options:
 - `--no-docker` — skip the Docker engine bridge setup
 - `--work-dir PATH` — share the host directory into the guest as
   `\\vmware-host\Shared Folders\work` (VMware Tools HGFS); overrides
-  `SANDBOX_WORK_DIR`
+  `SANDBOX_WORK_DIR`. Not supported for Windows 11 ARM guests on Apple
+  silicon — the runner warns and skips the share (see
+  [Shared host folder](#shared-host-folder))
 - `--reset` — delete the working VM state (extracted base + clone) and
   start fresh from the pristine image
 
@@ -404,7 +408,7 @@ Environment variables (defaults in parentheses):
 | `SANDBOX_OPENCHAMBER_PORT` | `4000` | Guest port of OpenChamber |
 | `SANDBOX_AGENT_PORT` | `4300` | TCP port for the SSH agent bridge |
 | `SANDBOX_DOCKER_PORT` | `4301` | TCP port for the Docker engine bridge |
-| `SANDBOX_WORK_DIR` | unset | Host directory to share into the guest (`\\vmware-host\Shared Folders\work`); empty disables the share, `--work-dir` overrides it |
+| `SANDBOX_WORK_DIR` | unset | Host directory to share into the guest (`\\vmware-host\Shared Folders\work`); empty disables the share, `--work-dir` overrides it. Not supported for Windows 11 ARM guests on Apple silicon — skipped with a warning |
 | `GHCR_OWNER` | from the git remote | GHCR owner used when pulling the image |
 | `NO_COLOR` | unset | Any non-empty value disables colored output |
 | `FUSION_APP_PATH` | `/Applications/VMware Fusion.app` | VMware Fusion install location |

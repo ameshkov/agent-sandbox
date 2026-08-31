@@ -8,8 +8,10 @@ to the host Fusion's current hardware version — see
 [How to Build](#how-to-build)), packed into a tar.gz for publishing; the
 macOS host runs it under Fusion's `vmrun` CLI. Fusion
 virtualizes ARM64 guests natively and is the most proven Windows-ARM path —
-it also ships the ARM64 boot drivers, the ARM64 VMware Tools, and HGFS
-shared folders.
+it also ships the ARM64 boot drivers and the ARM64 VMware Tools (guest IP
+discovery works, but HGFS shared folders are not supported for Windows 11
+ARM guests on Apple silicon — see
+[docs/windows-vmware.md](../../docs/windows-vmware.md)).
 
 This is the VMware sibling of the
 [QEMU-based image](../windows-arm64-qemu/README.md): same Windows 11 Pro
@@ -91,7 +93,7 @@ build no files and have no such directory.
 | Component | Detail |
 | --- | --- |
 | Windows 11 Pro (ARM64) | Unactivated (watermark); generic Pro key used for Setup |
-| VMware Tools | ARM64 tools from the Fusion install (attached by the builder, installed at first logon); enables `vmrun getGuestIPAddress` and HGFS shared folders |
+| VMware Tools | ARM64 tools from the Fusion install (attached by the builder, installed at first logon); enables `vmrun getGuestIPAddress` (no HGFS shared folders for Win11 ARM guests) |
 | VMware drivers | vmxnet3 ARM64 NIC driver (staged into the unattend CD); NVMe disk uses the in-box driver |
 | Chocolatey | Community package manager (versions pinned in the vars file) |
 | Node.js, Python, Git, gh, ripgrep, jq, curl | Choco packages (versions from the vars file) |

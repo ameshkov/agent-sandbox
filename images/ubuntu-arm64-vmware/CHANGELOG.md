@@ -29,6 +29,17 @@ the next release.
 
 ### Fixed
 
+- **The shared host directory no longer fails when the share is
+  registered before VMware Tools are up** — `run-ubuntu-vmware-sandbox.sh`
+  called `vmrun addSharedFolder` as soon as sshd answered, but
+  open-vm-tools can still be starting then: `getGuestIPAddress`/sshd were
+  already up while the tools state vmrun needs for the HGFS registration
+  was not, so the runner logged `Error: The VMware Tools are not running
+  in the virtual machine` and `/mnt/hgfs/work` never appeared in the
+  guest. The runner now waits for `vmrun checkToolsState` to report
+  `running` (up to 5 min) and retries `addSharedFolder` a few times, then
+  warns only if it still failed. A share persisted by a previous run
+  (`Error: Already exists`) is treated as success.
 - **Host user settings copy no longer fails on the root-owned `~/.local`** —
   the sync unpack hit `tar: Cannot utime` / `Permission denied` and aborted:
   the image's `install -d -o admin -g admin

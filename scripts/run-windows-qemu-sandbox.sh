@@ -509,32 +509,49 @@ ensure_autologon() {
 #
 # The payload travels in an env var: expect treats extra argv as script
 # FILES, so `expect -c ... "$b64"` would fail with "couldn't read file".
-# And never block on `wait`: a Windows sshd session can linger after the
-# command finished (background processes hold the console handles), so
-# when the output patterns don't complete in time the ssh client is
-# killed instead of waiting forever. The exit status is ssh's own when
-# the session ended naturally (the remote exit code propagates).
+#
+# The remote command ends with a unique sentinel echoed by the guest's
+# shell AFTER the payload's powershell exits — the images set OpenSSH's
+# DefaultShell to PowerShell, so a semicolon separates the two statements
+# there. The sshd channel does NOT close when the session's command
+# finishes: the guest-side relays and OpenChamber hold the console
+# handles and keep trickling output, which resets expect's idle timeout —
+# without the sentinel a call would only end at the hard alarm below (or
+# never, before the alarm was added). The sentinel comes from the outer
+# shell even when the payload exits early or errors, so a healthy guest
+# finishes in the time the remote command itself takes. On the sentinel
+# the ssh client is killed and guest_ps exits 0 — no caller relies on
+# ssh's exit status (results are read from stdout; a session that ends
+# by eof, e.g. SSH refusing the connection, still propagates ssh's exit
+# code).
 guest_ps() {
+    sentinel="guest-ps-done-$$-$RANDOM"
     b64=$(printf '%s' "$1" | iconv -f UTF-8 -t UTF-16LE | base64)
-    GUEST_PS_B64="$b64" expect -c '
+    # Hard 5-minute cap on the whole session (perl alarm, not expect's
+    # own timeout): expect's `timeout` only fires on silence, and a guest
+    # sshd session left open by background relays can trickle output
+    # forever.
+    GUEST_PS_B64="$b64" GUEST_PS_SENTINEL="$sentinel" \
+        perl -e 'alarm 300; exec @ARGV' expect -c '
         set timeout 240
         set done 0
         set b64 $env(GUEST_PS_B64)
+        set sentinel $env(GUEST_PS_SENTINEL)
         spawn ssh -p '"$ssh_port"' -o StrictHostKeyChecking=no \
             -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR \
             -o ConnectTimeout=10 -o PreferredAuthentications=password \
             '"$guest_user"'@127.0.0.1 \
-            powershell -NoProfile -NonInteractive -EncodedCommand $b64
+            powershell -NoProfile -NonInteractive -EncodedCommand $b64 \
+            ";" echo $sentinel
         # Note: no comments inside the expect block — its body is parsed as
         # a pattern/action list, so comment lines would shift the pairing
-        # and disable the timeout/eof specials. The bridge-status pattern
-        # ends the session at the last line of the setup script instead of
-        # waiting for sshd to close it (background relays may hold the
-        # console open).
+        # and disable the timeout/eof specials. The sentinel pattern ends
+        # the session right after the payload finished instead of waiting
+        # for sshd to close it (background relays hold the console open).
         expect {
             -re {[Pp]assword:} { send -- "'"$guest_password"'\r"; exp_continue }
             -re {[Yy]es/[Nn]o} { send -- "yes\r"; exp_continue }
-            -re {bridge-status:[^\r\n]*} { set done 1 }
+            -re $sentinel { set done 1 }
             timeout { set done 1 }
             eof { }
         }
@@ -758,12 +775,18 @@ GUEST_BRIDGE_PS
 }
 
 # Returns 0 when the guest-side bridges are already set up (scheduled
-# task registered).
+# task registered). Output-based: guest_ps kills the ssh client on its
+# completion sentinel, so ssh's exit status no longer matches the
+# payload's `exit 0`/`exit 1` — the result has to come over stdout.
 guest_bridge_installed() {
-    guest_ps "
-        if (Get-ScheduledTask -TaskName 'agent-sandbox-bridges' -ErrorAction SilentlyContinue) { exit 0 }
-        exit 1
-    " >/dev/null 2>&1
+    status=$(guest_ps "
+        if (Get-ScheduledTask -TaskName 'agent-sandbox-bridges' -ErrorAction SilentlyContinue) {
+            Write-Output 'bridge-status:installed'
+        } else {
+            Write-Output 'bridge-status:missing'
+        }
+    " 2>/dev/null | grep -o 'bridge-status:\(installed\|missing\)' | tail -n1)
+    [ "$status" = 'bridge-status:installed' ]
 }
 
 setup_ssh_agent() {

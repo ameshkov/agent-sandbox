@@ -55,7 +55,10 @@
 #      compose` in the guest hit the host engine. --no-docker skips.
 #   5. Optionally shares a host directory into the guest (SANDBOX_WORK_DIR
 #      or --work-dir PATH, HGFS via VMware Tools; visible as
-#      \\vmware-host\Shared Folders\work in the guest).
+#      \\vmware-host\Shared Folders\work in the guest). Not supported for
+#      Windows 11 ARM guests on Apple silicon (VMware Tools for Windows
+#      Arm ships no HGFS driver) — the runner detects the combo and skips
+#      the share with a warning instead of claiming success.
 #   6. Verifies that OpenChamber answers on http://<guest-ip>:4000 and
 #      offers to open it in the browser.
 #
@@ -74,7 +77,9 @@
 #   SANDBOX_AGENT_PORT     TCP port for the SSH agent bridge (4300)
 #   SANDBOX_DOCKER_PORT    TCP port for the Docker engine bridge (4301)
 #   SANDBOX_WORK_DIR       host dir to share into the guest; --work-dir
-#                          overrides it. Empty disables the share.
+#                          overrides it. Empty disables the share. Skipped
+#                          with a warning for Windows 11 ARM guests (no
+#                          HGFS support in VMware Tools for Windows Arm).
 #   GHCR_OWNER             GHCR owner for pulls (default: from git remote)
 #   NO_COLOR               disable colored output (any non-empty value)
 #
@@ -124,6 +129,7 @@ docker_bridge_up=0
 docker_engine_up=0
 docker_server_version=
 openchamber_up=0
+shared_folder_skipped=0
 
 # Deterministic state-dir paths (stop_running_vm needs them before any
 # state is created).
@@ -401,6 +407,29 @@ wait_guest_ip() {
     die "timed out waiting for the guest IP — is VMware Tools running in the guest? (vmrun -T fusion list to check the VM)"
 }
 
+# Waits until the guest's VMware Tools report "running" (vmrun
+# checkToolsState). The shared-folder registration talks to the tools, and
+# right after the auto-logon reboot they can still be starting when
+# getGuestIPAddress and sshd already answer — vmrun addSharedFolder then
+# fails with "The VMware Tools are not running in the virtual machine".
+# Wait for the state before registering the share.
+wait_for_tools() {
+    n=0
+    printf '%s' "    Waiting for VMware Tools to be running"
+    while [ "$n" -lt 60 ]; do
+        state=$(vmware_tools_state "$work_vmx") || true
+        if [ "$state" = "running" ]; then
+            printf ' %s\n' "${c_green}done${c_reset}"
+            return 0
+        fi
+        n=$((n + 1))
+        printf '.'
+        sleep 5
+    done
+    printf ' %s\n' "${c_yellow}failed${c_reset}"
+    return 1
+}
+
 # Waits until the guest's sshd answers the BatchMode probe — ssh answers
 # "Permission denied" when the server is up, "Connection refused" before.
 # Output goes into a variable, not a pipe: grep -q would close the pipe on
@@ -488,36 +517,49 @@ ensure_autologon() {
 #
 # The payload travels in an env var: expect treats extra argv as script
 # FILES, so `expect -c ... "$b64"` would fail with "couldn't read file".
-# And never block on `wait`: a Windows sshd session can linger after the
-# command finished (background processes hold the console handles), so
-# when the output patterns don't complete in time the ssh client is
-# killed instead of waiting forever. The exit status is ssh's own when
-# the session ended naturally (the remote exit code propagates).
+#
+# The remote command ends with a unique sentinel echoed by the guest's
+# shell AFTER the payload's powershell exits — the images set OpenSSH's
+# DefaultShell to PowerShell, so a semicolon separates the two statements
+# there. The sshd channel does NOT close when the session's command
+# finishes: the guest-side relays and OpenChamber hold the console
+# handles and keep trickling output, which resets expect's idle timeout —
+# without the sentinel every call would only end at the hard 5-min alarm
+# below (the "very slow" step 5 on a guest whose bridges are already
+# up). The sentinel comes from the outer shell even when the payload
+# exits early or errors, so a healthy guest finishes in the time the
+# remote command itself takes. On the sentinel the ssh client is killed
+# and guest_ps exits 0 — no caller relies on ssh's exit status (results
+# are read from stdout; a session that ends by eof, e.g. SSH refusing the
+# connection, still propagates ssh's exit code).
 guest_ps() {
+    sentinel="guest-ps-done-$$-$RANDOM"
     b64=$(printf '%s' "$1" | iconv -f UTF-8 -t UTF-16LE | base64)
     # Hard 5-minute cap on the whole session (perl alarm, not expect's
     # own timeout): expect's `timeout` only fires on silence, and a guest
     # sshd session left open by background relays can trickle output
     # forever.
-    GUEST_PS_B64="$b64" perl -e 'alarm 300; exec @ARGV' expect -c '
+    GUEST_PS_B64="$b64" GUEST_PS_SENTINEL="$sentinel" \
+        perl -e 'alarm 300; exec @ARGV' expect -c '
         set timeout 240
         set done 0
         set b64 $env(GUEST_PS_B64)
+        set sentinel $env(GUEST_PS_SENTINEL)
         spawn ssh -p '"$guest_port"' -o StrictHostKeyChecking=no \
             -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR \
             -o ConnectTimeout=10 -o PreferredAuthentications=password \
             '"$guest_user"'@'"$guest_ip"' \
-            powershell -NoProfile -NonInteractive -EncodedCommand $b64
+            powershell -NoProfile -NonInteractive -EncodedCommand $b64 \
+            ";" echo $sentinel
         # Note: no comments inside the expect block — its body is parsed as
         # a pattern/action list, so comment lines would shift the pairing
-        # and disable the timeout/eof specials. The bridge-status pattern
-        # ends the session at the last line of the setup script instead of
-        # waiting for sshd to close it (background relays may hold the
-        # console open).
+        # and disable the timeout/eof specials. The sentinel pattern ends
+        # the session right after the payload finished instead of waiting
+        # for sshd to close it (background relays hold the console open).
         expect {
             -re {[Pp]assword:} { send -- "'"$guest_password"'\r"; exp_continue }
             -re {[Yy]es/[Nn]o} { send -- "yes\r"; exp_continue }
-            -re {bridge-status:[^\r\n]*} { set done 1 }
+            -re $sentinel { set done 1 }
             timeout { set done 1 }
             eof { }
         }
@@ -706,12 +748,18 @@ send_guest_bridge_files() {
 }
 
 # Returns 0 when the guest-side bridges are already set up (scheduled
-# task registered).
+# task registered). Output-based: guest_ps kills the ssh client on its
+# completion sentinel, so ssh's exit status no longer matches the
+# payload's `exit 0`/`exit 1` — the result has to come over stdout.
 guest_bridge_installed() {
-    guest_ps "
-        if (Get-ScheduledTask -TaskName 'agent-sandbox-bridges' -ErrorAction SilentlyContinue) { exit 0 }
-        exit 1
-    " >/dev/null 2>&1
+    status=$(guest_ps "
+        if (Get-ScheduledTask -TaskName 'agent-sandbox-bridges' -ErrorAction SilentlyContinue) {
+            Write-Output 'bridge-status:installed'
+        } else {
+            Write-Output 'bridge-status:missing'
+        }
+    " 2>/dev/null | grep -o 'bridge-status:\(installed\|missing\)' | tail -n1)
+    [ "$status" = 'bridge-status:installed' ]
 }
 
 setup_ssh_agent() {
@@ -825,13 +873,30 @@ setup_guest_bridges() {
 
 # --- step 6: shared host directory (best-effort, HGFS) -----------------------
 
+# HGFS shared folders are unsupported for Windows 11 ARM guests on Apple
+# silicon: VMware Tools for Windows Arm provides no HGFS kernel driver, so
+# the guest can never mount \\vmware-host\Shared Folders\work even though
+# the host publishes the share (see docs/windows-vmware.md). Detect it via
+# the vmx's guestos string.
+hgfs_unsupported() {
+    [ -f "$work_vmx" ] && grep -q '^guestos *= *"arm-' "$work_vmx"
+}
+
 # Shares a host directory into the guest at \\vmware-host\Shared Folders\
 # <name> (VMware Tools HGFS). The guest sees the share
 # "work" (or C:\shared if the network share mapping is set up; the raw
 # UNC path always works). Failures warn only — the sandbox works without
-# it (git, RDP clipboard, OpenChamber UI).
+# it (git, RDP clipboard, OpenChamber UI). Unsupported for Windows 11 ARM
+# guests: detected above and skipped with a warning.
 setup_shared_folder() {
     if [ -z "$work_dir" ]; then
+        return 0
+    fi
+
+    if hgfs_unsupported; then
+        shared_folder_skipped=1
+        warn "shared host folder not supported: VMware Tools for Windows 11 ARM guests on Apple silicon has no HGFS driver, so the guest can never see \\\\vmware-host\\Shared Folders\\work."
+        warn "use an alternative instead (SMB share from the Mac, SSH/SCP, RDP clipboard, git) — see docs/windows-vmware.md."
         return 0
     fi
 
@@ -846,11 +911,40 @@ setup_shared_folder() {
     fi
 
     info "Sharing $work_dir into the guest as 'work' (\\vmware-host\Shared Folders\work)."
-    if ! vmrun addSharedFolder "$work_vmx" work "$work_dir" 2>/dev/null; then
-        warn "addSharedFolder failed — is the share already registered? Continuing."
+    if ! wait_for_tools; then
+        warn "VMware Tools did not report running — skipping the shared-directory share (re-run to retry)."
+        return 0
     fi
+
+    add_shared_folder || true
     vmrun enableSharedFolders "$work_vmx" runtime 2>/dev/null || true
     ok "Shared folder registered (best-effort — HGFS must be enabled by VMware Tools)."
+}
+
+# Registers the share with vmrun. The tools state can flip back right
+# after wait_for_tools returns (the tools service settles around logon),
+# so the add is retried a few times. A share persisted by a previous run
+# of the same working VM is fine: "Already exists" means it is registered.
+add_shared_folder() {
+    n=0
+    while [ "$n" -lt 4 ]; do
+        n=$((n + 1))
+        if err=$(vmrun addSharedFolder "$work_vmx" work "$work_dir" 2>&1); then
+            return 0
+        fi
+        case "$err" in
+            *"Already exists"*)
+                ok "Shared folder already registered (from a previous run — the share persists in the vmx)."
+                return 0
+                ;;
+        esac
+        if [ "$n" -lt 4 ]; then
+            warn "addSharedFolder failed ($err) — retrying in 10 s (attempt $n/4)."
+            sleep 10
+        fi
+    done
+    warn "addSharedFolder failed after $n attempts ($err) — is VMware Tools up? Continuing."
+    return 1
 }
 
 # --- step 7: OpenChamber ----------------------------------------------------
@@ -895,7 +989,9 @@ print_summary() {
     printf '    %-14s %s\n' 'SSH:' "ssh $guest_user@$guest_ip (password: $guest_password)"
     printf '    %-14s %s\n' 'RDP:' "$guest_ip:3389 ($guest_user / $guest_password)"
     printf '    %-14s %s\n' 'WinRM:' "$guest_ip:5985 (advanced use)"
-    if [ -n "$work_dir" ]; then
+    if [ "$shared_folder_skipped" = 1 ]; then
+        printf '    %-14s %s\n' 'Shared:' "${c_yellow}not supported (Windows 11 ARM guest on Apple silicon — no HGFS driver in VMware Tools)${c_reset}"
+    elif [ -n "$work_dir" ]; then
         printf '    %-14s %s\n' 'Shared:' "\\\\vmware-host\\Shared Folders\\work -> $work_dir"
     else
         printf '    %-14s %s\n' 'Shared:' 'not shared'
@@ -956,7 +1052,9 @@ Options:
   --no-docker    Skip the Docker engine bridge setup
   --work-dir P   Share the host directory P into the guest as
                  \\vmware-host\Shared Folders\work (VMware Tools HGFS);
-                 overrides SANDBOX_WORK_DIR
+                 overrides SANDBOX_WORK_DIR. Not supported for Windows 11
+                 ARM guests on Apple silicon — the runner warns and
+                 skips the share (see docs/windows-vmware.md)
   --reset        Delete the working VM state (extracted base + clone) and
                  start fresh from the pristine image
   -h, --help     Show this help
@@ -969,7 +1067,9 @@ Environment:
   SANDBOX_AGENT_PORT       TCP port for the SSH agent bridge (4300)
   SANDBOX_DOCKER_PORT      TCP port for the Docker engine bridge (4301)
   SANDBOX_WORK_DIR         host dir to share into the guest (empty = no
-                           share); --work-dir overrides it
+                           share); --work-dir overrides it. Not supported
+                           for Windows 11 ARM guests on Apple silicon —
+                           skipped with a warning
   GHCR_OWNER               GHCR owner for pulls (git remote)
   NO_COLOR                 disable colored output
 EOF

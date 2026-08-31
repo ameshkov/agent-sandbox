@@ -57,8 +57,9 @@ recipes; it is the authoritative build/release guide.
   VMware Windows sandbox: extracts the vmx/vmdk archive and clones a
   working VM with `vmrun` (Fusion NAT; no port forwarding — the guest IP
   comes from `vmrun getGuestIPAddress`), bridges the host's SSH agent and
-  Docker engine into the guest the same way, optionally shares a host
-  folder (HGFS, `SANDBOX_WORK_DIR` / `--work-dir`), and verifies
+  Docker engine into the guest the same way, accepts `SANDBOX_WORK_DIR` /
+  `--work-dir` but skips the HGFS shared folder with a warning (not
+  supported for Windows 11 ARM guests on Apple silicon), and verifies
   OpenChamber. See `docs/windows-vmware.md`.
 - `scripts/run-ubuntu-vmware-sandbox.sh` — user-facing runner for the
   Ubuntu VMware sandbox: same vmrun cloning/IP/NAT mechanics as the

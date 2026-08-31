@@ -375,8 +375,9 @@ provisioners are identical to the QEMU template) but is built with the
    always matches the host Fusion; `autounattend.xml` installs them at
    first logon, *before* WinRM comes up — the tools installer rebinds the
    NIC and kills a live WinRM session, so a provisioner-based install
-   times out. The tools are what make `vmrun getGuestIPAddress` and
-   HGFS shared folders work at runtime).
+   times out. The tools are what make `vmrun getGuestIPAddress` work at
+   runtime (HGFS shared folders are not supported for Windows 11 ARM
+   guests on Apple silicon — see docs/windows-vmware.md).
 4. **Leaves a runnable vmx + vmdk** at
    `build/windows-arm64-vmware/output/sandbox-windows-11-arm64-vmware.vmx`
    (disk type 0, monolithic sparse; no build-time snapshot — the runner

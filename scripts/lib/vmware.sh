@@ -43,6 +43,18 @@ vmware_hw_version() {
         | head -n1
 }
 
+# vmware_tools_state <vmx> — prints the VMware Tools state vmrun reports
+# ("running", "notrunning", or an error line). The shared-folder
+# registration (vmrun addSharedFolder) has to talk to the tools, and right
+# after a guest boot/reboot they can still be starting while
+# getGuestIPAddress and sshd already answer — the runners wait for
+# "running" before registering the share. Same perl alarm wrapper as the
+# getGuestIPAddress polls: vmrun can hang past its own timeouts.
+vmware_tools_state() {
+    perl -e 'alarm 30; exec @ARGV' "$vmrun_bin" -T fusion checkToolsState "$1" 2>/dev/null \
+        | tail -n1
+}
+
 # set_vm_display_name <vmx> <name> — sets the VM's displayName (the name
 # Fusion's VM library shows), replacing the existing displayname line or
 # appending one when the vmx has none. `vmrun clone` inherits the source

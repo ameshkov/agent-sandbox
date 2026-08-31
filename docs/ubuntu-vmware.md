@@ -380,8 +380,10 @@ on each run). The runner's summary prints the mapping
 (`Shared: /mnt/hgfs/work -> <host path>`) — or `Shared: not shared` when
 nothing is shared. Notes:
 
-- Best-effort: the runner warns and continues when the share could not be
-  mounted (e.g. tools not fully up yet). Mount it manually in the guest:
+- Best-effort: the runner waits for VMware Tools to report running and
+  retries the registration before giving up; when the share still could
+  not be mounted (e.g. tools never came up), it warns and continues.
+  Mount it manually in the guest:
   `sudo vmhgfs-fuse .host:/ /mnt/hgfs -o allow_other`.
 - The share is read/write. Use git, or the OpenChamber UI as the
   alternative transport.

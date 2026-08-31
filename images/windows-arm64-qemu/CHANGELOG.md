@@ -70,6 +70,15 @@ the next release.
 
 ### Fixed
 
+- The runner's guest bridge setup no longer takes ~5 min per SSH command
+  on a guest whose bridges are already installed: the sshd channel does
+  not close when a PowerShell payload finishes (the guest-side relays
+  hold the console handles and keep trickling output, which resets
+  expect's idle timeout), so every `guest_ps` call used to end only at
+  an alarm (or never, before the hard alarm was added). Each remote
+  command now ends with a unique sentinel echoed by the guest's shell
+  after the payload exits, and expect kills the ssh client on it — step
+  5 finishes in seconds.
 - The image no longer depends on the Chocolatey bootstrapper persisting
   the machine PATH: the Chocolatey provisioner adds
   `C:\ProgramData\chocolatey\bin` to the Machine PATH itself and the

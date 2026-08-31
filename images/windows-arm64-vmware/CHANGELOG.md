@@ -106,9 +106,40 @@ the next release.
   point at `./scripts/stop-windows-vmware-sandbox.sh` instead of a bare
   `vmrun stop` and a hand-written `lsof | xargs kill` for the bridge
   listeners.
+- HGFS shared folders are not supported for Windows 11 ARM guests on
+  Apple silicon (VMware Tools for Windows Arm ships no HGFS kernel
+  driver, so the guest can never mount `\\vmware-host\Shared Folders`
+  even though the host publishes the share). The runner now detects the
+  unsupported combo from the vmx `guestos` string and skips the share
+  with a warning instead of registering it and claiming success; the
+  summary reports `Shared: not supported (...)`.
+  `SANDBOX_WORK_DIR` / `--work-dir` stay accepted but are a no-op with a
+  warning. `docs/windows-vmware.md` and the image README now state the
+  limitation and the working alternatives (SMB share from the Mac,
+  SSH/SCP, RDP clipboard, git, OpenChamber UI).
 
 ### Fixed
 
+- The runner's guest bridge setup no longer takes ~5 min per SSH command
+  on a guest whose bridges are already installed: the sshd channel does
+  not close when a PowerShell payload finishes (the guest-side relays
+  hold the console handles and keep trickling output, which resets
+  expect's idle timeout), so every `guest_ps` call used to end only at
+  the 5-min alarm. Each remote command now ends with a unique sentinel
+  echoed by the guest's shell after the payload exits, and expect kills
+  the ssh client on it — step 5 finishes in seconds.
+- The shared host directory no longer fails right after the auto-logon
+  reboot — `run-windows-vmware-sandbox.sh` called `vmrun addSharedFolder`
+  as soon as sshd answered, but VMware Tools can still be starting then:
+  `getGuestIPAddress`/sshd were already up while the tools state vmrun
+  needs for the HGFS registration was not, so the runner logged `Error:
+  The VMware Tools are not running in the virtual machine` and the share
+  never appeared in the guest at
+  `\\vmware-host\Shared Folders\work`. The runner now waits for
+  `vmrun checkToolsState` to report `running` (up to 5 min) and
+  retries `addSharedFolder` a few times, then warns only if it still
+  failed. A share persisted by a previous run (`Error: Already exists`)
+  is treated as success.
 - The image no longer depends on the Chocolatey bootstrapper persisting
   the machine PATH: the Chocolatey provisioner adds
   `C:\ProgramData\chocolatey\bin` to the Machine PATH itself and the
