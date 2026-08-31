@@ -258,7 +258,17 @@
                 the tools installer rebinds the NIC and drops every live
                 WinRM session mid-install (observed as a hard provisioner
                 failure). The tools are what make vmrun getGuestIPAddress
-                and HGFS shared folders work at runtime.
+                and HGFS shared folders work at runtime. The ARM64 tools
+                package ships no VMCI driver (only vmxnet3 + vm3d +
+                vmusbmouse), so the tools MSI skips its own service
+                registration — vmtoolsd.exe lands present but no
+                'VMware Tools' service, and the runner then hangs at
+                "Waiting for the guest IP". The service is registered by
+                the final-verification provisioner (sandbox.pkr.hcl), not
+                here: a FirstLogonCommands CommandLine doing it (977
+                bytes of new code) broke Windows Setup at first boot
+                ("Windows could not complete the installation" → WinRM
+                never comes up), so the unattend command must stay small.
              3. Wait for the NIC to attach and complete DHCP, then force
                 the network category to Private (WinRM's AllowUnencrypted
                 refuses to apply on Public).

@@ -70,6 +70,24 @@ the next release.
 
 ### Fixed
 
+- The image no longer depends on the Chocolatey bootstrapper persisting
+  the machine PATH: the Chocolatey provisioner adds
+  `C:\ProgramData\chocolatey\bin` to the Machine PATH itself and the
+  toolchain + VS provisioners call `choco.exe` by its full path — the
+  bootstrapper's compiled `Install-ChocolateyPath` can silently fail to
+  persist in the elevated WinRM context, so after the reboot the
+  re-read PATH still lacked the choco bin dir ('choco' not recognized).
+  `choco cleanup` in the final verification now redirects inside `cmd`
+  too, so PowerShell 5.1 never turns choco's stderr into a terminating
+  error under `$ErrorActionPreference='Stop'`.
+- The RemoteSigned bake-in no longer aborts the build (observed at the
+  OpenChamber provisioner): the build passes `-ExecutionPolicy Bypass`
+  at Process scope, so `Set-ExecutionPolicy -Scope LocalMachine`
+  emitted its "overridden by a more specific scope" notice, which
+  Windows PowerShell 5.1 under WinRM turned into a terminating error
+  even though the machine policy was updated. The provisioner now sets
+  the Process scope first (no override, no notice) and tolerates a
+  failed machine-policy set.
 - The image now bakes in machine-wide PowerShell `RemoteSigned` instead
   of shipping Windows' default `Restricted` policy: `opencode` (an npm
   shim — `opencode.ps1` in `%APPDATA%\npm`) refused to start in a

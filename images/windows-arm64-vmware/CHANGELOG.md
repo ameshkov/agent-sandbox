@@ -109,12 +109,73 @@ the next release.
 
 ### Fixed
 
+- The image no longer depends on the Chocolatey bootstrapper persisting
+  the machine PATH: the Chocolatey provisioner adds
+  `C:\ProgramData\chocolatey\bin` to the Machine PATH itself and the
+  toolchain + VS provisioners call `choco.exe` by its full path — the
+  bootstrapper's compiled `Install-ChocolateyPath` can silently fail to
+  persist in the elevated WinRM context, so after the reboot the
+  re-read PATH still lacked the choco bin dir ('choco' not recognized).
+  The toolchain retry loop also stops redirecting native stderr with
+  `2>&1`: under `$ErrorActionPreference='Stop'` in Windows PowerShell
+  5.1 that turns the not-found message into an immediate terminating
+  error before the retry logic could run. The loop still goes through
+  `cmd /c` so the package name and its `--version` stay separate
+  arguments (a direct `& $choco install $installArgs` passed
+  'nodejs --version=…' as one argument, which choco treated as a package
+  name). `choco cleanup` in the final verification now redirects inside
+  `cmd` for the same stderr reason.
+- The RemoteSigned bake-in no longer aborts the build (observed at the
+  OpenChamber provisioner): the build passes `-ExecutionPolicy Bypass`
+  at Process scope, so `Set-ExecutionPolicy -Scope LocalMachine`
+  emitted its "overridden by a more specific scope" notice, which
+  Windows PowerShell 5.1 under WinRM turned into a terminating error
+  even though the machine policy was updated. The provisioner now sets
+  the Process scope first (no override, no notice) and tolerates a
+  failed machine-policy set.
 - The image now bakes in machine-wide PowerShell `RemoteSigned` instead
   of shipping Windows' default `Restricted` policy: `opencode` (an npm
   shim — `opencode.ps1` in `%APPDATA%\npm`) refused to start in a
   PowerShell session with "running scripts is disabled on this system".
   The runners' runtime `Set-ExecutionPolicy` stays as a fallback for
   images built before this change.
+- VMware Tools are now actually working in the image — the runnable
+  regression the sandbox runner was hitting: the ARM64 tools package
+  (Fusion's `windows.iso`) ships no VMCI driver (only `vmxnet3` +
+  `vm3d` + `vmusbmouse`), so the tools installer skips its own service
+  registration and the image landed with `vmtoolsd.exe` present but no
+  'VMware Tools' service. The runner then hung for 15 min at "Waiting
+  for the guest IP (VMware Tools; up to 15 min)" — vmrun
+  `getGuestIPAddress` answered "The VMware Tools are not running in the
+  virtual machine", and the runner (correctly) refused to treat that as
+  an IP. The final verification now registers the 'VMware Tools'
+  service itself (auto-start, if absent) and starts it, and fails the
+  build when the service is still not running — instead of checking
+  only for `vmtoolsd.exe` with `Test-Path` (which passed for the broken
+  install).
+- The VMware Tools service registration lives in a provisioner, not in
+  `autounattend.xml`'s FirstLogonCommands: the first attempt (baking
+  the `New-Service` + `Start-Service` block into the tools-install
+  CommandLine, ~1 KB of extra text) broke Windows Setup at the first
+  boot — the guest showed "Windows could not complete the installation.
+  To install Windows on this computer, restart the installation." and
+  Packer spun on "Waiting for WinRM" until the 90 m timeout. The setup
+  logs (C:\Windows\Panther) show the failure at the Pre-OOBE phase
+  (windeploy 0x80220005 → rollback; also a BFSVC EFI boot-file
+  `BfspCopyFile` 0x3 storm) — the oobeSystem pass never finished, so
+  neither the OOBE nor FirstLogonCommands (network driver, tools,
+  WinRM) ever ran. The tools CommandLine is back to the proven shorter
+  form; the service registration moved to the final-verification
+  provisioner.
+- The final verification's fail-hard `throw` message is ASCII-only:
+  the original em-dash (`—`) inside the inline PowerShell string was
+  mangled in the Packer WinRM transfer (it came back as a smart-quote
+  byte, which closed the string literal early and made the parser fail
+  with "Unexpected token 'vmtoolsd.exe'" plus a misleading "Missing
+  closing '}'"/"Try statement is missing its Catch or Finally block" —
+  the build aborted at 47 min in the last provisioner). Non-ASCII in
+  inline PowerShell string literals is now documented as a gotcha in
+  `AGENTS.md`; comments are unaffected.
 
 ## [windows-arm64-vmware-v1.0.0] - 2026-08-23
 

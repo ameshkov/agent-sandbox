@@ -13,6 +13,9 @@ scripts/watch-build-ocr.swift), and:
     position; falls back to measured coordinates for the 800x600 buffer),
   - presses a key when "Press any key to boot from CD or DVD" is on screen,
   - boots the ISO from the UEFI shell (fs0: + EFI\\BOOT\\BOOTAA64.EFI),
+  - logs loudly when Windows Setup's "Windows could not complete the
+    installation" dialog is on screen (the build then hangs at WinRM —
+    nothing to click; the root cause is in the guest's Panther logs),
   - Ubuntu builds: types the autoinstall kernel command into grub when
     the grub menu or shell appears (WATCH_BUILD_BOOT_CMD env var, one
     grub command per line; the env var is read per frame, so it can be
@@ -197,6 +200,19 @@ def run_worker(port, outdir, ocr, frame):
         if 'startup.nsh' in text or 'Shell>' in text or 'Shel1>' in text:
             actions.append('SHELL_RESCUE')
             shell_rescue(vnc)
+        if 'could not complete the installation' in text:
+            # Windows Setup (Win11, VMware Fusion): the first-boot pass
+            # failed ("Windows could not complete the installation. To
+            # install Windows on this computer, restart the
+            # installation."). Clicking OK only restarts the broken
+            # install — do not press anything; shout loudly instead, so
+            # the build log shows the real state instead of Packer
+            # spinning on "Waiting for WinRM" for 90 min. Diagnose from
+            # C:\Windows\Panther\setuperr.log / setupact.log on the disk.
+            actions.append('SETUP_FAILED')
+            log('WINDOWS SETUP FAILED: "Windows could not complete the '
+                'installation" dialog on screen — the build will hang at '
+                'WinRM. Check C:\\Windows\\Panther\\setuperr.log.')
         if (BOOT_CMD and 'grub>' not in text
                 and 'Try or Install Ubuntu Server' not in text):
             # keep silent: grub is not on screen yet

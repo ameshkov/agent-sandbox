@@ -401,7 +401,24 @@ build {
       "[System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072",
       "iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))",
       "if ($LASTEXITCODE -ne 0) { throw \"chocolatey install failed: $LASTEXITCODE\" }",
-      "choco feature enable -n allowGlobalConfirmation",
+      "$chocoInstall = [System.Environment]::GetEnvironmentVariable('ChocolateyInstall','Machine')",
+      "if (-not $chocoInstall) { $chocoInstall = 'C:\\ProgramData\\chocolatey' }",
+      "$chocoBin = Join-Path $chocoInstall 'bin'",
+      "# Persist the Chocolatey bin dir into the machine PATH ourselves: the",
+      "# bootstrapper's compiled Install-ChocolateyPath cmdlet asserts UAC",
+      "# before writing and can fail to persist the registry value in the",
+      "# elevated WinRM context (observed as 'choco' not recognized in the",
+      "# toolchain phase after the reboot, even with PATH re-read).",
+      "$machinePath = [System.Environment]::GetEnvironmentVariable('Path','Machine').TrimEnd(';')",
+      "if (-not (($machinePath -split ';') -contains $chocoBin)) {",
+      "  [System.Environment]::SetEnvironmentVariable('Path', $machinePath + ';' + $chocoBin, 'Machine')",
+      "}",
+      "# Run choco by its full path too — this session's PATH is not",
+      "# guaranteed to contain the bin dir above.",
+      "$choco = Join-Path $chocoBin 'choco.exe'",
+      "if (-not (Test-Path $choco)) { throw \"choco.exe not found at $choco\" }",
+      "& $choco feature enable -n allowGlobalConfirmation",
+      "if ($LASTEXITCODE -ne 0) { throw \"choco feature enable failed: $LASTEXITCODE\" }",
       "# Legacy .NET strong-crypto: without it, older TLS stacks fail against modern hosts",
       "reg add 'HKLM\\SOFTWARE\\Microsoft\\.NETFramework\\v4.0.30319' /v SchUseStrongCrypto /t REG_DWORD /d 1 /f",
       "reg add 'HKLM\\SOFTWARE\\Wow6432Node\\Microsoft\\.NETFramework\\v4.0.30319' /v SchUseStrongCrypto /t REG_DWORD /d 1 /f",
@@ -425,46 +442,53 @@ build {
     inline = [<<-END
       $ErrorActionPreference = 'Stop'
       $ProgressPreference = 'SilentlyContinue'
-      # Re-read PATH from the registry: the Chocolatey bootstrapper updates
-      # the machine/user PATH, but after the tools reboot a fresh WinRM
-      # process can inherit a stale PATH (observed: 'choco' not recognized).
+      # Choco is called by its full path, never via PATH: the bootstrapper
+      # can fail to persist the machine PATH (see the Chocolatey
+      # provisioner), and after the guest-tools reboot a fresh WinRM
+      # process can inherit a stale PATH — both observed as 'choco' not
+      # recognized. The PATH is still re-read from the registry below for
+      # the tools this phase installs.
+      $chocoInstall = [System.Environment]::GetEnvironmentVariable('ChocolateyInstall','Machine')
+      if (-not $chocoInstall) { $chocoInstall = 'C:\ProgramData\chocolatey' }
+      $choco = Join-Path (Join-Path $chocoInstall 'bin') 'choco.exe'
+      if (-not (Test-Path $choco)) { throw "choco.exe not found at $choco (Chocolatey install failed?)" }
       $env:Path = [System.Environment]::GetEnvironmentVariable('Path','Machine') + ';' + [System.Environment]::GetEnvironmentVariable('Path','User')
-      choco install nodejs --version=${var.nodejs_version} -y
+      & $choco install nodejs --version=${var.nodejs_version} -y
       if ($LASTEXITCODE -ne 0) { throw "choco nodejs failed: $LASTEXITCODE" }
-      choco install gh --version=${var.github_cli_version} -y
+      & $choco install gh --version=${var.github_cli_version} -y
       if ($LASTEXITCODE -ne 0) { throw "choco gh failed: $LASTEXITCODE" }
-      choco install ripgrep --version=${var.ripgrep_version} -y
+      & $choco install ripgrep --version=${var.ripgrep_version} -y
       if ($LASTEXITCODE -ne 0) { throw "choco ripgrep failed: $LASTEXITCODE" }
-      choco install git --version=${var.git_version} -y
+      & $choco install git --version=${var.git_version} -y
       if ($LASTEXITCODE -ne 0) { throw "choco git failed: $LASTEXITCODE" }
-      choco install jq --version=${var.jq_version} -y
+      & $choco install jq --version=${var.jq_version} -y
       if ($LASTEXITCODE -ne 0) { throw "choco jq failed: $LASTEXITCODE" }
-      choco install python --version=${var.python_version} -y
+      & $choco install python --version=${var.python_version} -y
       if ($LASTEXITCODE -ne 0) { throw "choco python failed: $LASTEXITCODE" }
-      choco install firefox curl docker-cli docker-compose -y
+      & $choco install firefox curl docker-cli docker-compose -y
       if ($LASTEXITCODE -ne 0) { throw "choco browsers/docker failed: $LASTEXITCODE" }
 
       # C/C++ + cross-language toolchains (brought over from AdGuard's
       # build-agent-images windows2022-vs2022 / windows2022-go images).
       # VS2022 Build Tools (with its .NET/VC++ workloads) and Rust are
       # installed by their own provisioners below.
-      choco install golang --version=${var.go_version} -y
+      & $choco install golang --version=${var.go_version} -y
       if ($LASTEXITCODE -ne 0) { throw "choco golang failed: $LASTEXITCODE" }
-      choco install mingw --version=${var.mingw_version} -y
+      & $choco install mingw --version=${var.mingw_version} -y
       if ($LASTEXITCODE -ne 0) { throw "choco mingw failed: $LASTEXITCODE" }
-      choco install make --version=${var.make_version} -y
+      & $choco install make --version=${var.make_version} -y
       if ($LASTEXITCODE -ne 0) { throw "choco make failed: $LASTEXITCODE" }
-      choco install vim --version=${var.vim_version} -y
+      & $choco install vim --version=${var.vim_version} -y
       if ($LASTEXITCODE -ne 0) { throw "choco vim failed: $LASTEXITCODE" }
-      choco install nuget.commandline --version=${var.nuget_version} -y
+      & $choco install nuget.commandline --version=${var.nuget_version} -y
       if ($LASTEXITCODE -ne 0) { throw "choco nuget.commandline failed: $LASTEXITCODE" }
-      choco install protoc --version=${var.protoc_version} -y
+      & $choco install protoc --version=${var.protoc_version} -y
       if ($LASTEXITCODE -ne 0) { throw "choco protoc failed: $LASTEXITCODE" }
-      choco install nasm --version=${var.nasm_version} -y
+      & $choco install nasm --version=${var.nasm_version} -y
       if ($LASTEXITCODE -ne 0) { throw "choco nasm failed: $LASTEXITCODE" }
-      choco install llvm --version=${var.llvm_version} -y
+      & $choco install llvm --version=${var.llvm_version} -y
       if ($LASTEXITCODE -ne 0) { throw "choco llvm failed: $LASTEXITCODE" }
-      choco install wixtoolset --version=${var.wixtoolset_version} -y
+      & $choco install wixtoolset --version=${var.wixtoolset_version} -y
       if ($LASTEXITCODE -ne 0) { throw "choco wixtoolset failed: $LASTEXITCODE" }
 
       # ===== Google Chrome (CfT snapshot, hash-pinned) =====
@@ -553,14 +577,20 @@ build {
     inline = [<<-END
       $ErrorActionPreference = 'Stop'
       $ProgressPreference = 'SilentlyContinue'
-      # Re-read PATH from the registry (see the toolchain provisioner).
+      # Choco is called by its full path, never via PATH (see the
+      # toolchain provisioner). The PATH is still re-read for the tools
+      # this phase installs.
+      $chocoInstall = [System.Environment]::GetEnvironmentVariable('ChocolateyInstall','Machine')
+      if (-not $chocoInstall) { $chocoInstall = 'C:\ProgramData\chocolatey' }
+      $choco = Join-Path (Join-Path $chocoInstall 'bin') 'choco.exe'
+      if (-not (Test-Path $choco)) { throw "choco.exe not found at $choco (Chocolatey install failed?)" }
       $env:Path = [System.Environment]::GetEnvironmentVariable('Path','Machine') + ';' + [System.Environment]::GetEnvironmentVariable('Path','User')
       # Standalone .NET Framework 4.8 Developer Pack (latest), as in the
       # AdGuard image — MSBuild/.NET 4.8 targets need it. 3010 = success,
       # reboot required, which choco also returns for the KB dep.
-      choco install netfx-4.8-devpack -y --norestart
+      & $choco install netfx-4.8-devpack -y --norestart
       if ($LASTEXITCODE -ne 0 -and $LASTEXITCODE -ne 3010) { throw "choco netfx-4.8-devpack failed: $LASTEXITCODE" }
-      choco install visualstudio2022buildtools --version=${var.vs_buildtools_version} -y --norestart --wait --nocache --noUpdateInstaller
+      & $choco install visualstudio2022buildtools --version=${var.vs_buildtools_version} -y --norestart --wait --nocache --noUpdateInstaller
       if ($LASTEXITCODE -ne 0 -and $LASTEXITCODE -ne 3010) { throw "choco visualstudio2022buildtools failed: $LASTEXITCODE" }
       $setup = 'C:\Program Files (x86)\Microsoft Visual Studio\Installer\setup.exe'
       if (-not (Test-Path $setup)) { throw "VS installer not found: $setup" }
@@ -689,7 +719,18 @@ build {
       # RemoteSigned machine-wide (this provisioner runs elevated, so the
       # LocalMachine scope persists in the image) and keep the runners'
       # runtime set as a fallback for images built before this change.
-      Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope LocalMachine -Force
+      # The build passes -ExecutionPolicy Bypass at Process scope, so
+      # setting only LocalMachine triggers Set-ExecutionPolicy's "overridden
+      # by a more specific scope" notice, which Windows PowerShell 5.1 under
+      # WinRM surfaces as a terminating error that aborts the build even
+      # though the machine policy was updated fine (observed). Set the
+      # Process scope first (no override, no notice), then the machine.
+      try {
+        Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope Process -Force -ErrorAction SilentlyContinue
+        Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope LocalMachine -Force -ErrorAction SilentlyContinue
+      } catch {
+        Write-Warning "Set-ExecutionPolicy failed: $($_.Exception.Message)"
+      }
       Write-Host "PowerShell execution policy: $(Get-ExecutionPolicy -Scope LocalMachine)"
       $machinePath = [System.Environment]::GetEnvironmentVariable('Path','Machine').TrimEnd(';')
       $env:Path = $machinePath + ';' + [System.Environment]::GetEnvironmentVariable('Path','User')
@@ -958,8 +999,10 @@ if (Test-Path $envFile) {
       Write-Host "VS Code: $(Test-Path "$env:LOCALAPPDATA\Programs\Microsoft VS Code\bin\code.cmd")"
       # Cleanup — must never fail the build: choco cleanup can exit non-zero
       # (locked files etc.) and that $LASTEXITCODE would otherwise propagate
-      # as the script's exit code even though everything succeeded.
-      choco cleanup -y 2>&1 | Out-Null
+      # as the script's exit code even though everything succeeded. The
+      # redirect happens inside cmd so PowerShell 5.1 never turns choco's
+      # stderr into a terminating error under $ErrorActionPreference='Stop'.
+      cmd /c "choco cleanup -y > NUL 2>&1"
       $LASTEXITCODE = 0
       Remove-Item -Path $env:TEMP\* -Recurse -Force -ErrorAction SilentlyContinue
       Write-Host 'Windows sandbox image complete'

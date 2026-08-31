@@ -383,7 +383,24 @@ build {
       "[System.Net.ServicePointManager]::SecurityProtocol = [System.Net.ServicePointManager]::SecurityProtocol -bor 3072",
       "iex ((New-Object System.Net.WebClient).DownloadString('https://community.chocolatey.org/install.ps1'))",
       "if ($LASTEXITCODE -ne 0) { throw \"chocolatey install failed: $LASTEXITCODE\" }",
-      "choco feature enable -n allowGlobalConfirmation",
+      "$chocoInstall = [System.Environment]::GetEnvironmentVariable('ChocolateyInstall','Machine')",
+      "if (-not $chocoInstall) { $chocoInstall = 'C:\\ProgramData\\chocolatey' }",
+      "$chocoBin = Join-Path $chocoInstall 'bin'",
+      "# Persist the Chocolatey bin dir into the machine PATH ourselves: the",
+      "# bootstrapper's compiled Install-ChocolateyPath cmdlet asserts UAC",
+      "# before writing and can fail to persist the registry value in the",
+      "# elevated WinRM context (observed as 'choco' not recognized in the",
+      "# toolchain phase after the reboot, even with PATH re-read).",
+      "$machinePath = [System.Environment]::GetEnvironmentVariable('Path','Machine').TrimEnd(';')",
+      "if (-not (($machinePath -split ';') -contains $chocoBin)) {",
+      "  [System.Environment]::SetEnvironmentVariable('Path', $machinePath + ';' + $chocoBin, 'Machine')",
+      "}",
+      "# Run choco by its full path too — this session's PATH is not",
+      "# guaranteed to contain the bin dir above.",
+      "$choco = Join-Path $chocoBin 'choco.exe'",
+      "if (-not (Test-Path $choco)) { throw \"choco.exe not found at $choco\" }",
+      "& $choco feature enable -n allowGlobalConfirmation",
+      "if ($LASTEXITCODE -ne 0) { throw \"choco feature enable failed: $LASTEXITCODE\" }",
       "# Legacy .NET strong-crypto: without it, older TLS stacks fail against modern hosts",
       "reg add 'HKLM\\SOFTWARE\\Microsoft\\.NETFramework\\v4.0.30319' /v SchUseStrongCrypto /t REG_DWORD /d 1 /f",
       "reg add 'HKLM\\SOFTWARE\\Wow6432Node\\Microsoft\\.NETFramework\\v4.0.30319' /v SchUseStrongCrypto /t REG_DWORD /d 1 /f",
@@ -408,16 +425,30 @@ build {
     inline = [<<-END
       $ErrorActionPreference = 'Stop'
       $ProgressPreference = 'SilentlyContinue'
-      # Re-read PATH from the registry: the Chocolatey bootstrapper updates
-      # the machine/user PATH, but after the tools reboot a fresh WinRM
-      # process can inherit a stale PATH (observed: 'choco' not recognized).
+      # Choco is called by its full path, never via PATH: the bootstrapper
+      # can fail to persist the machine PATH (see the Chocolatey
+      # provisioner), and after the tools reboot a fresh WinRM process can
+      # inherit a stale PATH — both observed as 'choco' not recognized.
+      # The PATH is still re-read from the registry below for the tools
+      # this phase installs.
+      $chocoInstall = [System.Environment]::GetEnvironmentVariable('ChocolateyInstall','Machine')
+      if (-not $chocoInstall) { $chocoInstall = 'C:\ProgramData\chocolatey' }
+      $choco = Join-Path (Join-Path $chocoInstall 'bin') 'choco.exe'
+      if (-not (Test-Path $choco)) { throw "choco.exe not found at $choco (Chocolatey install failed?)" }
       $env:Path = [System.Environment]::GetEnvironmentVariable('Path','Machine') + ';' + [System.Environment]::GetEnvironmentVariable('Path','User')
       # choco downloads can 404 transiently over the VM's NAT (observed
       # with the pinned python package); retry each install before giving
-      # up.
+      # up. The command goes through cmd /c so the package name and its
+      # --version are parsed as separate arguments (passing $installArgs
+      # straight to the exe makes choco look for a package literally named
+      # 'nodejs --version=22.23.2'). No 2>&1 here: redirecting native
+      # stderr under $ErrorActionPreference='Stop' turns any choco warning
+      # into a terminating error in Windows PowerShell 5.1 (the repo's
+      # documented native-stderr bug) — the output just streams to the
+      # session log and $LASTEXITCODE decides the retry.
       function Invoke-ChocoRetry([string]$installArgs) {
         for ($try = 1; $try -le 3; $try++) {
-          cmd /c "choco install $installArgs -y" 2>&1 | Out-Null
+          cmd /c "$choco install $installArgs -y"
           if ($LASTEXITCODE -eq 0) { return }
           Write-Host "choco install $installArgs attempt $try failed ($LASTEXITCODE); retrying"
           Start-Sleep -Seconds 15
@@ -534,14 +565,20 @@ build {
     inline = [<<-END
       $ErrorActionPreference = 'Stop'
       $ProgressPreference = 'SilentlyContinue'
-      # Re-read PATH from the registry (see the toolchain provisioner).
+      # Choco is called by its full path, never via PATH (see the
+      # toolchain provisioner). The PATH is still re-read for the tools
+      # this phase installs.
+      $chocoInstall = [System.Environment]::GetEnvironmentVariable('ChocolateyInstall','Machine')
+      if (-not $chocoInstall) { $chocoInstall = 'C:\ProgramData\chocolatey' }
+      $choco = Join-Path (Join-Path $chocoInstall 'bin') 'choco.exe'
+      if (-not (Test-Path $choco)) { throw "choco.exe not found at $choco (Chocolatey install failed?)" }
       $env:Path = [System.Environment]::GetEnvironmentVariable('Path','Machine') + ';' + [System.Environment]::GetEnvironmentVariable('Path','User')
       # Standalone .NET Framework 4.8 Developer Pack (latest), as in the
       # AdGuard image — MSBuild/.NET 4.8 targets need it. 3010 = success,
       # reboot required, which choco also returns for the KB dep.
-      choco install netfx-4.8-devpack -y --norestart
+      & $choco install netfx-4.8-devpack -y --norestart
       if ($LASTEXITCODE -ne 0 -and $LASTEXITCODE -ne 3010) { throw "choco netfx-4.8-devpack failed: $LASTEXITCODE" }
-      choco install visualstudio2022buildtools --version=${var.vs_buildtools_version} -y --norestart --wait --nocache --noUpdateInstaller
+      & $choco install visualstudio2022buildtools --version=${var.vs_buildtools_version} -y --norestart --wait --nocache --noUpdateInstaller
       if ($LASTEXITCODE -ne 0 -and $LASTEXITCODE -ne 3010) { throw "choco visualstudio2022buildtools failed: $LASTEXITCODE" }
       $setup = 'C:\Program Files (x86)\Microsoft Visual Studio\Installer\setup.exe'
       if (-not (Test-Path $setup)) { throw "VS installer not found: $setup" }
@@ -670,7 +707,18 @@ build {
       # RemoteSigned machine-wide (this provisioner runs elevated, so the
       # LocalMachine scope persists in the image) and keep the runners'
       # runtime set as a fallback for images built before this change.
-      Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope LocalMachine -Force
+      # The build passes -ExecutionPolicy Bypass at Process scope, so
+      # setting only LocalMachine triggers Set-ExecutionPolicy's "overridden
+      # by a more specific scope" notice, which Windows PowerShell 5.1 under
+      # WinRM surfaces as a terminating error that aborts the build even
+      # though the machine policy was updated fine (observed). Set the
+      # Process scope first (no override, no notice), then the machine.
+      try {
+        Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope Process -Force -ErrorAction SilentlyContinue
+        Set-ExecutionPolicy -ExecutionPolicy RemoteSigned -Scope LocalMachine -Force -ErrorAction SilentlyContinue
+      } catch {
+        Write-Warning "Set-ExecutionPolicy failed: $($_.Exception.Message)"
+      }
       Write-Host "PowerShell execution policy: $(Get-ExecutionPolicy -Scope LocalMachine)"
       $machinePath = [System.Environment]::GetEnvironmentVariable('Path','Machine').TrimEnd(';')
       $env:Path = $machinePath + ';' + [System.Environment]::GetEnvironmentVariable('Path','User')
@@ -934,14 +982,51 @@ if (Test-Path $envFile) {
       if (Test-Path 'C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Tools\MSVC') {
         Write-Host "MSVC: $('C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Tools\MSVC')"
       }
-      Write-Host "VMware Tools: $(Test-Path 'C:\Program Files\VMware\VMware Tools\vmtoolsd.exe')"
+      # VMware Tools are load-bearing for the sandbox runner: vmrun
+      # getGuestIPAddress (guest IP discovery) and HGFS shared folders
+      # need the vmtoolsd service. The ARM64 tools MSI ships no VMCI
+      # driver (Fusion's windows.iso carries vmxnet3 + vm3d +
+      # vmusbmouse only), so the tools installer skips its own service
+      # registration and a plain install lands with vmtoolsd.exe present
+      # but no service (observed as the runner stuck at "Waiting for the
+      # guest IP" for 15 min). Register it here, in the final
+      # verification — NOT in autounattend.xml's FirstLogonCommands: a
+      # longer tools CommandLine (service registration inline) broke
+      # Windows Setup at first boot ("Windows could not complete the
+      # installation", Pre-OOBE windeploy 0x80220005, build hung on
+      # "Waiting for WinRM"), so the unattend command must stay small.
+      # Fail hard when the service still did not come up — such an image
+      # is not runnable, so a build that ships it must fail instead.
+      $vmtoolsExe = 'C:\Program Files\VMware\VMware Tools\vmtoolsd.exe'
+      $vmtoolsSvc = Get-Service 'VMware Tools' -ErrorAction SilentlyContinue
+      if ((Test-Path $vmtoolsExe) -and -not $vmtoolsSvc) {
+        Write-Host "Registering 'VMware Tools' service (ARM64 tools skip the VMCI driver)"
+        New-Service -Name 'VMware Tools' -DisplayName 'VMware Tools' `
+          -BinaryPathName "\"$vmtoolsExe\"" -StartupType Automatic | Out-Null
+        $vmtoolsSvc = Get-Service 'VMware Tools' -ErrorAction SilentlyContinue
+      }
+      if ($vmtoolsSvc -and $vmtoolsSvc.Status -ne 'Running') {
+        Start-Service 'VMware Tools' -ErrorAction SilentlyContinue
+        $vmtoolsSvc = Get-Service 'VMware Tools' -ErrorAction SilentlyContinue
+      }
+      $vmtoolsd = Test-Path $vmtoolsExe
+      if (-not $vmtoolsd -or -not $vmtoolsSvc -or $vmtoolsSvc.Status -ne 'Running') {
+        # ASCII-only error message: non-ASCII characters in inline
+        # PowerShell string literals are mangled in the WinRM transfer
+        # (the em-dash came back as a smart quote, which closed the
+        # string early and killed the whole script's parse).
+        throw "VMware Tools are not fully installed - vmtoolsd.exe present: $vmtoolsd; 'VMware Tools' service: $($vmtoolsSvc). The sandbox runner needs the Tools service (vmrun getGuestIPAddress, HGFS); check the autounattend tools step."
+      }
+      Write-Host "VMware Tools: vmtoolsd.exe present, 'VMware Tools' service running ($($vmtoolsSvc.Status))"
       Write-Host "Chrome: $(Test-Path 'C:\Program Files\Google\Chrome\Application\chrome.exe')"
       Write-Host "Firefox: $(Test-Path 'C:\Program Files\Mozilla Firefox\firefox.exe')"
       Write-Host "VS Code: $(Test-Path "$env:LOCALAPPDATA\Programs\Microsoft VS Code\bin\code.cmd")"
       # Cleanup — must never fail the build: choco cleanup can exit non-zero
       # (locked files etc.) and that $LASTEXITCODE would otherwise propagate
-      # as the script's exit code even though everything succeeded.
-      choco cleanup -y 2>&1 | Out-Null
+      # as the script's exit code even though everything succeeded. The
+      # redirect happens inside cmd so PowerShell 5.1 never turns choco's
+      # stderr into a terminating error under $ErrorActionPreference='Stop'.
+      cmd /c "choco cleanup -y > NUL 2>&1"
       $LASTEXITCODE = 0
       Remove-Item -Path $env:TEMP\* -Recurse -Force -ErrorAction SilentlyContinue
       Write-Host 'Windows sandbox image complete'

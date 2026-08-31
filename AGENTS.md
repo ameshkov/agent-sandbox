@@ -205,6 +205,14 @@ recipes; it is the authoritative build/release guide.
   ~50 GB base image. `PACKER_LOG=1` for verbose output.
 - SSH provisioning credentials are fixed by the Cirrus base images:
   `admin`/`admin`.
+- Windows templates: inline PowerShell **string literals** must stay
+  ASCII-only. The Packer WinRM transfer mangles non-ASCII characters
+  (e.g. an em-dash `—` came back as a smart quote, which closed the
+  string literal early and failed the whole script's parse at the last
+  provisioner — a 47-min build). Em-dashes are fine in comments, in
+  HCL/Python/shell comments and in the `autounattend.xml`
+  `CommandLine`s, but never inside a PowerShell string in an inline
+  provisioner or `powershell` script.
 - `scripts/deploy.sh` pushes images flat as `ghcr.io/<owner>/<image>` — the
   platform is part of the image name (`sandbox-macos-…`,
   `sandbox-windows-…-arm64-qemu`, `sandbox-windows-…-arm64-vmware`),
