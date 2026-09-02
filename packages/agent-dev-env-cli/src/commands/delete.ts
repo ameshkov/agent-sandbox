@@ -114,10 +114,9 @@ async function deleteVmware(platform: Platform, options: DeleteOptions): Promise
     logger.info(`No state at ${stateDir} (already deleted?) — nothing to delete.`);
   } else {
     const size = await dirSizeHuman(stateDir);
-    const maybe = runOptions.image;
     const ask =
       `Delete the sandbox state at '${stateDir}' (${size}; re-pulled on the next run)? ` +
-      `This removes the pristine base and the working clone of '${maybe}'.`;
+      `This removes the pristine base and the working clone of '${runOptions.image}'.`;
     if (yes || (await confirm(ask, { default: 'y' }))) {
       logger.cmd(`rm -rf ${stateDir}`);
       rmSync(stateDir, { recursive: true, force: true });

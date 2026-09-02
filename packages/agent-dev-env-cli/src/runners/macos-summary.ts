@@ -114,7 +114,7 @@ function printSettingsLine(settings: RunState['settings']): void {
       summaryLine('Settings', 'nothing to copy on the host');
       break;
     case 'failed':
-      summaryLine('Settings', loggerWarn('copy failed — re-run the script to retry'));
+      summaryLine('Settings', loggerWarn('copy failed — re-run `agent-dev-env run` to retry'));
       break;
     default:
       summaryLine('Settings', 'not copied');

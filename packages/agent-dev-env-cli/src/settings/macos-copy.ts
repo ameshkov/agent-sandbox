@@ -5,7 +5,7 @@
 // flows: `ensure` (run step, marker-gated) and `sync` (on demand).
 
 import { spawn } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { cpSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { execVm } from '../lib/tart.js';
@@ -133,8 +133,15 @@ async function copySettingsToGuest(vm: string, files: string[], home: string): P
 }
 
 /** @internal — sanitized .gitconfig in the staging dir; false when the
- *  host has no .gitconfig (or sanitization fails — ship it as-is). */
-function stageSanitizedGitconfig(home: string, staging: string): boolean {
+ *  host has no .gitconfig (or it could not be staged — the sanitized
+ *  copy is preferred, the raw file is shipped as-is as a fallback, like
+ *  the Ubuntu flow). Exported for the co-located tests.
+ *
+ * @param home - The host home directory.
+ * @param staging - The staging dir to write into.
+ * @returns True when a .gitconfig was staged.
+ */
+export function stageSanitizedGitconfig(home: string, staging: string): boolean {
   const source = join(home, '.gitconfig');
   try {
     const content = readFileSync(source, 'utf8');
@@ -150,7 +157,13 @@ function stageSanitizedGitconfig(home: string, staging: string): boolean {
     return true;
   } catch {
     logger.warn('could not sanitize .gitconfig — shipping it as-is.');
-    return false;
+    try {
+      cpSync(source, join(staging, '.gitconfig'), { preserveTimestamps: true });
+      return true;
+    } catch {
+      logger.warn('could not stage .gitconfig — skipping it.');
+      return false;
+    }
   }
 }
 
@@ -216,7 +229,7 @@ export async function ensureUserSettings(
     return 'none';
   }
   if (!(await confirmSettingsCopy(home, files, yes))) {
-    logger.info('Skipped — re-run the script to copy them later.');
+    logger.info('Skipped — re-run `agent-dev-env run` to copy them later.');
     return 'declined';
   }
   await copySettingsToGuest(vm, files, home);
@@ -246,7 +259,7 @@ export async function syncUserSettings(
     return 'none';
   }
   if (!(await confirmSettingsCopy(home, files, yes))) {
-    logger.info('Skipped — re-run the script to copy them later.');
+    logger.info('Skipped — re-run `agent-dev-env sync` to copy them later.');
     return 'declined';
   }
   await copySettingsToGuest(vm, files, home);

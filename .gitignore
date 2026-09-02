@@ -5,7 +5,7 @@
 .playwright-mcp/
 
 # Per-image build artifacts (build/<image>/: output, packer_cache,
-# drivers/staging — created by the platform build wrappers)
+# drivers/staging — created by `agent-dev-env build`)
 build/
 
 # Node (the agent-dev-env CLI in this repo)

@@ -234,7 +234,7 @@ export async function ensureUserSettings(
     return 'none';
   }
   if (!(await confirmSettingsCopy(home, files, yes))) {
-    logger.info('Skipped — re-run the script to copy them later.');
+    logger.info('Skipped — re-run `agent-dev-env run` to copy them later.');
     return 'declined';
   }
   await copySettingsToGuest(session, files, home, password);
@@ -266,7 +266,7 @@ export async function syncUserSettings(
     return 'none';
   }
   if (!(await confirmSettingsCopy(home, files, yes))) {
-    logger.info('Skipped — re-run the script to copy them later.');
+    logger.info('Skipped — re-run `agent-dev-env sync` to copy them later.');
     return 'declined';
   }
   await copySettingsToGuest(session, files, home, password);

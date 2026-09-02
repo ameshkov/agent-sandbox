@@ -10,6 +10,7 @@
   },
   "packageManager": "pnpm@10.14.0",
   "scripts": {
+    "agent-dev-env": "node packages/agent-dev-env-cli/dist/cli.js",
     "build": "node packages/agent-dev-env-cli/scripts/copy-assets.mjs",
     "typecheck": "tsc -p packages/agent-dev-env-cli/tsconfig.app.json --noEmit && tsc -p packages/agent-dev-env-cli/tsconfig.test.json && tsc -p packages/bridge-core/tsconfig.json && tsc -p packages/guest-rules/tsconfig.json && tsc -p packages/guest-agent-mac/tsconfig.json && tsc -p packages/guest-agent-windows/tsconfig.json && tsc -p packages/guest-agent-ubuntu/tsconfig.json",
     "test": "vitest run",

@@ -23,8 +23,8 @@
 #   4. virtio-win.iso attached as a CD-ROM via usb-storage, so the built
 #      image can install virtio-win-guest-tools (full driver suite + qemu
 #      guest agent). The boot-critical ARM64 driver subset WinPE needs at
-#      install time is bundled into the unattend CD by build.sh, not this
-#      CD.
+#      install time is bundled into the unattend CD by the build flow, not
+#      this CD.
 #   5. Rewrite of Packer-generated CD-ROM drives to usb-storage. QEMU's
 #      ARM `virt` machine has no IDE/SATA controller, and WinPE has no
 #      in-box driver for the plugin's default CD attachment; it does
@@ -36,7 +36,7 @@
 # usb-storage device MUST come before virtio-win.iso's, otherwise EDK2
 # bails to the EFI Shell instead of booting Windows Setup.
 #
-# Required env (exported by images/windows-arm64-qemu/build.sh):
+# Required env (exported by the agent-dev-env CLI build flow):
 #   SWTPM_SOCK          — absolute path to the swtpm Unix socket
 #   VIRTIO_WIN_ISO_PATH — absolute path to virtio-win.iso
 #   QEMU_WITH_TPM_LOG   — log file for the final qemu invocation
@@ -56,7 +56,7 @@ if [[ "${1:-}" == "-version" || "${1:-}" == "--version" ]]; then
 fi
 
 if [[ -z "${SWTPM_SOCK:-}" ]]; then
-  echo "ERROR: SWTPM_SOCK not set; images/windows-arm64-qemu/build.sh must export it." >&2
+  echo "ERROR: SWTPM_SOCK not set; `agent-dev-env build` must export it." >&2
   exit 1
 fi
 
@@ -66,7 +66,7 @@ if [[ ! -S "${SWTPM_SOCK}" ]]; then
 fi
 
 if [[ -z "${VIRTIO_WIN_ISO_PATH:-}" ]]; then
-  echo "ERROR: VIRTIO_WIN_ISO_PATH not set; images/windows-arm64-qemu/build.sh must export it." >&2
+  echo "ERROR: VIRTIO_WIN_ISO_PATH not set; `agent-dev-env build` must export it." >&2
   exit 1
 fi
 
@@ -158,9 +158,9 @@ final_argv=(
 )
 
 # Log the final qemu invocation so future "Qemu failed to start" errors
-# are debuggable without PACKER_LOG=1. build.sh exports the per-image log
-# path; the fallback matches the old platform-dir layout for standalone
-# runs.
+# are debuggable without PACKER_LOG=1. The build flow exports the
+# per-image log path; the fallback matches the old platform-dir layout
+# for standalone runs.
 qemu_log_file="${QEMU_WITH_TPM_LOG:-packer_cache/qemu-with-tpm.cmd.log}"
 {
   echo "==> $(date -u +%FT%TZ) qemu-system-aarch64 invocation"

@@ -1,12 +1,12 @@
 <?xml version="1.0" encoding="utf-8"?>
 <!--
   autounattend.xml — Windows 11 ARM64 unattended install for the Packer
-  QEMU build (images/windows/sandbox.pkr.hcl).
+  QEMU build (images/windows-arm64-qemu/sandbox.pkr.hcl).
 
   Windows Setup probes attached removable media for Autounattend.xml at
   the root and applies it before the language picker. The CD is built by
-  Packer's cd_files from this file + the drivers/ tree staged by
-  images/windows-arm64-qemu/build.sh (the ARM64 viostor/vioscsi/NetKVM driver subset
+  Packer's cd_files from this file + the drivers/ tree staged by the
+  build flow (the ARM64 viostor/vioscsi/NetKVM driver subset
   extracted from virtio-win.iso). WinPE drive-letter enumeration on
   ARM64 + EFI is non-deterministic, so the driver paths below list
   D:..G: candidates.

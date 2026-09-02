@@ -3,12 +3,11 @@
 // cli.ts — the agent-dev-env CLI entry point (commander).
 //
 // The surface is registered in commands/register.ts (small register
-// functions, one per group). Phase 1 implemented `list`, `status` and
-// `doctor`; Phase 3 lands the macOS `run`/`stop`/`delete`/`sync` (the
-// runner framework + tart backend). The remaining surface (the non-mac
-// runners, build/deploy/tag/watch-build) is declared so the interface is
-// stable and lands phase by phase — placeholders fail with a clear
-// message and exit nonzero.
+// functions, one per group): the lifecycle commands (build/deploy/tag),
+// the diagnostic commands (list/status/doctor), and the VM commands
+// (run/stop/delete/sync/watch-build) — all implemented for every
+// platform; `sync` is limited to the tart/ssh2 transports (macos,
+// ubuntu-vmware).
 
 import { Command, CommanderError } from 'commander';
 import { createRequire } from 'node:module';

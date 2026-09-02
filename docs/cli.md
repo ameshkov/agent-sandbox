@@ -25,6 +25,13 @@ npm install -g agent-dev-env
 agent-dev-env --help
 ```
 
+Contributors working in the repo can run the in-tree CLI after a build
+(`pnpm build`) with the root `agent-dev-env` script:
+
+```bash
+pnpm agent-dev-env --help
+```
+
 Runtime requirements (host, macOS only):
 
 - macOS (Apple Silicon only — Tart/QEMU/Fusion cannot virtualize ARM64
@@ -159,9 +166,9 @@ settings step — `sync` errors helpfully there.
 ## status
 
 Live status of one or all platforms: the image, whether the pristine /
-working state exists, and the running state (Tart VM state, qemu/swtpm
-pidfiles, VMX existence + guest IP where available). With no argument it
-summarizes all platforms; `status <platform>` narrows to one.
+working state exists, and the running state (Tart VM state, qemu pidfile
+with a pgrep fallback, VMX existence + guest IP where available). With no
+argument it summarizes all platforms; `status <platform>` narrows to one.
 
 ## list
 
@@ -290,7 +297,10 @@ Data layout:
 
 ```text
 <data>/
-  build/<platform>/            packer build contexts + outputs (deploy consumes these)
+  build/<platform>/            packer build outputs (built image + packer_cache
+                               + staged drivers; deploy consumes these)
+  build-context/<platform>/    materialized packer context (writable copy of
+                               images/<platform>)
   windows-qemu/<image>/        image/ (pristine qcow2), working/ (overlay,
                                efivars.fd, tpm/, pids, sockets)
   windows-vmware/<image>/      image/, base/, working/

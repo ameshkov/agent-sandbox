@@ -19,7 +19,10 @@
 // Data layout under <data> (the plan's canonical layout):
 //
 //   <data>/
-//     build/<platform>/            packer build contexts + outputs
+//     build/<platform>/            packer build outputs (built image +
+//                                  packer_cache + staged drivers)
+//     build-context/<platform>/    materialized packer context (writable
+//                                  copy of images/<platform>)
 //     windows-qemu/<image>/        image/ (pristine qcow2), working/ (overlay,
 //                                  efivars.fd, tpm/, pids, socks)
 //     windows-vmware/<image>/      image/, base/, working/

@@ -15,15 +15,14 @@ the next release.
 
 ### Added
 
-- `scripts/stop-windows-qemu-sandbox.sh` — stops the sandbox: qemu (via
-  the runner's `qemu.pid`) and swtpm, plus the host SSH agent / Docker
-  bridge listeners the runner leaves up. Honors the runner's
-  `SANDBOX_STATE_DIR` / `SANDBOX_AGENT_PORT` / `SANDBOX_DOCKER_PORT`
-  overrides.
-- `scripts/delete-windows-qemu-sandbox.sh` — deletes the sandbox: stops it
-  first (delegating to `stop-windows-qemu-sandbox.sh`), then removes the
-  state dir (working disk overlay + TPM/EFI NVRAM + pulled image cache).
-  Asks before deleting unless `--yes`.
+- `agent-dev-env stop` (windows-qemu) — stops the sandbox: qemu (via the
+  runner's `qemu.pid`) and swtpm, plus the host SSH agent / Docker bridge
+  listeners the runner leaves up. Honors the runner's
+  `SANDBOX_AGENT_PORT` / `SANDBOX_DOCKER_PORT` overrides.
+- `agent-dev-env delete` (windows-qemu) — deletes the sandbox: stops it
+  first (delegating to the stop step), then removes the state dir (working
+  disk overlay + TPM/EFI NVRAM + pulled image cache). Asks before deleting
+  unless `--yes`.
 - The virtual display is now a virtio-gpu-pci (virtio-gpu) instead of
   ramfb at runtime: the image stages the ARM64 `viogpudo` (virtio-gpu
   display-only) driver onto the unattend CD, so first logon lands it in
@@ -39,17 +38,17 @@ the next release.
   `sandbox-windows-<windows_version>-arm64-qemu.qcow2` — the GHCR package
   name and the runner's `image_name`): the platform is now part of the
   image name, matching the state-dir naming
-  (`~/Library/Application Support/agent-sandbox/windows-11-arm64-qemu`).
+  (`~/Library/Application Support/agent-dev-env/windows-qemu/`).
   Older releases stay published under the old name.
-- The QEMU runner (`scripts/run-windows-qemu-sandbox.sh`) boots the guest
+- The QEMU runner (`agent-dev-env run`, windows-qemu) boots the guest
   in a resizable window: it passes `-display cocoa,zoom-to-fit=on` (the
   cocoa window is fixed-size otherwise) and replaced `-device ramfb` with
   `-device virtio-gpu-pci`. Full screen is available from the QEMU
   window's View menu → Enter Fullscreen.
-- `images/windows-arm64-qemu/build.sh` — the EXIT trap no longer prints
+- The build flow (`agent-dev-env build`) — the EXIT trap no longer prints
   `stop_watchdog: command not found` when the build aborts before the
   watchdog function is defined (it now checks before calling it).
-- `scripts/run-windows-qemu-sandbox.sh` — the working VM is recreated
+- `agent-dev-env run` (windows-qemu) — the working VM is recreated
   when the pristine image *changes*, not just when its path changes: the
   backing marker now records path + size + mtime, and the stale overlay /
   EFI NVRAM / TPM state are discarded (previously a rebuild that replaced
@@ -57,14 +56,14 @@ the next release.
   corrupt disk that dropped Windows to the UEFI shell). The EFI NVRAM is
   also seeded from the build output's `efivars.fd` when one exists, so
   Windows' own Boot0000 is used instead of the empty edk2 template.
-- `scripts/run-windows-qemu-sandbox.sh` — the default working-VM state
-  dir moved to `~/Library/Application Support/agent-sandbox/
-  windows-11-arm64-qemu` (was `windows-11`): the old name did not say
-  which platform the state under `agent-sandbox/` belongs to (the VMware
-  image's dir sits next to it). Override with `SANDBOX_STATE_DIR` as
-  before.
-- `scripts/run-windows-qemu-sandbox.sh` — the summary's stop hints now
-  point at `./scripts/stop-windows-qemu-sandbox.sh` instead of a bare
+- `agent-dev-env run` (windows-qemu) — the default working-VM state
+  dir now lives under the CLI's data root
+  (`~/Library/Application Support/agent-dev-env/windows-qemu/<image>/`):
+  the platform and image are part of the path, so state from different
+  platforms and images never collides. Override the data root with
+  `AGENT_DEV_ENV_DATA_HOME` (or `XDG_DATA_HOME`) as before.
+- `agent-dev-env run` (windows-qemu) — the summary's stop hints now
+  point at `agent-dev-env stop` instead of a bare
   `kill $(cat …/qemu.pid)` and a hand-written `lsof | xargs kill` for the
   bridge listeners.
 

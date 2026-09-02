@@ -94,7 +94,7 @@ This follows the recommended **one VM, many projects** workflow: keep **one**
 sandbox VM and share your whole working directory into it, so your code stays
 on the host while the toolchain and agent live in the VM and are reused across
 all projects (see [The one-VM, many-projects workflow in depth](#the-one-vm-many-projects-workflow-in-depth)).
-By default the script shares `/Volumes/dev` — the host directory with all your
+By default the CLI shares `/Volumes/dev` — the host directory with all your
 projects — into the guest at `/Volumes/My Shared Files/dev`.
 
 Two environment variables cover most needs (the full list is in the
@@ -384,13 +384,13 @@ Notes:
   "TESTCONTAINERS_HOST_OVERRIDE"]`.
 - The host engine must be running when the runner bridges it (the socket only
   exists then). If Docker Desktop isn't started yet, the runner skips the
-  bridge — start the engine and re-run the script (or just run it again; the
-  setup is idempotent).
+  bridge — start the engine and re-run `agent-dev-env run` (or just run it
+  again; the setup is idempotent).
 - The bridge is per-boot: the host-side listener lives for the current run
   (in background mode it stays up until killed, see the runner's summary),
   and the guest side recreates its socket at every login. If the guest is
   rebooted while the host listener is still up, docker keeps working; after a
-  host reboot, re-run the script.
+  host reboot, re-run `agent-dev-env run`.
 - Pass `--no-docker` to skip the bridge. `SANDBOX_DOCKER_PORT` overrides the
   bridge port (default `4101`).
 - The listener binds only to the VM network gateway address, so it is not
@@ -437,7 +437,8 @@ Notes:
 
 - Share your whole work volume once (`--dir=dev:/Volumes/dev`) or repeat
   `--dir` per project — in both cases the mount has to be passed on every
-  `tart run`. Save the command as a shell alias or a `run-sandbox.sh` script.
+  `tart run`. Save the command as a shell alias or a small script of your
+  own.
 - If a project genuinely needs isolation (e.g. an incompatible toolchain),
   clone an extra VM for it — `tart clone sandbox project-a-isolated` — no
   rebuild needed.

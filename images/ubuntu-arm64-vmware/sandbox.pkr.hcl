@@ -36,26 +36,26 @@ variable "image_version" {
 #
 # Built images and their scratch land in a top-level build/ directory:
 # build/ubuntu-arm64-vmware/output (Packer's output_directory). The
-# images/ubuntu-arm64-vmware/build.sh computes the directory and passes it
+# agent-dev-env CLI build flow computes the directory and passes it
 # in; the default keeps a bare `packer build` from the platform dir working.
 
 variable "build_dir" {
   type        = string
   default     = "."
-  description = "Per-image build directory: <build_dir>/output holds the built VM. Set by images/ubuntu-arm64-vmware/build.sh to build/ubuntu-arm64-vmware/."
+  description = "Per-image build directory: <build_dir>/output holds the built VM. Set by `agent-dev-env build` to build/ubuntu-arm64-vmware/."
 }
 
 # --- Ubuntu install ISO (bring-your-own, see images/ubuntu-arm64-vmware/README.md) ---
 
 variable "iso_path" {
   type        = string
-  description = "Absolute path to the Ubuntu Server 24.04 ARM64 ISO. Set by images/ubuntu-arm64-vmware/build.sh (PKR_VAR_iso_path); the ISO is not redistributable so it cannot live in the repo. Required — validate with `-var iso_path=/path/to/iso`."
+  description = "Absolute path to the Ubuntu Server 24.04 ARM64 ISO. Set by the agent-dev-env CLI build flow (PKR_VAR_iso_path); the ISO is not redistributable so it cannot live in the repo. Required — validate with `-var iso_path=/path/to/iso`."
 }
 
 variable "iso_sha256" {
   type        = string
   default     = ""
-  description = "SHA256 of the Ubuntu ISO as published in the release SHA256SUMS. Read by images/ubuntu-arm64-vmware/build.sh for verification, not by Packer itself (iso_checksum is 'none')."
+  description = "SHA256 of the Ubuntu ISO as published in the release SHA256SUMS. Read by the agent-dev-env CLI build flow for verification, not by Packer itself (iso_checksum is 'none')."
 }
 
 # --- SSH credentials (baked into autoinstall/user-data — keep in sync) ---
@@ -242,7 +242,7 @@ source "vmware-iso" "ubuntu" {
   vm_name          = "sandbox-ubuntu-${var.ubuntu_version}-arm64-vmware"
   output_directory = "${var.build_dir}/output"
 
-  # The wrapper (images/ubuntu-arm64-vmware/build.sh) verifies the ISO
+  # The build flow (agent-dev-env build) verifies the ISO
   # against var.iso_sha256 before Packer runs; iso_checksum is "none" so
   # Packer does not re-verify.
   iso_url      = var.iso_path
@@ -262,16 +262,15 @@ source "vmware-iso" "ubuntu" {
   firmware             = "efi"
   cdrom_adapter_type   = "sata"
 
-  # Autoinstall seed: user-data + meta-data, served by the build wrapper's
-  # own HTTP server (images/ubuntu-arm64-vmware/build.sh runs
-  # `python3 -m http.server 8004` over autoinstall/; the installer kernel
-  # fetches it via ds=nocloud-net). The wrapper's server is used instead of
-  # Packer's http_directory: its port is random and the vmware plugin does
-  # not accept an http_port override, while the autoinstall URL has to be
-  # known at grub-typing time (see the watchdog note below). The guest
-  # reaches the server at the vmnet8 host address (x.y.z.1 — vmnetd
-  # delivers guest traffic to the host's loopback, proven by the bridge
-  # runners).
+  # Autoinstall seed: user-data + meta-data, served by the build flow's
+  # own HTTP server (the flow runs `python3 -m http.server 8004` over
+  # autoinstall/; the installer kernel fetches it via ds=nocloud-net). The
+  # flow's server is used instead of Packer's http_directory: its port is
+  # random and the vmware plugin does not accept an http_port override,
+  # while the autoinstall URL has to be known at grub-typing time (see the
+  # watchdog note below). The guest reaches the server at the vmnet8 host
+  # address (x.y.z.1 — vmnetd delivers guest traffic to the host's
+  # loopback, proven by the bridge runners).
 
   vmx_data = {
     # The install ISO rides on the SATA controller.
@@ -308,7 +307,7 @@ source "vmware-iso" "ubuntu" {
   # 20-40 s in), and stray keys at the probe screen make the firmware
   # attempt devices from the probe. The BUILD WATCHDOG does the typing
   # instead (the bundled watch-build.py + WATCH_BUILD_BOOT_CMD, set by
-  # images/ubuntu-arm64-vmware/build.sh): it waits for the grub menu or
+  # the build flow): it waits for the grub menu or
   # shell in the OCR and then types the autoinstall command. The VNC is
   # still opened (pinned below) for the watchdog, and the plugin's
   # boot_wait simply gives the VM a moment to power on.

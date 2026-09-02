@@ -20,9 +20,9 @@ the next release.
   (opencode config + auth, OpenCodeReview config, Copilot config + skills,
   VS Code extensions + user config, mcp-compress-router settings, SSH
   dotfiles, `.gitconfig`), once per VM, tracked by a versioned marker
-  (`~/.config/agent-sandbox/settings-copied`), with `--no-settings` to skip
-  and `./scripts/sync-ubuntu-vmware-sandbox.sh` to re-sync on demand. The
-  shared logic is `scripts/lib/ubuntu-vmware/settings.sh` (SSH/scp
+  (`~/.config/agent-dev-env/settings-copied`), with `--no-settings` to skip
+  and `agent-dev-env sync` (ubuntu-vmware) to re-sync on demand. The
+  shared logic is `settings/ubuntu.ts` + `settings/ubuntu-copy.ts` (ssh2
   transport, host-to-guest path mapping for the VS Code user dir and
   mcp-compress-router, `.gitconfig` rewritten for `/home/admin`,
   OpenChamber restart). See `docs/ubuntu-vmware.md`.
@@ -30,13 +30,13 @@ the next release.
 ### Fixed
 
 - **The shared host directory no longer fails when the share is
-  registered before VMware Tools are up** — `run-ubuntu-vmware-sandbox.sh`
-  called `vmrun addSharedFolder` as soon as sshd answered, but
-  open-vm-tools can still be starting then: `getGuestIPAddress`/sshd were
-  already up while the tools state vmrun needs for the HGFS registration
-  was not, so the runner logged `Error: The VMware Tools are not running
-  in the virtual machine` and `/mnt/hgfs/work` never appeared in the
-  guest. The runner now waits for `vmrun checkToolsState` to report
+  registered before VMware Tools are up** — `agent-dev-env run`
+  (ubuntu-vmware) called `vmrun addSharedFolder` as soon as sshd answered,
+  but open-vm-tools can still be starting then: `getGuestIPAddress`/sshd
+  were already up while the tools state vmrun needs for the HGFS
+  registration was not, so the runner logged `Error: The VMware Tools are
+  not running in the virtual machine` and `/mnt/hgfs/work` never appeared
+  in the guest. The runner now waits for `vmrun checkToolsState` to report
   `running` (up to 5 min) and retries `addSharedFolder` a few times, then
   warns only if it still failed. A share persisted by a previous run
   (`Error: Already exists`) is treated as success.
@@ -48,7 +48,7 @@ the next release.
   user could not write into `~/.local` or restore its timestamps during
   `tar -C $HOME` extraction. `install -d` now lists `/home/admin/.local`
   as its own operand, and the runner's settings copy
-  (`scripts/lib/ubuntu-vmware/settings.sh`) chowns `~/.local` back to the
+  (`settings/ubuntu-copy.ts`) chowns `~/.local` back to the
   sandbox user before unpacking (via `sudo -S` with the guest password the
   runner already knows), so existing images are fixed on the next run
   without a rebuild. The copy also strips macOS AppleDouble companions
@@ -70,15 +70,15 @@ the next release.
 - **The build watchdog no longer misses the grub menu** — the Ubuntu build
   can fail with "Timeout waiting for SSH" when the grub autoinstall
   command is never typed: grub's menu countdown is ~20 s wide, but
-  `scripts/watch-build.py` polled once per ~2 min (90 s worker timeout +
-  20 s sleep), so the menu default booted the interactive Subiquity
-  installer and the build sat on the installer's proxy screen until SSH
-  timed out. The supervisor now fast-polls (3 s interval — the worker
-  timeout stays at 90 s, since a kill mid-typing would corrupt the grub
-  shell input line) while the autoinstall command is untyped (no
+  `assets/watchdog/watch-build.py` polled once per ~2 min (90 s worker
+  timeout + 20 s sleep), so the menu default booted the interactive
+  Subiquity installer and the build sat on the installer's proxy screen
+  until SSH timed out. The supervisor now fast-polls (3 s interval — the
+  worker timeout stays at 90 s, since a kill mid-typing would corrupt the
+  grub shell input line) while the autoinstall command is untyped (no
   `.boot-typed` marker), falling back to the old slow cadence once typed
-  or after a 4 min cap; the relaying is unchanged. `build.sh`'s
-  `stop_watchdog` also kills the supervisor's in-flight `--worker`
+  or after a 4 min cap; the relaying is unchanged. The build flow's
+  watchdog stop also kills the supervisor's in-flight `--worker`
   children (they survive a supervisor kill and keep the VNC port open,
   blocking the next build).
 

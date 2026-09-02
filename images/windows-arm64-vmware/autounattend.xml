@@ -6,7 +6,7 @@
   Windows Setup probes attached removable media for Autounattend.xml at
   the root and applies it before the language picker. The CD is built by
   Packer's cd_files from this file + the vmxnet3 ARM64 driver staged by
-  images/windows-arm64-vmware/build.sh (extracted from VMware Fusion's
+  the build flow (extracted from VMware Fusion's
   Contents/Library/isoimages/arm64/drivers-arm64.zip, placed flat at the
   CD root).
 

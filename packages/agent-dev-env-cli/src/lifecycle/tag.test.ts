@@ -31,9 +31,15 @@ async function git(...args: string[]): Promise<void> {
 
 describe('tag naming', () => {
   it('derives <platform-dir>-v<version> from the vars file', () => {
-    const image = resolveImage('sandbox-macos-tahoe');
-    expect(platformTagName(image)).toBe('mac');
-    expect(releaseTag(image)).toBe('mac-v1.6.0');
+    const root = mkdtempSync(join(tmpdir(), 'agent-dev-env-tag-name-'));
+    try {
+      initRepo(root);
+      const image = resolveImage('sandbox-macos-tahoe', { roots: [join(root, 'images')] });
+      expect(platformTagName(image)).toBe('mac');
+      expect(releaseTag(image)).toBe('mac-v1.2.0');
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 });
 

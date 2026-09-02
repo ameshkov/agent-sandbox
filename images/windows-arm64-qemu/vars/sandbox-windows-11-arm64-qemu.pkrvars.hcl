@@ -15,7 +15,7 @@ windows_version = "11"
 iso_sha256 = "638AA2C88E94385B00F4F178D071E3DF0B7D9E335577A83BD533B7F2EB65ADF0"
 
 # virtio-win ISO with ARM64 drivers (release 0.1.240+). Downloaded by
-# images/windows-arm64-qemu/build.sh into build/windows-arm64-qemu/
+# the agent-dev-env CLI build flow into build/windows-arm64-qemu/
 # packer_cache/ when VIRTIO_WIN_ISO_PATH is unset; paste the published
 # SHA256 to verify (empty = skip).
 virtio_win_url = "https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/stable-virtio/virtio-win.iso"

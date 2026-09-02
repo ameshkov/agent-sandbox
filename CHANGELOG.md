@@ -32,3 +32,12 @@ never removed — changes land there until the next release.
       agent and Docker bridges, and the user settings copy;
     - the docs: the CLI reference, the per-OS user guides, `AGENTS.md`,
       `DEVELOPMENT.md` and the CLI port design document.
+
+### Fixed
+
+- `spawnDetached()` now `unref()`s the child process: `detached: true`
+  alone kept the CLI's event loop alive until the daemon exited, so
+  `agent-dev-env run macos` (background mode) printed the
+  "Sandbox is ready" summary and then hung instead of exiting. The
+  detached processes (`tart run`, the bridge forwarders, QEMU, the
+  build watchdog) keep running under their pid files as intended.

@@ -265,6 +265,12 @@ export function spawnDetached(
     env: options.env ? { ...process.env, ...options.env } : process.env,
     stdio: logFd !== undefined ? ['ignore', logFd, logFd] : 'ignore',
   });
+  // detached:true alone still keeps the parent's event loop alive until
+  // the child exits — without unref() the CLI would hang past its work
+  // (run macos printed the "ready" summary and never exited). unref()
+  // lets the CLI exit while the daemon (tart run, bridge forwarders,
+  // qemu, watchdog) keeps running under its pid file.
+  child.unref();
   return child.pid ?? -1;
 }
 

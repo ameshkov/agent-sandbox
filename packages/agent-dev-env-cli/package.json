@@ -2,6 +2,19 @@
   "name": "agent-dev-env",
   "version": "0.1.0",
   "description": "Sandbox VM runner and image lifecycle CLI for developer agent sandboxes (macOS, Windows, Ubuntu image recipes).",
+  "license": "MIT",
+  "author": "Andrey Meshkov <am@adguard.com>",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ameshkov/agent-sandbox.git"
+  },
+  "homepage": "https://github.com/ameshkov/agent-sandbox#readme",
+  "bugs": {
+    "url": "https://github.com/ameshkov/agent-sandbox/issues"
+  },
+  "publishConfig": {
+    "access": "public"
+  },
   "type": "module",
   "bin": {
     "agent-dev-env": "dist/cli.js"
@@ -12,6 +25,23 @@
   "engines": {
     "node": ">=20"
   },
+  "os": [
+    "darwin"
+  ],
+  "cpu": [
+    "arm64"
+  ],
+  "keywords": [
+    "sandbox",
+    "vm",
+    "virtual-machine",
+    "tart",
+    "vmware",
+    "qemu",
+    "packer",
+    "developer-environment",
+    "cli"
+  ],
   "scripts": {
     "typecheck": "tsc -p tsconfig.app.json --noEmit && tsc -p tsconfig.test.json"
   },

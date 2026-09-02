@@ -15,15 +15,15 @@ the next release.
 
 ### Added
 
-- `scripts/stop-windows-vmware-sandbox.sh` — stops the sandbox:
+- `agent-dev-env stop` (windows-vmware) — stops the sandbox:
   `vmrun -T fusion stop` on the working VM (graceful via VMware Tools with
   a hard power-off fallback), plus the host SSH agent / Docker bridge
-  listeners the runner leaves up. Honors the runner's `SANDBOX_STATE_DIR` /
+  listeners the runner leaves up. Honors the runner's
   `SANDBOX_AGENT_PORT` / `SANDBOX_DOCKER_PORT` overrides.
-- `scripts/delete-windows-vmware-sandbox.sh` — deletes the sandbox: stops
-  it first (delegating to `stop-windows-vmware-sandbox.sh`), then removes
-  the state dir (extracted pristine base + working clone + pulled image
-  cache). Asks before deleting unless `--yes`.
+- `agent-dev-env delete` (windows-vmware) — deletes the sandbox: stops
+  it first (delegating to the stop step), then removes the state dir
+  (extracted pristine base + working clone + pulled image cache). Asks
+  before deleting unless `--yes`.
 - The toolchain and VS provisioners re-read PATH from the registry at
   the start of their scripts: after the tools reboot a fresh WinRM
   process can inherit a stale PATH (observed once: 'choco' not
@@ -60,50 +60,49 @@ the next release.
   `sandbox-windows-<windows_version>-arm64-vmware` — the GHCR package
   name, the runner's `image_name` and the working VM's display name):
   the platform is now part of the image name, matching the state-dir
-  naming (`~/Library/Application Support/agent-sandbox/
-  windows-11-arm64-vmware`). Older releases stay published under the old
-  name.
+  naming (`~/Library/Application Support/agent-dev-env/windows-vmware/`).
+  Older releases stay published under the old name.
 - Build artifacts moved out of the image directory into a top-level
   `build/windows-arm64-<platform>/` directory: `output/` for
   the built vmx + vmdk + nvram, `packer_cache/` for watchdog scratch and
   `drivers/staging/` for the unattend CD vmxnet3 driver. The template's
   `output_directory` (and the `cd_files` staging path) are now variables
-  set by the platform `build.sh` wrapper; the macOS/tart images build no
+  set by the CLI build flow; the macOS/tart images build no
   files and have no such directory. Guest content is unchanged (no
   `image_version` bump).
 - The build output is upgraded post-build with `vmrun upgradevm`
-  (`images/windows-arm64-vmware/build.sh`): the vmware-iso builder writes
+  (the CLI build flow): the vmware-iso builder writes
   the VM at hardware version 20, and a newer Fusion first starts such a VM
   with a one-time "Upgrade this virtual machine?" prompt (the headless
   build never sees it; the first GUI start does). The published artifact
   now carries the hardware version the building Fusion supports (22 on
-  Fusion 26). The shared helper lives in
-  `scripts/lib/windows-vmware/lib.sh`.
-- `scripts/run-windows-vmware-sandbox.sh` upgrades its working clone the
+  Fusion 26). The shared helper lives in `lib/vmrun.ts`.
+- `agent-dev-env run` (windows-vmware) upgrades its working clone the
   same way (once per clone, recorded next to the vmx in
   `working/.hw-version`), so artifacts built by older Fusion versions also
   start without the prompt.
 - The guest-side bridge scripts (the Node relay, the idempotent
   `bridges.ps1`, the `start-relays.cmd` bootstrap and the
   `guest-setup.ps1` installer) moved out of the runner's heredocs into
-  editable template files under `scripts/lib/windows-vmware/`: the runner
+  the bundled `packages/guest-agent-windows` agent: the agent
   renders them for the run's bridge ports + host alias and writes each
   one into the guest with its own small SSH exec (one combined payload
   overran the Windows OpenSSH exec-request command line); the guest only
   rewrites a file when its content changed.
-- `scripts/run-windows-vmware-sandbox.sh` — the default working-VM state
-  dir moved to `~/Library/Application Support/agent-sandbox/
-  windows-11-arm64-vmware` (was `windows-11-vmware`): the old name did
-  not say which platform the state under `agent-sandbox/` belongs to.
-  Override with `SANDBOX_STATE_DIR` as before.
-- `scripts/run-windows-vmware-sandbox.sh` — the working clone now gets a
+- `agent-dev-env run` (windows-vmware) — the default working-VM state
+  dir now lives under the CLI's data root
+  (`~/Library/Application Support/agent-dev-env/windows-vmware/<image>/`):
+  the platform and image are part of the path, so state from different
+  platforms and images never collides. Override the data root with
+  `AGENT_DEV_ENV_DATA_HOME` (or `XDG_DATA_HOME`) as before.
+- `agent-dev-env run` (windows-vmware) — the working clone now gets a
   distinct display name, `agent-sandbox-windows-11-arm64-vmware` (set in
   the cloned vmx before the first start), instead of inheriting the
   pristine image's `sandbox-windows-11-arm64-vmware`: `vmrun clone`
   copies the source vmx's `displayName`, so before this the working VM
   was indistinguishable from the base in Fusion's VM library.
-- `scripts/run-windows-vmware-sandbox.sh` — the summary's stop hints now
-  point at `./scripts/stop-windows-vmware-sandbox.sh` instead of a bare
+- `agent-dev-env run` (windows-vmware) — the summary's stop hints now
+  point at `agent-dev-env stop` instead of a bare
   `vmrun stop` and a hand-written `lsof | xargs kill` for the bridge
   listeners.
 - HGFS shared folders are not supported for Windows 11 ARM guests on
@@ -129,7 +128,8 @@ the next release.
   echoed by the guest's shell after the payload exits, and expect kills
   the ssh client on it — step 5 finishes in seconds.
 - The shared host directory no longer fails right after the auto-logon
-  reboot — `run-windows-vmware-sandbox.sh` called `vmrun addSharedFolder`
+  reboot — the runner (`agent-dev-env run`, windows-vmware) called
+  `vmrun addSharedFolder`
   as soon as sshd answered, but VMware Tools can still be starting then:
   `getGuestIPAddress`/sshd were already up while the tools state vmrun
   needs for the HGFS registration was not, so the runner logged `Error:

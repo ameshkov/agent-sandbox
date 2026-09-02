@@ -29,8 +29,6 @@ guide (boot it with `npx agent-dev-env run ubuntu-vmware`).
   (free for personal use; the Packer plugin requires Fusion 13.6+).
 - [Packer](https://www.packer.io/): `brew install hashicorp/tap/packer`
   (the VMware plugin is installed automatically by `packer init`).
-- [xorriso](https://www.gnu.org/software/xorriso/): `brew install xorriso`
-  (the build wrapper uses it to embed the autoinstall seed into the ISO).
 - The **Ubuntu Server 24.04 ARM64 ISO** — bring your own, ~3 GB:
 
   1. Download the latest point release from

@@ -34,27 +34,27 @@ variable "image_version" {
 # Built images and their scratch land in a top-level build/ directory:
 # build/windows-arm64-qemu/output (Packer's output_directory) and
 # build/windows-arm64-qemu/drivers/ (staged into the unattend CD).
-# images/windows-arm64-qemu/build.sh computes the directory and passes it
+# The agent-dev-env CLI build flow computes the directory and passes it
 # in; the default keeps a bare `packer build` from the platform dir
 # working.
 
 variable "build_dir" {
   type        = string
   default     = "."
-  description = "Per-image build directory: <build_dir>/output holds the built image and <build_dir>/drivers the staged unattend-CD drivers. Set by images/windows-arm64-qemu/build.sh to build/windows-arm64-qemu/."
+  description = "Per-image build directory: <build_dir>/output holds the built image and <build_dir>/drivers the staged unattend-CD drivers. Set by `agent-dev-env build` to build/windows-arm64-qemu/."
 }
 
 # --- Windows install ISO (bring-your-own, see images/windows-arm64-qemu/README.md) ---
 
 variable "iso_path" {
   type        = string
-  description = "Absolute path to the Windows 11 ARM64 ISO. Set by images/windows-arm64-qemu/build.sh (PKR_VAR_iso_path); the ISO is not redistributable so it cannot live in the repo. Required — validate with `-var iso_path=/path/to/iso`."
+  description = "Absolute path to the Windows 11 ARM64 ISO. Set by the agent-dev-env CLI build flow (PKR_VAR_iso_path); the ISO is not redistributable so it cannot live in the repo. Required — validate with `-var iso_path=/path/to/iso`."
 }
 
 variable "iso_sha256" {
   type        = string
   default     = ""
-  description = "SHA256 of the Windows ISO as published on the Microsoft download page. Read by images/windows-arm64-qemu/build.sh for verification, not by Packer itself (iso_checksum is 'none')."
+  description = "SHA256 of the Windows ISO as published on the Microsoft download page. Read by the agent-dev-env CLI build flow for verification, not by Packer itself (iso_checksum is 'none')."
 }
 
 # --- virtio-win drivers (ARM64) ---
@@ -62,19 +62,19 @@ variable "iso_sha256" {
 variable "virtio_win_iso_path" {
   type        = string
   default     = ""
-  description = "Absolute path to virtio-win.iso (release 0.1.240+). Set by images/windows-arm64-qemu/build.sh; the wrapper stages the ARM64 driver subset into drivers/staging/ and qemu-with-tpm.sh attaches the full ISO as a CD."
+  description = "Absolute path to virtio-win.iso (release 0.1.240+). Set by the agent-dev-env CLI build flow; the flow stages the ARM64 driver subset into drivers/staging/ and qemu-with-tpm.sh attaches the full ISO as a CD."
 }
 
 variable "virtio_win_url" {
   type        = string
   default     = "https://fedorapeople.org/groups/virt/virtio-win/direct-downloads/stable-virtio/virtio-win.iso"
-  description = "Download URL used by images/windows-arm64-qemu/build.sh when VIRTIO_WIN_ISO_PATH is unset."
+  description = "Download URL used by the agent-dev-env CLI build flow when VIRTIO_WIN_ISO_PATH is unset."
 }
 
 variable "virtio_win_sha256" {
   type        = string
   default     = ""
-  description = "SHA256 of virtio-win.iso. Read by images/windows-arm64-qemu/build.sh for verification (empty = skip)."
+  description = "SHA256 of virtio-win.iso. Read by the agent-dev-env CLI build flow for verification (empty = skip)."
 }
 
 # --- Toolchain versions (installed via Chocolatey) ---
@@ -260,7 +260,7 @@ variable "efi_firmware_vars" {
 #   - machine "virt,gic-version=max", cpu "host" (required by HVF; do NOT
 #     add virtualization=on — HVF cannot pass nested virt through),
 #   - UEFI via edk2 AAVMF firmware + swtpm TPM 2.0 (Win11 system
-#     requirements; swtpm is started by images/windows-arm64-qemu/build.sh),
+#     requirements; swtpm is started by the build flow),
 #   - all CD-ROMs attached as usb-storage (the virt machine has no
 #     IDE/SATA controller and WinPE has in-box xHCI drivers) — done by
 #     qemu-with-tpm.sh because the plugin's qemuargs option would replace
@@ -275,7 +275,7 @@ source "qemu" "windows" {
   vm_name          = "sandbox-windows-${var.windows_version}-arm64-qemu.qcow2"
   output_directory = "${var.build_dir}/output"
 
-  # The wrapper (images/windows-arm64-qemu/build.sh) verifies the ISO against
+  # The build flow (agent-dev-env build) verifies the ISO against
   # var.iso_sha256 before Packer runs; iso_checksum is "none" so Packer
   # does not re-verify.
   iso_url      = var.iso_path
@@ -320,7 +320,7 @@ source "qemu" "windows" {
   headless = true
 
   # VNC server for the build watchdog (bundled watch-build.py): pinned to a
-  # single port so the platform build.sh can start the watchdog before
+  # single port so the build flow can start the watchdog before
   # `packer build` without scanning for the port.
   vnc_bind_address = "127.0.0.1"
   vnc_port_min     = 5901

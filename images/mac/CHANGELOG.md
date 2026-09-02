@@ -14,42 +14,42 @@ is never removed — changes land there until the next release.
 
 ### Added
 
-- `scripts/stop-macos-sandbox.sh` — stops the sandbox: `tart stop` on the
+- `agent-dev-env stop` (macos) — stops the sandbox: `tart stop` on the
   working VM plus the host SSH agent / Docker bridge listeners the runner
   leaves up (a bare `tart stop` left the socat listeners running). Honors
   the runner's `SANDBOX_VM` / `SANDBOX_AGENT_PORT` / `SANDBOX_DOCKER_PORT`
   overrides.
-- `scripts/delete-macos-sandbox.sh` — deletes the sandbox: stops it first
-  (delegating to `stop-macos-sandbox.sh`), then `tart delete`s the working
-  VM, and the pristine image too with `--pristine` (or a `y` at the
-  prompt). Asks before deleting unless `--yes`.
-- `scripts/run-macos-sandbox.sh` now installs sandbox environment rules into
+- `agent-dev-env delete` (macos) — deletes the sandbox: stops it first
+  (delegating to the stop step), then `tart delete`s the working VM, and
+  the pristine image too with `--pristine` (or a `y` at the prompt). Asks
+  before deleting unless `--yes`.
+- `agent-dev-env run` (macos) now installs sandbox environment rules into
   the guest's coding agents — opencode's global `AGENTS.md`
   (`~/.config/opencode/AGENTS.md`) and the Copilot CLI's
   `copilot-instructions.md` (`~/.copilot/copilot-instructions.md`) —
   explaining the runtime topology: the Docker remote engine (context
   `host`, published ports reachable at the NAT gateway, volume mounts
   needing host paths), the shared-directory path mapping and the SSH agent
-  bridge. The content ships in the repo (`scripts/agent-rules.md`); the
-  actual work-dir and mount paths are substituted at install time and the
-  SSH agent section is included only when the bridge is up. The runner
+  bridge. The content ships in the repo (`assets/rules/agent-rules.md`);
+  the actual work-dir and mount paths are substituted at install time and
+  the SSH agent section is included only when the bridge is up. The runner
   asks before installing or updating the rules, and files the user
   modified are replaced only after a confirmation that defaults to no.
 
 ### Changed
 
-- `scripts/run-macos-sandbox.sh` — the summary's stop hints now point at
-  `./scripts/stop-macos-sandbox.sh` instead of a bare `tart stop` and a
-  hand-written `lsof | xargs kill` for the bridge listeners.
+- `agent-dev-env run` (macos) — the summary's stop hints now point at
+  `agent-dev-env stop` instead of a bare `tart stop` and a hand-written
+  `lsof | xargs kill` for the bridge listeners.
 
 ### Fixed
 
-- `scripts/run-macos-sandbox.sh` — the SSH agent and Docker bridges no
+- `agent-dev-env run` (macos) — the SSH agent and Docker bridges no
   longer skip their setup when `tart ip` fails right after boot. Both
-  `start_host_bridge` and `start_host_docker_bridge` derived the host
-  gateway from a single `tart ip` call, which can fail before the VM's IP
-  is assigned; they now go through a shared `get_vm_gateway` helper that
-  retries the IP fetch (up to 5 attempts, 2 s apart) before giving up.
+  bridge setups derived the host gateway from a single `tart ip` call,
+  which can fail before the VM's IP is assigned; they now go through a
+  shared helper that retries the IP fetch (up to 5 attempts, 2 s apart)
+  before giving up.
 
 ## [mac-v1.6.0] - 2026-08-20
 

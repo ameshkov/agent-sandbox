@@ -16,8 +16,7 @@
 import { randomBytes } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { varsFor } from '../lifecycle/catalog.js';
-import { resolveImage } from '../lifecycle/catalog.js';
+import { varsFor, resolveImage } from '../lifecycle/catalog.js';
 import { sleep } from '../lib/exec.js';
 import { logger } from '../lib/logger.js';
 import type { SshCredentials, SshSession } from '../lib/ssh.js';

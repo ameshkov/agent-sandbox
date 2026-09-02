@@ -34,27 +34,27 @@ variable "image_version" {
 # Built images and their scratch land in a top-level build/ directory:
 # build/windows-arm64-vmware/output (Packer's output_directory) and
 # build/windows-arm64-vmware/drivers/ (staged into the unattend CD).
-# images/windows-arm64-vmware/build.sh computes the directory and passes
+# The agent-dev-env CLI build flow computes the directory and passes
 # it in; the default keeps a bare `packer build` from the platform dir
 # working.
 
 variable "build_dir" {
   type        = string
   default     = "."
-  description = "Per-image build directory: <build_dir>/output holds the built image and <build_dir>/drivers the staged unattend-CD drivers. Set by images/windows-arm64-vmware/build.sh to build/windows-arm64-vmware/."
+  description = "Per-image build directory: <build_dir>/output holds the built image and <build_dir>/drivers the staged unattend-CD drivers. Set by `agent-dev-env build` to build/windows-arm64-vmware/."
 }
 
 # --- Windows install ISO (bring-your-own, see images/windows-arm64-vmware/README.md) ---
 
 variable "iso_path" {
   type        = string
-  description = "Absolute path to the Windows 11 ARM64 ISO. Set by images/windows-arm64-vmware/build.sh (PKR_VAR_iso_path); the ISO is not redistributable so it cannot live in the repo. Required — validate with `-var iso_path=/path/to/iso`."
+  description = "Absolute path to the Windows 11 ARM64 ISO. Set by the agent-dev-env CLI build flow (PKR_VAR_iso_path); the ISO is not redistributable so it cannot live in the repo. Required — validate with `-var iso_path=/path/to/iso`."
 }
 
 variable "iso_sha256" {
   type        = string
   default     = ""
-  description = "SHA256 of the Windows ISO as published on the Microsoft download page. Read by images/windows-arm64-vmware/build.sh for verification, not by Packer itself (iso_checksum is 'none')."
+  description = "SHA256 of the Windows ISO as published on the Microsoft download page. Read by the agent-dev-env CLI build flow for verification, not by Packer itself (iso_checksum is 'none')."
 }
 
 # --- VMware Fusion (host hypervisor + ARM64 boot drivers + tools ISO) ---
@@ -232,7 +232,7 @@ variable "openchamber_port" {
 #   - guest_os_type "arm-windows11-64", hardware version 20, NVMe disk,
 #     vmxnet3 NIC under NAT, EFI firmware — the proven ARM64 combo,
 #   - the unattend CD also carries the vmxnet3 ARM64 network driver
-#     (drivers/staging/, staged by build.sh from Fusion's
+#     (drivers/staging/, staged by the build flow from Fusion's
 #     Contents/Library/isoimages/arm64/drivers-arm64.zip). Without it there
 #     is NO NIC in the guest and WinRM is unreachable from the host — the
 #     driver must land before any network use (FirstLogonCommands order 1),
@@ -255,7 +255,7 @@ source "vmware-iso" "windows" {
   vm_name          = "sandbox-windows-${var.windows_version}-arm64-vmware"
   output_directory = "${var.build_dir}/output"
 
-  # The wrapper (images/windows-arm64-vmware/build.sh) verifies the ISO
+  # The build flow (agent-dev-env build) verifies the ISO
   # against var.iso_sha256 before Packer runs; iso_checksum is "none" so
   # Packer does not re-verify.
   iso_url      = var.iso_path
@@ -317,8 +317,8 @@ source "vmware-iso" "windows" {
   winrm_port     = 5985
 
   # Headless: no Fusion window, and the VNC server stays available for the
-  # build watchdog (bundled watch-build.py) — pinned so the platform
-  # build.sh can start it before `packer build`. The vmware plugin's VNC
+  # build watchdog (bundled watch-build.py) — pinned so the build flow
+  # can start it before `packer build`. The vmware plugin's VNC
   # server is bound to 127.0.0.1; the password is disabled so the watchdog
   # (which assumes an unauthenticated VNC, like the QEMU plugin's) can
   # connect.

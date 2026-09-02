@@ -7,12 +7,11 @@
 
 import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
-import { varsFor } from '../lifecycle/catalog.js';
+import { varsFor, resolveImage } from '../lifecycle/catalog.js';
 import { logger } from '../lib/logger.js';
 import type { SshCredentials, SshSession } from '../lib/ssh.js';
 import type { VarValue } from '../lib/vars.js';
 import type { RunContext, RunState } from './framework.js';
-import { resolveImage } from '../lifecycle/catalog.js';
 
 /** The guest's agent install dir (image-fixed home `/home/admin`). */
 const GUEST_LIB_DIR = '/home/admin/.local/lib/agent-dev-env';

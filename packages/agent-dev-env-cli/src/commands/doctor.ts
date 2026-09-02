@@ -8,7 +8,7 @@
 // check.
 
 import { statfsSync } from 'node:fs';
-import { defaultImageFor, varsFor } from '../lifecycle/catalog.js';
+import { listImages, varsFor } from '../lifecycle/catalog.js';
 import { commandExists } from '../lib/exec.js';
 import { logger } from '../lib/logger.js';
 import { PLATFORM_DEFAULTS, PLATFORMS, type Platform } from '../lib/platform.js';
@@ -52,7 +52,6 @@ async function printDoctor(platform: Platform): Promise<boolean> {
 
   const width = Math.max(...checks.map((c) => c.label.length), 'Requirement'.length);
   const statusText = (c: Check): string => (c.ok ? 'ok' : c.required ? 'missing' : 'optional');
-  const statusColor = (c: Check): string => (c.ok ? 'ok' : c.required ? 'missing' : 'optional');
 
   logger.out(`    ${'Requirement'.padEnd(width)}  Status  Hint`);
   for (const check of checks) {
@@ -61,7 +60,7 @@ async function printDoctor(platform: Platform): Promise<boolean> {
       status === 'ok'
         ? logger.color('green') + status + logger.reset()
         : logger.color('red') + status + logger.reset();
-    const line = `${check.label.padEnd(width)}  ${colored.padEnd(statusColor(check).length)}  ${check.hint}`;
+    const line = `${check.label.padEnd(width)}  ${colored.padEnd(status.length)}  ${check.hint}`;
     logger.out(line.replace(/\s+$/, ''));
   }
 
@@ -171,11 +170,11 @@ function vmwareChecks(): Check[] {
 function diskNeededGb(platform: Platform): number {
   let maxSize = 0;
   try {
-    const image = defaultImageFor(platform);
-    const size = varsFor(image).disk_size;
-    if (typeof size === 'number') {
-      maxSize = size;
-    }
+    const sizes = listImages()
+      .filter((image) => image.platform === platform)
+      .map((image) => varsFor(image).disk_size)
+      .filter((size): size is number => typeof size === 'number');
+    maxSize = sizes.length > 0 ? Math.max(...sizes) : 0;
   } catch {
     // no image in the catalog — fall back to the default estimate
   }
