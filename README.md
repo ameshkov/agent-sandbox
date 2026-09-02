@@ -56,15 +56,37 @@ and is all you need to have a sandbox with a coding agent running.
 
 ## Documentation
 
+User guides and reference:
+
 - [docs/cli.md](docs/cli.md) — the `agent-dev-env` CLI reference: commands,
   options, environment variables, paths.
 - [docs/macos.md](docs/macos.md) — user guide: pull, run, share code, run
-  the agent.
+  the agent (macOS guest).
+- [docs/ubuntu-vmware.md](docs/ubuntu-vmware.md) — Ubuntu 24.04 (ARM64)
+  guest under VMware Fusion.
+- [docs/windows-qemu.md](docs/windows-qemu.md) — Windows 11 (ARM64) guest
+  under QEMU.
+- [docs/windows-vmware.md](docs/windows-vmware.md) — Windows 11 (ARM64)
+  guest under VMware Fusion.
 - [docs/ssh-agent.md](docs/ssh-agent.md) — how the SSH agent bridge shares
   the host's passwords manager (Bitwarden, 1Password, ...) with the
   sandbox.
-- [DEVELOPMENT.md](DEVELOPMENT.md) — for contributors: build the images
-  with Packer, add new OS versions, publish to GHCR.
-- [images/mac/README.md](images/mac/README.md) — available images and
-  per-platform build/publish commands.
+
+Image recipes — per-platform build/publish commands:
+
+- [images/mac/README.md](images/mac/README.md) — macOS images.
+- [images/windows-arm64-qemu/README.md](images/windows-arm64-qemu/README.md)
+  — Windows 11 ARM64 under QEMU.
+- [images/windows-arm64-vmware/README.md](images/windows-arm64-vmware/README.md)
+  — Windows 11 ARM64 under VMware.
+- [images/ubuntu-arm64-vmware/README.md](images/ubuntu-arm64-vmware/README.md)
+  — Ubuntu 24.04 ARM64 under VMware.
+
+For maintainers and contributors:
+
+- [AGENTS.md](AGENTS.md) — project map, how to build and use the CLI and
+  the images, releases/tags/changelogs, code guidelines.
+- [DEVELOPMENT.md](DEVELOPMENT.md) — prerequisites and how to build and
+  debug the CLI and the recipes.
 - [docs/plan.md](docs/plan.md) — the design document of the CLI port.
+- [CHANGELOG.md](CHANGELOG.md) — the repo changelog.

@@ -1,82 +1,138 @@
 # Development Guide
 
-This document is for people who contribute image recipes to this repository
-and build/publish them with the [`agent-dev-env`](docs/cli.md) CLI.
+This document explains how to build and debug the `agent-dev-env` CLI
+and the image recipes in this repo, and what a developer must have
+installed. It is the *how* — the *what* (project map, build/use
+commands, releases, tags, changelogs, code guidelines) lives in
+[AGENTS.md](AGENTS.md), and the user-facing reference is
+[docs/cli.md](docs/cli.md) + the per-OS guides under [docs/](docs/).
+Keep the docs in sync whenever you change how an image behaves.
 
 ## What is a "recipe"?
 
 Each supported platform has a directory under `images/` containing:
 
-1. **A Packer template** (`*.pkr.hcl`) — describes how to build the image:
-   the base image it derives from, the resources of the VM, and the
-   provisioning steps that install software.
-2. **Variables files** (`vars/*.pkrvars.hcl`) — one file per image: the OS
-   version, disk size and the image's semantic version.
-3. **A README.md and a CHANGELOG.md** — per-platform image docs and history.
+1. **A Packer template** (`sandbox.pkr.hcl`) — describes how to build the
+   image: the base image it derives from, the resources of the VM, and
+   the provisioning steps that install software.
+2. **Variables files** (`vars/*.pkrvars.hcl`) — one file per image: the
+   OS version, disk size, and the image's semantic version
+   (`image_version`, the single source of truth).
+3. **A README.md and a CHANGELOG.md** — per-platform image docs and
+   history (see AGENTS.md → Releases, Tags, and Changelogs for the
+   version/tag model).
 
-The build/publish/deploy flows (`build`, `deploy`, `tag`,
-`watch-build`) are implemented in the CLI
-(`packages/agent-dev-env-cli/src/lifecycle/`) and ship inside the npm
-package — no shell scripts, no repo checkout needed for `build`/`deploy`.
-The running side of a recipe (how to run the VM, share directories, the SSH
-agent bridge, etc.) lives in the per-OS user guides under [docs/](docs/) —
-keep them in sync whenever you change how an image behaves.
+The build/publish flows (`build`, `deploy`, `tag`, `watch-build`) are
+implemented in the CLI (`packages/agent-dev-env-cli/src/lifecycle/`) and
+ship inside the npm package — no shell scripts, and no repo checkout for
+`build`/`deploy` (`tag` needs a checkout, see AGENTS.md). The running
+side of a recipe (how to run the VM, share directories, the SSH agent
+bridge, etc.) lives in the per-OS user guides under [docs/](docs/).
 
-## Repository layout
+Contributors working in the repo build the CLI first (`pnpm build`), then
+run it through the root `agent-dev-env` script
+(`pnpm agent-dev-env <command>`). End users of the published npm package
+use `npx agent-dev-env` — see docs/cli.md for both.
 
-```text
-├── README.md                      # Index: point of entry to all docs
-├── DEVELOPMENT.md                # This document
-├── docs/                          # User-facing, per host OS setup guides
-│   ├── cli.md                     # agent-dev-env CLI reference
-│   ├── macos.md                   # macOS (Apple Silicon) — pull & run, details
-│   ├── ubuntu-vmware.md           # Ubuntu 24.04 (ARM64) guest under VMware Fusion — run, details
-│   ├── windows-qemu.md            # Windows 11 (ARM64) guest under QEMU — run, details
-│   ├── windows-vmware.md          # Windows 11 (ARM64) guest under VMware Fusion — run, details
-│   ├── ssh-agent.md               # share the host's SSH agent with the guest
-│   └── plan.md                    # the design document of the CLI port
-├── assets/                        # runtime assets bundled into the npm package
-│   ├── rules/                     # agent-rules.md, agent-rules-linux.md
-│   └── watchdog/                  # watch-build.py, watch-build-ocr.swift
-├── packages/                      # pnpm workspace packages
-│   ├── agent-dev-env-cli/         # the agent-dev-env CLI (published to npm)
-│   ├── bridge-core/               # zero-dep socket forwarder (bundled internally)
-│   ├── guest-rules/               # shared agent-rules probe/apply logic
-│   ├── guest-agent-mac/           # macOS guest agent (bundled internally)
-│   ├── guest-agent-windows/       # Windows 11 ARM64 guest agent (bundled internally)
-│   └── guest-agent-ubuntu/        # Ubuntu guest agent (bundled internally)
-├── build/                         # <data>/build/<platform>/ — per-platform build
-│                                  # artifacts (gitignored; see "Build outputs")
-└── images/
-    ├── mac/                       # macOS guest images (host: Apple Silicon Mac)
-    │   ├── sandbox.pkr.hcl        # Packer template for all macOS images
-    │   ├── README.md              # Image list, build/publish commands
-    │   ├── CHANGELOG.md           # Per-version changelog of the images
-    │   └── vars/                  # One .pkrvars.hcl per image (macOS version)
-    │       └── sandbox-macos-tahoe.pkrvars.hcl
-    ├── windows-arm64-qemu/        # Windows 11 (ARM64) guest images (host: Apple Silicon)
-    │   ├── sandbox.pkr.hcl        # Packer template (QEMU plugin)
-    │   ├── autounattend.xml       # Windows unattended install config
-    │   ├── qemu-with-tpm.sh       # qemu_binary wrapper (TPM/USB/CD wiring; packaged asset)
-    │   ├── README.md
-    │   ├── CHANGELOG.md
-    │   └── vars/
-    │       └── sandbox-windows-11-arm64-qemu.pkrvars.hcl
-    ├── windows-arm64-vmware/      # Windows 11 (ARM64) guest images, VMware (host: Apple Silicon)
-    │   ├── sandbox.pkr.hcl        # Packer template (vmware-iso plugin)
-    │   ├── autounattend.xml       # Windows unattended install config
-    │   ├── README.md
-    │   ├── CHANGELOG.md
-    │   └── vars/
-    │       └── sandbox-windows-11-arm64-vmware.pkrvars.hcl
-    └── ubuntu-arm64-vmware/       # Ubuntu 24.04 (ARM64) guest image, VMware (host: Apple Silicon)
-        ├── sandbox.pkr.hcl        # Packer template (vmware-iso plugin)
-        ├── autoinstall/           # Subiquity autoinstall seed: user-data + meta-data (served over HTTP)
-        ├── README.md
-        ├── CHANGELOG.md
-        └── vars/
-            └── sandbox-ubuntu-24-04-arm64-vmware.pkrvars.hcl
+## Prerequisites
+
+Everything a developer needs, at a glance:
+
+| Need | For | Install |
+| --- | --- | --- |
+| macOS host, Apple Silicon | everything — Tart/QEMU/Fusion cannot virtualize ARM64 guests on Intel | — |
+| Node.js 20+ + pnpm 10+ | building/dev-running the CLI | `corepack enable` or `npm i -g pnpm` |
+| Xcode command-line tools | the VNC build watchdog (Swift OCR) and `hdiutil` driver staging | `xcode-select --install` |
+| Tart + Packer | macOS image builds | `brew install cirruslabs/cli/tart` and `brew install hashicorp/tap/packer` |
+| QEMU + swtpm + Packer | Windows QEMU image builds | `brew install qemu swtpm` and `brew install hashicorp/tap/packer` |
+| VMware Fusion 13.6+ + Packer | Windows/Ubuntu VMware image builds | Fusion (free for personal use) + `brew install hashicorp/tap/packer` |
+| oras | GHCR pull/push of the file-based images | `brew install oras` |
+| vncdotool + Swift compiler | VNC build watchdog | `pip3 install vncdotool` (+ Xcode CLT above) |
+| ~150 GB free disk | macOS build (base image ~50 GB); ~100 GB for others | — |
+
+### Bring-your-own files
+
+- **Windows 11 ARM64 ISO** — `WINDOWS_ISO_PATH`, Microsoft does not
+  permit redistribution; download steps in
+  [images/windows-arm64-qemu/README.md](images/windows-arm64-qemu/README.md)
+  and [images/windows-arm64-vmware/README.md](images/windows-arm64-vmware/README.md).
+- **Ubuntu Server 24.04 ARM64 ISO** — `UBUNTU_ISO_PATH`; download steps
+  in [images/ubuntu-arm64-vmware/README.md](images/ubuntu-arm64-vmware/README.md).
+- **virtio-win.iso** — only for the Windows QEMU build; downloaded into
+  the cache automatically unless `VIRTIO_WIN_ISO_PATH` is set.
+
+### Publish credentials
+
+- A GitHub token with `write:packages`
+  (`https://github.com/settings/tokens/new?scopes=write:packages`)
+  for `deploy` — `tart login ghcr.io` for macOS images, `oras login
+  ghcr.io` for the file-based ones.
+
+`agent-dev-env doctor` performs the whole per-platform prerequisite +
+disk check (see docs/cli.md).
+
+## Building and debugging the CLI
+
+### Build
+
+`pnpm install` once, then `pnpm build` (the script is
+`packages/agent-dev-env-cli/scripts/copy-assets.mjs`):
+
+1. compiles the CLI TypeScript (`tsc -p tsconfig.app.json`) into
+   `packages/agent-dev-env-cli/dist/`;
+2. bundles the workspace guest-side packages into single-file JS
+   artifacts with esbuild (`dist/assets/bridge/bridge.js`,
+   `dist/assets/guest/guest-agent-*.js`) — node built-ins only, no
+   runtime deps; this is how guests get the bridge/agent code (SFTP'd in,
+   run with `node`, no npm install inside guests);
+3. copies the runtime assets (`assets/**`) and the `images/**` snapshot
+   into `dist/assets/` (removed first, so stale files never survive).
+
+`dist/` is the npm package payload — verify with `npm pack --dry-run`
+from `packages/agent-dev-env-cli`. The bundled `images/` snapshot is what
+feeds the CLI's image catalog (`list`/`build`/`deploy` work without a
+repo checkout).
+
+### Run
+
+After `pnpm build`, the root `agent-dev-env` script executes
+`packages/agent-dev-env-cli/dist/cli.js`:
+
+```bash
+pnpm agent-dev-env --help
 ```
+
+Rebuild after any TypeScript change (`pnpm build`); `pnpm typecheck`
+catches type errors without emitting.
+
+### Test
+
+- `pnpm test` — Vitest run; `pnpm test:watch` for the dev loop.
+- Tests are co-located (`src/**/*.test.ts`); shared test helpers live in
+  `test/` without the `.test.ts` suffix.
+- Prefer real fixtures over mocks: tmpdirs for file I/O, real vars files
+  for catalog tests, real process spawning where possible.
+- There is no CI in this repo — the only end-to-end checks are full
+  image builds (~1 hr) and per-phase smoke runs of the CLI against real
+  platforms.
+
+### Debug
+
+- CLI logs: `~/Library/Logs/agent-dev-env/` (`AGENT_DEV_ENV_LOG_DIR`
+  overrides); VM/workdir state under `<data>/` (see docs/cli.md → Paths).
+- `PACKER_LOG=1` before a `build` — verbose Packer output.
+- `agent-dev-env watch-build <vnc-port> [outdir]` — the same VNC build
+  watchdog in the foreground, with hard errors when prerequisites are
+  missing (a `build` only warns and skips).
+- `packer validate -var-file=vars/<image>.pkrvars.hcl sandbox.pkr.hcl` —
+  from `images/<platform>/`: fast HCL check without a build.
+- Build context under `<data>/build-context/<platform>/` — the writable
+  copy of `images/<platform>` a flow materializes (templates, staged
+  drivers): inspect it to see exactly what Packer gets.
+- Watchdog frames/logs: `<data>/build/<platform>/packer_cache/watchdog/`.
+- The per-platform build flows are `lifecycle/build-<platform>.ts`;
+  their pure arg builders are unit-tested, only the end-to-end pipeline
+  needs a real host.
 
 ## Build outputs
 
@@ -142,19 +198,11 @@ under the CLI's data root — `<data>/build/<platform>/` (on macOS
    - final version check.
 3. Leaves a runnable VM named `sandbox-macos-<macos-version>`.
 
-### Prerequisites (local builds)
-
-- macOS host with **Apple Silicon** (Tart VMs cannot run on Intel).
-- [Tart](https://tart.run/): `brew install cirruslabs/cli/tart`
-- [Packer](https://www.packer.io/): `brew install hashicorp/tap/packer`
-  (the Tart plugin is installed automatically by `packer init`).
-- ~150 GB free disk space.
-
 ### Building an image
 
 ```bash
 # From the repository root
-npx agent-dev-env build sandbox-macos-tahoe
+pnpm agent-dev-env build sandbox-macos-tahoe
 ```
 
 Without an argument, `agent-dev-env build` builds every image in
@@ -162,6 +210,7 @@ Without an argument, `agent-dev-env build` builds every image in
 
 Notes:
 
+- Prerequisites: see the table above (Apple Silicon + Tart + Packer).
 - The first build pulls the ~50 GB base image — be patient.
 - The builder **fails if a VM with the same name already exists** (Packer
   leaves the VM in `~/.tart/vms/`). Delete it first:
@@ -188,16 +237,10 @@ To add a new one:
    `node_version` / `python_version` / `disk_size`, set `image_version` to
    `1.0.0`, and add image-specific brew formulas to `extra_brew_formulas` if
    needed.
-4. Build locally (`npx agent-dev-env build sandbox-macos-sequoia`) and make
+4. Build locally (`pnpm agent-dev-env build sandbox-macos-sequoia`) and make
    sure it works.
 5. Add a `CHANGELOG.md` entry for the initial version.
 6. Commit the new image.
-
-Image naming convention: `sandbox-macos-<macos-version>` (e.g.
-`sandbox-macos-tahoe`). The vars file name **must** match the image name — it
-is used as the VM name and as the GHCR image name. Git release tags are
-`<platform>-v<version>` (e.g. `mac-v1.2.0`), see "Releasing a new image
-version" below.
 
 ### Template variables
 
@@ -224,16 +267,15 @@ Images are published to GHCR with a semantic version tag (from
 
 ```bash
 # One-time: authenticate with a token that has `packages:write`
-# (create one: https://github.com/settings/tokens/new?scopes=write:packages&description=agent-sandbox)
 tart login ghcr.io
 
 # Push the locally built VM with its version tag and :latest
-npx agent-dev-env deploy sandbox-macos-tahoe
+pnpm agent-dev-env deploy sandbox-macos-tahoe
 ```
 
-`agent-dev-env deploy` without an argument pushes every image. The GHCR owner
-resolution: `GHCR_OWNER` env → `--owner` flag → git remote (inside a
-checkout) → default `ameshkov`.
+`agent-dev-env deploy` without an argument pushes every image; the GHCR
+owner resolution is described in AGENTS.md (env → flag → git remote →
+default).
 
 The first push of an image creates a new GHCR package, and GitHub does
 **not** link it to this repository automatically. After the first
@@ -246,33 +288,20 @@ pullable by anyone.
 
 ### Releasing a new image version
 
-1. Make the image changes in `images/mac/sandbox.pkr.hcl` (and/or
-   `vars/sandbox-macos-tahoe.pkrvars.hcl`).
-2. Bump `image_version` in the image's vars file.
-3. Add a `CHANGELOG.md` entry describing the changes. The entry's heading is
-   the release tag (`[mac-v1.2.0] - <date>`), and the changelog must always
-   keep an `[Unreleased]` section on top for changes that are not released
-   yet; update the tag links at the bottom (the `[unreleased]` compare link
-   moves to the new tag) in the same change.
-4. Commit the release — the working tree must be clean before tagging.
-5. Create and push the release tag:
+The version/tag/changelog conventions are in AGENTS.md ("Releases, Tags,
+and Changelogs"). For an image release: bump `image_version` in the vars
+file, add the `[<platform>-v<version>]` entry to
+`images/mac/CHANGELOG.md`, commit, then:
 
-   ```bash
-   npx agent-dev-env tag sandbox-macos-tahoe
-   ```
+```bash
+pnpm agent-dev-env tag sandbox-macos-tahoe   # creates mac-v1.2.0
+pnpm agent-dev-env build sandbox-macos-tahoe
+pnpm agent-dev-env deploy sandbox-macos-tahoe
+```
 
-   `tag` reads `image_version` from the vars file, verifies the working
-   tree is clean and that the `[<tag>]` entry exists in the changelog, and
-   creates an annotated `<platform>-v<version>` tag on the release commit
-   (e.g. `mac-v1.2.0`), then pushes it to origin. The changelog's tag links
-   resolve to it. This needs a checkout of the repo (`--repo <path>`
-   overrides the current one).
-6. Build the image locally (`npx agent-dev-env build <image-name>`) and
-   push the new version tag plus `:latest` to GHCR with
-   `npx agent-dev-env deploy <image-name>` (see "Publishing" above).
-
-Note: the CLI version (`package.json`) and the image `image_version`s bump
-together in one release.
+`tag` verifies the clean working tree and the matching `[<tag>]`
+changelog entry before creating the annotated tag and pushing it to
+origin. It needs a checkout of the repo (`--repo <path>` overrides).
 
 ## Windows images
 
@@ -319,22 +348,12 @@ is not in the repo) with `autounattend.xml` answering Setup. The builder:
    `~/Library/Application Support/agent-dev-env/build/windows-qemu/output/sandbox-windows-11-arm64-qemu.qcow2`,
    compressed with zstd.
 
-### Prerequisites (local builds)
-
-- macOS host with **Apple Silicon** (HVF, see above).
-- [QEMU](https://www.qemu.org/): `brew install qemu`
-- [swtpm](https://github.com/stefanberger/swtpm): `brew install swtpm`
-- [Packer](https://www.packer.io/): `brew install hashicorp/tap/packer`
-  (the QEMU plugin is installed automatically by `packer init`).
-- The Windows 11 ARM64 ISO (see `images/windows-arm64-qemu/README.md` for the
-  download steps) — `WINDOWS_ISO_PATH` must be set when building.
-
 ### Building an image
 
 ```bash
 # From the repository root; the ISO is required
 WINDOWS_ISO_PATH=/path/to/Win11_24H2_English_Arm64.iso \
-  npx agent-dev-env build sandbox-windows-11-arm64-qemu
+  pnpm agent-dev-env build sandbox-windows-11-arm64-qemu
 ```
 
 The windows-qemu flow verifies the ISO against `iso_sha256` from the vars
@@ -387,13 +406,11 @@ provisioners are identical to the QEMU template) but is built with the
    the same way, so artifacts built by older Fusion versions start clean
    too.
 
-Prerequisites: macOS + Apple Silicon, VMware Fusion 13.6+ (free for
-personal use), Packer, and the same bring-your-own Windows 11 ARM64 ISO
-(`WINDOWS_ISO_PATH`). Build:
+Build:
 
 ```bash
 WINDOWS_ISO_PATH=/path/to/Win11_25H2_English_Arm64_v2.iso \
-  npx agent-dev-env build sandbox-windows-11-arm64-vmware
+  pnpm agent-dev-env build sandbox-windows-11-arm64-vmware
 ```
 
 The runtime side is `agent-dev-env run windows-vmware` — no port
@@ -462,8 +479,8 @@ artifacts with `oras`:
 ```bash
 # From the repository root; needs `brew install oras` and a GHCR token
 # with write:packages (`oras login ghcr.io`)
-npx agent-dev-env deploy sandbox-windows-11-arm64-qemu
-npx agent-dev-env deploy sandbox-windows-11-arm64-vmware
+pnpm agent-dev-env deploy sandbox-windows-11-arm64-qemu
+pnpm agent-dev-env deploy sandbox-windows-11-arm64-vmware
 ```
 
 This pushes `ghcr.io/<owner>/<image>:<image_version>` and `:latest` for
@@ -541,24 +558,12 @@ Bridge ports: SSH agent **4400**, Docker **4401** (macOS 4100/4101, QEMU
 4200/4201, Windows VMware 4300/4301 — all four sandboxes can run side by
 side).
 
-### Prerequisites (local builds)
-
-- macOS host with **Apple Silicon** (Fusion cannot run ARM64 guests on
-  Intel).
-- [VMware Fusion](https://www.vmware.com/products/desktop-hypervisor/workstation-and-fusion)
-  13.6+ (free for personal use).
-- [Packer](https://www.packer.io/): `brew install hashicorp/tap/packer`
-  (the VMware plugin is installed automatically by `packer init`).
-- The Ubuntu Server 24.04 ARM64 ISO (see
-  `images/ubuntu-arm64-vmware/README.md` for the download steps) —
-  `UBUNTU_ISO_PATH` must be set when building.
-
 ### Building an image
 
 ```bash
 # From the repository root; the ISO is required
 UBUNTU_ISO_PATH=/path/to/ubuntu-24.04.4-live-server-arm64.iso \
-  npx agent-dev-env build sandbox-ubuntu-24-04-arm64-vmware
+  pnpm agent-dev-env build sandbox-ubuntu-24-04-arm64-vmware
 ```
 
 The ubuntu-vmware flow verifies the ISO against `iso_sha256` from the vars
@@ -595,14 +600,12 @@ a tar.gz and pushes it to GHCR as an OCI artifact with `oras`:
 ```bash
 # From the repository root; needs `brew install oras` and a GHCR token
 # with write:packages (`oras login ghcr.io`)
-npx agent-dev-env deploy sandbox-ubuntu-24-04-arm64-vmware
+pnpm agent-dev-env deploy sandbox-ubuntu-24-04-arm64-vmware
 ```
 
 This pushes `ghcr.io/<owner>/<image>:<image_version>` and `:latest`.
 Consumers pull the file back by its name (`agent-dev-env run ubuntu-vmware`
 runs `oras pull` into its state dir when no local build output exists).
-Release tags are `ubuntu-arm64-vmware-v<version>`
-(`npx agent-dev-env tag <image>`).
 
 ## Adding a new platform
 
@@ -618,9 +621,11 @@ create a new `images/<platform>/` directory following the macOS pattern:
    metadata (`lib/platform.ts`). If it needs a different push mechanism
    (like the Windows qcow2 vs Tart VMs), extend `lifecycle/deploy.ts`.
 2. `vars/` image files + a `CHANGELOG.md` (the CLI's catalog picks up the
-   new image automatically).
+   new image automatically), following the version/tag conventions in
+   AGENTS.md.
 3. A short per-platform `README.md` with build/publish commands.
-4. Update this document with the platform's build and publish instructions.
+4. Update this document with the platform's build and publish
+   instructions.
 
 ## Housekeeping
 
@@ -631,13 +636,5 @@ create a new `images/<platform>/` directory following the macOS pattern:
   templates.
 - Test every image change locally before pushing — a broken image costs a
   ~1-hour rebuild.
-- Name VMs exactly after images (`sandbox-macos-<macos-version>`,
-  `sandbox-windows-<version>-arm64-<platform>`,
-  `sandbox-ubuntu-<version>-arm64-vmware`); never introduce a separate
-  naming scheme for one platform. Git release tags are
-  `<platform>-v<version>` (e.g. `mac-v1.2.0`), created by
-  `agent-dev-env tag`.
-- Keep `image_version`, `CHANGELOG.md`, and the release tag in sync — every
-  release bumps the version, adds a changelog entry, and creates the tag.
-- The CLI and image versions bump together in one release
-  (`package.json` + the images' vars files).
+- Naming, release tags, and changelog rules are project conventions —
+  see AGENTS.md.

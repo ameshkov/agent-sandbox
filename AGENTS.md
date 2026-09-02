@@ -12,7 +12,9 @@ needs at runtime.
 - [Project Overview](#project-overview)
 - [Technical Context](#technical-context)
 - [Project Structure](#project-structure)
-- [Build and Test Commands](#build-and-test-commands)
+- [Building and Using the CLI](#building-and-using-the-cli)
+- [Building Images](#building-images)
+- [Releases, Tags, and Changelogs](#releases-tags-and-changelogs)
 - [Contribution Instructions](#contribution-instructions)
 - [Code Guidelines](#code-guidelines)
     - [Architecture](#architecture)
@@ -30,8 +32,8 @@ Two deliverables share this repo:
 - **Image recipes** — `images/<platform>/` holds the per-platform Packer
   templates (`sandbox.pkr.hcl`), per-image vars files
   (`vars/<image>.pkrvars.hcl`, the single source of truth for versions),
-  guest seeds (`autounattend.xml`, `autoinstall/`), and platform build /
-  deploy wrappers. Images are published to GHCR.
+  guest seeds (`autounattend.xml`, `autoinstall/`), and per-platform
+  assets (e.g. `qemu-with-tpm.sh`). Images are published to GHCR.
 - **The `agent-dev-env` CLI** — a TypeScript npm CLI that replaced the
   legacy shell scripts: per-platform runners, image lifecycle (build /
   deploy / tag), and diagnostics (`doctor`, `status`, `list`). The port is
@@ -121,7 +123,7 @@ agent-sandbox/
 │                               # + CHANGELOG
 ├── docs/                       # User guides (cli/macos/windows-qemu/windows-
 │                               # vmware/ubuntu-vmware/ssh-agent) + plan.md
-├── DEVELOPMENT.md              # Authoritative build/release guide
+├── DEVELOPMENT.md              # Build/debug guide: CLI + recipes + prerequisites
 ├── CHANGELOG.md                # Repo changelog (Unreleased on top)
 ├── tsconfig.base.json          # Shared TypeScript compiler options
 ├── oxlint.config.ts            # oxlint category-based config
@@ -130,39 +132,156 @@ agent-sandbox/
 └── package.json                # Private workspace root (dev deps + scripts)
 ```
 
-## Build and Test Commands
+## Building and Using the CLI
 
-CLI:
+### Prerequisites
 
-- `pnpm build` — compile the CLI TypeScript to
-  `packages/agent-dev-env-cli/dist/`, bundle the workspace guest-side
-  packages into single-file JS artifacts (`dist/assets/bridge/bridge.js`,
-  `dist/assets/guest/guest-agent-*.js`, esbuild), and copy the runtime
-  assets (`assets/**`, `images/**` snapshot) into `dist/`
-  (`packages/agent-dev-env-cli/scripts/copy-assets.mjs`)
-- `pnpm typecheck` — check for TypeScript type errors in production and
-  test code
-- `pnpm lint` — lint source files with oxlint and check for unused
-  exports with Knip
-- `pnpm lint:fix` — lint and auto-fix issues
-- `pnpm knip` — run Knip unused-export analysis separately
-- `pnpm format:check` — check formatting with Prettier and Markdownlint
-- `pnpm format:fix` — fix formatting issues
-- `pnpm test` — run the Vitest unit tests
+- macOS on Apple Silicon — Tart/QEMU/Fusion cannot virtualize ARM64
+  guests on Intel.
+- Node.js 20+, pnpm 10+ (`corepack enable` or `npm install -g pnpm`).
+- Per-platform runtime tooling for `run`/`build` — see
+  [Building Images](#building-images) and DEVELOPMENT.md for the full
+  list; `agent-dev-env doctor` checks everything.
+
+### Building the CLI
+
+`pnpm install` once, then `pnpm build`:
+
+- compiles the CLI TypeScript into
+  `packages/agent-dev-env-cli/dist/`,
+- bundles the workspace guest-side packages into single-file JS
+  artifacts (`dist/assets/bridge/bridge.js`,
+  `dist/assets/guest/guest-agent-*.js`, esbuild),
+- copies the runtime assets (`assets/**`) and the `images/**` snapshot
+  into `dist/` (`packages/agent-dev-env-cli/scripts/copy-assets.mjs`).
+
+`dist/` is the npm package payload — `npm pack --dry-run` (from
+`packages/agent-dev-env-cli`) verifies it.
+
+### Using the in-tree CLI
+
+After `pnpm build`, run the CLI from the repo with the root script:
+
+```bash
+pnpm agent-dev-env --help
+pnpm agent-dev-env doctor            # host + tooling + disk check
+pnpm agent-dev-env list              # images bundled in the package
+pnpm agent-dev-env run macos         # pull, boot, wire up the sandbox
+```
+
+### Using the published CLI
+
+End users get the same commands from npm — no repo checkout:
+
+```bash
+npx agent-dev-env run macos          # one-off
+# or
+npm install -g agent-dev-env
+agent-dev-env run macos
+```
+
+Command surface: `run`, `stop`, `delete`, `sync`, `status`, `list`,
+`build`, `deploy`, `tag`, `doctor`, `watch-build` — the full reference is
+docs/cli.md, the per-platform guides are in docs/. VM state, logs, and
+caches live under the `agent-dev-env` XDG roots
+(`src/lib/paths.ts`): on macOS `~/Library/Application
+Support/agent-dev-env/` (data), `~/Library/Logs/agent-dev-env/` (logs),
+`~/Library/Caches/agent-dev-env/` (cache).
+
+### Checks
+
 - `pnpm check` — the full gate: `format:check`, `lint`, `typecheck`,
   `build`, `test`
+- `pnpm typecheck` — TypeScript errors in production and test code
+- `pnpm lint` — oxlint on `packages` + Knip unused-export analysis;
+  `pnpm lint:fix` auto-fixes
+- `pnpm format:check` — Prettier + Markdownlint; `pnpm format:fix`
+  fixes
+- `pnpm test` — Vitest unit tests (co-located `*.test.ts`);
+  `pnpm test:watch` for the dev loop
 
-Image recipes (via the `agent-dev-env` CLI, see docs/cli.md and
-DEVELOPMENT.md):
+## Building Images
 
-- `npx agent-dev-env build <image>` — build one image (all images without
-  an arg); per-platform flows handle swtpm/ISO/Fusion staging
-- `npx agent-dev-env deploy <image>` — push `<version>` + `:latest` to
-  GHCR
-- `npx agent-dev-env tag <image>` — create and push the annotated git
-  release tag (clean tree + CHANGELOG entry enforced)
+Images are built from the recipes with the in-tree CLI (`pnpm build`
+first; see docs/cli.md and DEVELOPMENT.md for the flow details):
+
+- `pnpm agent-dev-env build <image>` — build one image (all images
+  without an argument); per-platform flows stage swtpm/ISO/drivers/Fusion
+  setup
+- `--force` — force a rebuild (`packer -force`)
+- `--no-watchdog` — skip the VNC build watchdog
+- `pnpm agent-dev-env deploy <image>` — push `<version>` + `:latest` to
+  GHCR (`--owner` overrides the owner)
 - `packer validate -var-file=vars/<image>.pkrvars.hcl sandbox.pkr.hcl` —
   fast HCL check without a build (from `images/<platform>/`)
+
+| Image | Build command (from the repo root) | Requires |
+| --- | --- | --- |
+| `sandbox-macos-tahoe` | `pnpm agent-dev-env build sandbox-macos-tahoe` | Tart + Packer |
+| `sandbox-windows-11-arm64-qemu` | `WINDOWS_ISO_PATH=… pnpm agent-dev-env build sandbox-windows-11-arm64-qemu` | QEMU + swtpm + Packer + Win 11 ARM64 ISO |
+| `sandbox-windows-11-arm64-vmware` | `WINDOWS_ISO_PATH=… pnpm agent-dev-env build sandbox-windows-11-arm64-vmware` | VMware Fusion 13.6+ + Packer + Win 11 ARM64 ISO |
+| `sandbox-ubuntu-24-04-arm64-vmware` | `UBUNTU_ISO_PATH=… pnpm agent-dev-env build sandbox-ubuntu-24-04-arm64-vmware` | VMware Fusion 13.6+ + Packer + Ubuntu 24.04 ARM64 ISO |
+
+All image builds need an Apple Silicon host. The ISOs are bring-your-own
+(Microsoft/Canonical do not permit redistribution); the build flows
+verify their SHA256 against the vars files. Full prerequisites (install
+commands, disk estimates, watchdog prereqs) and how each build flow
+works: DEVELOPMENT.md.
+
+Outputs go under `<data>/build/<platform>/` — except macOS, where the
+`tart` builder leaves the VM in the Tart store (`~/.tart/vms/`). The
+first macOS build pulls a ~50 GB base image. `agent-dev-env doctor`
+performs the whole prerequisite and disk check.
+
+## Releases, Tags, and Changelogs
+
+Two version tracks live in this repo. The CLI version lives in
+`packages/agent-dev-env-cli/package.json` (the `agent-dev-env` npm
+package; the root `package.json` is a private workspace root and is not
+published). Each image version lives in its own `vars/<image>.pkrvars.hcl`
+(`image_version`). They bump together in one release, but they are tagged
+and recorded separately:
+
+| | CLI (`agent-dev-env`) | Image |
+| --- | --- | --- |
+| Version source | `packages/agent-dev-env-cli/package.json` | `vars/<image>.pkrvars.hcl` (`image_version`) |
+| Git release tag | `agent-dev-env-v<version>` | `<platform>-v<version>` (e.g. `mac-v1.2.0`, `windows-arm64-qemu-v1.1.0`) |
+| Changelog | `CHANGELOG.md` (repo; `[Unreleased]` on top) | `images/<platform>/CHANGELOG.md` |
+| Tag created by | CI/release automation on the CLI tag | `pnpm agent-dev-env tag <image>` |
+| GHCR tags | — | `<image>:<image_version>` + `:latest` |
+
+- `agent-dev-env tag <image>` creates and pushes the annotated
+  `<platform>-v<version>` tag. It reads `image_version` from the vars
+  file and enforces: clean working tree, tag not existing, and a matching
+  `## [<tag>]` entry in `images/<platform>/CHANGELOG.md` — the changelog
+  and the tag cannot drift. It needs a checkout of the repo (`--repo
+  <path>` overrides).
+- Both changelogs keep an `[Unreleased]` section on top; the tag links at
+  the bottom are updated in the release change (the `[unreleased]`
+  compare link moves to the new tag).
+- **CI must not publish the npm package on per-image tags.** The
+  `<platform>-v<version>` tags are image releases and only drive image
+  builds or nothing. `agent-dev-env` is published to npm only for a CLI
+  release — the `agent-dev-env-v<version>` tag (or main, per the release
+  automation). Tag-prefix matching is the discriminator: never publish
+  npm from a tag that is not `agent-dev-env-v*`.
+- GHCR owner resolution: `GHCR_OWNER` env → `--owner` flag → git remote
+  (in a checkout) → default `ameshkov` (`src/lib/ghcr.ts`). Images are
+  pushed flat as `ghcr.io/<owner>/<image>` — the platform is part of the
+  image name.
+
+One release, step by step:
+
+1. Bump `image_version` in each image's vars file and the CLI version in
+   `packages/agent-dev-env-cli/package.json`.
+2. Add the matching entries to `CHANGELOG.md` and
+   `images/<platform>/CHANGELOG.md` and update their tag links.
+3. Commit, then create the per-image tags
+   (`pnpm agent-dev-env tag <image>`) and the CLI release tag
+   (`agent-dev-env-v<version>`).
+4. Build the images locally
+   (`pnpm agent-dev-env build <image>`) and publish them
+   (`pnpm agent-dev-env deploy <image>`).
 
 ## Contribution Instructions
 
@@ -409,12 +528,9 @@ operational incidents.
   `sandbox-windows-<version>-arm64-vmware`,
   `sandbox-ubuntu-<version>-arm64-vmware`). The Xcode version is NOT part
   of the mac name. Never introduce a separate naming scheme.
-- **Releases**: bump `image_version` (vars file) + CLI version
-  (`package.json`) together in one release, add CHANGELOG entries, commit,
-  then tag. Tag names are prefixed by platform: `<platform>-v<version>`
-  (e.g. `mac-v1.2.0`); the tag must be created on a clean tree with the
-  matching CHANGELOG entry, after the commit and before
-  `build.sh`/`deploy.sh`.
+- **Releases**: the two version tracks (CLI + per-image
+  `image_version`), their tags, changelogs, and the CI/npm rule are
+  described in [Releases, Tags, and Changelogs](#releases-tags-and-changelogs).
 - **GHCR owner resolution**: `GHCR_OWNER` env → `--owner` flag → git
   remote (in a checkout) → default `ameshkov` (`src/lib/ghcr.ts`). Images
   are pushed flat as `ghcr.io/<owner>/<image>` — the platform is part of
