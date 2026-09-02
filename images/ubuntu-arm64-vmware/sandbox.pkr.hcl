@@ -295,7 +295,7 @@ source "vmware-iso" "ubuntu" {
   ssh_port     = 22
 
   # Headless: no Fusion window, VNC pinned for the build watchdog
-  # (scripts/watch-build.sh) — same as the Windows templates.
+  # (the bundled VNC build watchdog) — same as the Windows templates.
   headless = true
 
   vnc_bind_address     = "127.0.0.1"
@@ -307,7 +307,7 @@ source "vmware-iso" "ubuntu" {
   # No-Media/PXE probe cycle (the CD only becomes bootable after a retry,
   # 20-40 s in), and stray keys at the probe screen make the firmware
   # attempt devices from the probe. The BUILD WATCHDOG does the typing
-  # instead (scripts/watch-build.py + WATCH_BUILD_BOOT_CMD, set by
+  # instead (the bundled watch-build.py + WATCH_BUILD_BOOT_CMD, set by
   # images/ubuntu-arm64-vmware/build.sh): it waits for the grub menu or
   # shell in the OCR and then types the autoinstall command. The VNC is
   # still opened (pinned below) for the watchdog, and the plugin's

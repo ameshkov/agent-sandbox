@@ -317,7 +317,7 @@ source "vmware-iso" "windows" {
   winrm_port     = 5985
 
   # Headless: no Fusion window, and the VNC server stays available for the
-  # build watchdog (scripts/watch-build.sh) — pinned so the platform
+  # build watchdog (bundled watch-build.py) — pinned so the platform
   # build.sh can start it before `packer build`. The vmware plugin's VNC
   # server is bound to 127.0.0.1; the password is disabled so the watchdog
   # (which assumes an unauthenticated VNC, like the QEMU plugin's) can
@@ -333,7 +333,7 @@ source "vmware-iso" "windows" {
   # few seconds after power-on; Enter presses spread over ~25 s cover
   # early and late appearances without spamming keys into Setup like the
   # QEMU template does (no stray keys, no Cancel-dialog watch needed).
-  # The build watchdog (scripts/watch-build.sh) also answers the prompt
+  # The build watchdog (bundled watch-build.py) also answers the prompt
   # and rescues a boot that lands in the EFI shell.
   boot_wait = "1s"
   boot_command = [
@@ -831,7 +831,7 @@ if (Test-Path $envFile) {
   }
 
   # ===== OpenSSH Server + RDP =====
-  # sshd gives the host a management channel (scripts/run-windows-vmware-sandbox.sh
+  # sshd gives the host a management channel (agent-dev-env run windows-vmware
   # connects to the guest's NAT IP on port 22); RDP gives a desktop session.
   # Password auth is enabled for the Administrator account so the fixed
   # sandbox credentials from the vars file work.

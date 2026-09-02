@@ -21,7 +21,7 @@
 ## Which Windows sandbox?
 
 This is the VMware (Fusion) variant. It exists alongside the
-[QEMU-based Windows sandbox](windows.md):
+[QEMU-based Windows sandbox](windows-qemu.md):
 
 | | VMware (this guide) | QEMU |
 | --- | --- | --- |
@@ -64,28 +64,30 @@ app bundle — no `brew` step.
 
 ### 2. Run the sandbox
 
-The repo ships a runner script that extracts the image, clones a working
-VM, and wires up the bridges. From the repo root:
+The [`agent-dev-env`](../docs/cli.md) CLI extracts the image, clones a
+working VM, and wires up the bridges. Run it once without installing it:
 
 ```bash
-./scripts/run-windows-vmware-sandbox.sh
+npx agent-dev-env run windows-vmware
 ```
 
-On first use it picks the image archive: the local build output
-(`build/windows-arm64-vmware/output/sandbox-windows-11-arm64-vmware.tar.gz`)
-when present, otherwise it asks to pull `sandbox-windows-11-arm64-vmware:latest`
-from GHCR via [oras](https://oras.land/) (one-time, ~20 GB —
-`brew install oras`). It then extracts the pristine VM and clones a
-working VM under
-`~/Library/Application Support/agent-sandbox/windows-11-arm64-vmware/`
+or install the CLI globally (`npm install -g agent-dev-env`) and use
+`agent-dev-env run windows-vmware` everywhere below. On first use it picks
+the image archive: the local build output
+(`~/Library/Application Support/agent-dev-env/build/windows-vmware/...`)
+when present, otherwise it asks to pull
+`sandbox-windows-11-arm64-vmware:latest` from GHCR via
+[oras](https://oras.land/) (one-time, ~20 GB — `brew install oras`). It
+then extracts the pristine VM and clones a working VM under
+`~/Library/Application Support/agent-dev-env/windows-vmware/<image>/`
 (the clone's display name in Fusion's library is
 `agent-sandbox-windows-11-arm64-vmware` — the base keeps the image's name) —
-the pristine image is never written to. On the first clone the runner
+the pristine image is never written to. On the first clone the CLI
 also upgrades the working VM's virtual hardware to the version your
 Fusion supports (`vmrun upgradevm`, recorded once per clone) — without
 it a newer Fusion shows its one-time "Upgrade this virtual machine?"
 dialog on the first windowed start. The guest boots headless or in a
-Fusion window (default), and the runner discovers its NAT IP via VMware
+Fusion window (default), and the CLI discovers its NAT IP via VMware
 Tools:
 
 | Port | Guest service |
@@ -96,12 +98,12 @@ Tools:
 | 5985 | WinRM (advanced use) |
 
 No port forwarding is needed: the VM sits on Fusion's NAT network
-(vmnet8), and the host is that network's router, so the guest IP the
-runner prints is reachable directly from the host. When a Docker engine
+(vmnet8), and the host is that network's router, so the guest IP the CLI
+prints is reachable directly from the host. When a Docker engine
 is running on the host (Docker Desktop, Colima, OrbStack, ...), the
-runner bridges it into the guest; same for a password-manager SSH agent
+CLI bridges it into the guest; same for a password-manager SSH agent
 (see [Docker (remote engine)](#docker-remote-engine) and
-[SSH agent bridge](#ssh-agent-bridge)). On the very first run the runner
+[SSH agent bridge](#ssh-agent-bridge)). On the very first run the CLI
 also offers to enable Windows' auto-logon and reboot the guest once — the
 image ships with auto-logon disabled after the OOBE boot, and the
 OpenChamber web UI only starts at logon (see
@@ -121,7 +123,7 @@ the pristine image.
 
 ### 3. Use the sandbox
 
-The runner prints the guest IP (or find it anytime with
+The CLI prints the guest IP (or find it anytime with
 `vmrun -T fusion getGuestIPAddress <vmx>`). Everything is set up now —
 use it from the host or inside the VM:
 
@@ -171,19 +173,19 @@ openchamber restart
 - **Stop the sandbox** — from the host:
 
   ```bash
-  ./scripts/stop-windows-vmware-sandbox.sh
+  npx agent-dev-env stop windows-vmware
   ```
 
   This stops the working VM (`vmrun -T fusion stop`, graceful via VMware
   Tools with a hard power-off fallback) and kills the host SSH agent /
   Docker bridge listeners. Start it again with
-  `./scripts/run-windows-vmware-sandbox.sh`.
+  `npx agent-dev-env run windows-vmware`.
 
 - **Reset the sandbox** — wipe the working VM and start from the pristine
   image:
 
   ```bash
-  ./scripts/run-windows-vmware-sandbox.sh --reset
+  npx agent-dev-env run windows-vmware --reset
   ```
 
 - **Delete the sandbox** — remove the state from the host (extracted
@@ -191,21 +193,19 @@ openchamber restart
   space:
 
   ```bash
-  ./scripts/delete-windows-vmware-sandbox.sh --yes
+  npx agent-dev-env delete windows-vmware --yes
   ```
 
-  This stops the working VM first (delegating to
-  `stop-windows-vmware-sandbox.sh`), then removes
-  `~/Library/Application Support/agent-sandbox/windows-11-arm64-vmware/`
-  (override with `SANDBOX_STATE_DIR`). The next run re-pulls the archive
-  and re-clones. Without `--yes` it asks before deleting. Note: Fusion's VM
-  library may still list the deleted working VM
-  (`agent-sandbox-windows-11-arm64-vmware`) — remove the stale entry in the
-  Fusion UI (harmless).
+  This stops the working VM first, then removes the platform's state dir
+  under `~/Library/Application Support/agent-dev-env/windows-vmware/`.
+  The next run re-pulls the archive and re-clones. Without `--yes` it asks
+  before deleting. Note: Fusion's VM library may still list the deleted
+  working VM (`agent-sandbox-windows-11-arm64-vmware`) — remove the stale
+  entry in the Fusion UI (harmless).
 
-- **Run several sandboxes side by side** — set `SANDBOX_STATE_DIR` to a
-  different directory (the guest IPs differ per NAT lease; the runner
-  prints them).
+- **Run several sandboxes side by side** — set `AGENT_DEV_ENV_DATA_HOME` to
+  a different root (the guest IPs differ per NAT lease; the CLI prints
+  them).
 
 ---
 
@@ -237,7 +237,7 @@ and runs under Fusion via `vmrun`. It ships:
 | OpenChamber web UI | npm global (`@openchamber/web`), scheduled task on `0.0.0.0:4000` |
 | OpenSSH Server + RDP | Enabled; Administrator/sandbox1 (see the vars file) |
 | Docker CLI | Client only (`docker` + `docker compose`), remote engine via the host bridge |
-| Bridge tooling | Node.js (in-image) relays + host socat for the SSH-agent/Docker bridges |
+| Bridge tooling | Node.js (in-image) relays for the SSH-agent/Docker bridges (the host side is the CLI's own forwarder — no socat) |
 
 Verify the toolchain over SSH (`ssh Administrator@<guest-ip>`, password
 `sandbox1`):
@@ -274,7 +274,7 @@ open "http://<guest-ip>:4000"
 
 The default UI password is `sandbox`. Notes:
 
-- Because the task fires at logon, the guest must be logged in. The runner
+- Because the task fires at logon, the guest must be logged in. The CLI
   enables Windows' auto-logon on first use (with your confirmation) so the
   guest logs itself in at boot and the UI comes up without interaction. The
   image's `autounattend.xml` deliberately sets `LogonCount=1` — one OOBE
@@ -293,19 +293,20 @@ Docker Desktop / WSL2 inside the sandbox would fail their hypervisor
 checks — the same constraint as the macOS guest. The CLI works as-is
 against any remote engine.
 
-**The runner wires the host's engine into the guest automatically.** When a
+**The CLI wires the host's engine into the guest automatically.** When a
 Docker engine socket is found on the host (Docker Desktop at
 `~/.docker/run/docker.sock`, Colima, OrbStack, or `/var/run/docker.sock`),
-it bridges it: a host-side `socat` exposes the socket on TCP `4301`
-(bound to the host's vmnet8 address — reachable from the guest), and a
-guest-side Node relay (served by the image's `node.exe`) presents it as
-the `\\.\pipe\docker_engine` named pipe — the exact pipe Docker on Windows
-looks for by default. A docker context named `host` is created and made the
-default, so `docker`, `docker compose`, and docker clients that read the
-default pipe all hit the host engine:
+it bridges it: a host-side forwarder (the bundled `bridge.js`, no socat)
+exposes the socket on TCP `4301` (bound to the host's vmnet8 address —
+reachable from the guest), and a guest-side Node relay (served by the
+image's `node.exe`) presents it as the `\\.\pipe\docker_engine` named
+pipe — the exact pipe Docker on Windows looks for by default. A docker
+context named `host` is created and made the default, so `docker`,
+`docker compose`, and docker clients that read the default pipe all hit
+the host engine:
 
 ```powershell
-# inside the guest — the runner already set up the context
+# inside the guest — the CLI already set up the context
 docker context show          # host
 docker run --rm hello-world
 ```
@@ -317,12 +318,12 @@ Notes:
   address (the guest's default gateway — Fusion's NAT runs in userspace,
   so there is no vmnet8 interface on the host), *not* `localhost`.
 - The bridge survives guest reboots (an ONLOGON scheduled task restarts the
-  relays at logon) and the host side reconnects on the next run of the
-  runner. The host listener binds to the vmnet8 address only — the engine
-  is not exposed to your LAN.
-- The engine must be running when the runner bridges it. If Docker Desktop
-  isn't started yet, the runner skips the bridge — start the engine and
-  re-run the script (the setup is idempotent).
+  relays at logon) and the host side reconnects on the next run of the CLI.
+  The host listener binds to the vmnet8 address only — the engine is not
+  exposed to your LAN.
+- The engine must be running when the CLI bridges it. If Docker Desktop
+  isn't started yet, the bridge is skipped — start the engine and re-run
+  the command (the setup is idempotent).
 - Pass `--no-docker` to skip; `SANDBOX_DOCKER_PORT` overrides the bridge
   port (default `4301`; QEMU uses `4201`, macOS `4101`, Ubuntu `4401`, so
   all four sandboxes can run side by side).
@@ -332,10 +333,11 @@ Notes:
 
 ### SSH agent bridge
 
-The runner also bridges a password-manager SSH agent (Bitwarden, 1Password,
-...) into the guest: a host-side `socat` turns the agent socket into TCP
-`4300` on the host's NAT address (the guest's default gateway), and a
-guest-side Node relay serves it as the
+The CLI also bridges a password-manager SSH agent (Bitwarden, 1Password,
+...) into the guest: a host-side forwarder (the bundled `bridge.js`, no
+socat — see [the SSH agent guide](ssh-agent.md)) turns the agent socket
+into TCP `4300` on the host's NAT address (the guest's default gateway),
+and a guest-side Node relay serves it as the
 `\\.\pipe\openssh-ssh-agent` named pipe. The guest's `SSH_AUTH_SOCK`
 environment variable points at that pipe, so `ssh`/`git` inside the guest
 authenticate with the host's keys — no keys are copied into the guest.
@@ -362,9 +364,9 @@ hosts") and
 [KB 315602](https://knowledge.broadcom.com/external/article/315602).
 
 `SANDBOX_WORK_DIR` and `--work-dir` are still accepted for consistency
-with the other platform runners, but the runner detects the unsupported
-combo and skips the share with a warning — it no longer claims the
-folder is shared. Alternatives that do work:
+with the other platforms, but the CLI detects the unsupported combo and
+skips the share with a warning — it no longer claims the folder is
+shared. Alternatives that do work:
 
 - **SMB from the Mac**: enable File Sharing for a folder in macOS
   (System Settings → General → Sharing → File Sharing), then from the
@@ -376,42 +378,17 @@ folder is shared. Alternatives that do work:
 - **RDP clipboard, git push/pull, or the OpenChamber UI** (upload/
   download), the same alternative transports as the QEMU sandbox.
 
-### Runner script reference
+### CLI reference
 
-[`scripts/run-windows-vmware-sandbox.sh`](../scripts/run-windows-vmware-sandbox.sh)
-is the automated way to boot, run, and wire up the sandbox. Everything it
-accepts:
-
-Options:
-
-- `--headless` — run without a window
-- `--foreground` — keep the terminal attached and block until the VM stops
-  (Cmd+C stops it). Default is background: the script exits after the
-  summary and the VM keeps running
-- `--no-agent` — skip the SSH agent bridge setup
-- `--no-docker` — skip the Docker engine bridge setup
-- `--work-dir PATH` — share the host directory into the guest as
-  `\\vmware-host\Shared Folders\work` (VMware Tools HGFS); overrides
-  `SANDBOX_WORK_DIR`. Not supported for Windows 11 ARM guests on Apple
-  silicon — the runner warns and skips the share (see
-  [Shared host folder](#shared-host-folder))
-- `--reset` — delete the working VM state (extracted base + clone) and
-  start fresh from the pristine image
-
-Environment variables (defaults in parentheses):
-
-| Variable | Default | What it does |
-| --- | --- | --- |
-| `WINDOWS_VMWARE_IMAGE` | — | Path to a local `sandbox-windows-11-arm64-vmware.tar.gz` to run instead of the discovered/pulled one |
-| `SANDBOX_STATE_DIR` | `~/Library/Application Support/agent-sandbox/windows-11-arm64-vmware` | Working VM state (extracted base + clone) |
-| `WINDOWS_PASSWORD` | from the vars file | Administrator password in the guest (override after changing it) |
-| `SANDBOX_OPENCHAMBER_PORT` | `4000` | Guest port of OpenChamber |
-| `SANDBOX_AGENT_PORT` | `4300` | TCP port for the SSH agent bridge |
-| `SANDBOX_DOCKER_PORT` | `4301` | TCP port for the Docker engine bridge |
-| `SANDBOX_WORK_DIR` | unset | Host directory to share into the guest (`\\vmware-host\Shared Folders\work`); empty disables the share, `--work-dir` overrides it. Not supported for Windows 11 ARM guests on Apple silicon — skipped with a warning |
-| `GHCR_OWNER` | from the git remote | GHCR owner used when pulling the image |
-| `NO_COLOR` | unset | Any non-empty value disables colored output |
-| `FUSION_APP_PATH` | `/Applications/VMware Fusion.app` | VMware Fusion install location |
+[`agent-dev-env run windows-vmware`](cli.md) is the automated way to
+boot, run, and wire up the sandbox. Everything it accepts — the full
+option list and the environment variable table — is in
+[the CLI reference](cli.md); notable defaults: image
+`sandbox-windows-11-arm64-vmware`, agent bridge port `4300`, Docker bridge
+port `4301`, `4` CPUs / 8 GB. A local archive can be pinned with
+`WINDOWS_VMWARE_IMAGE`; `FUSION_APP_PATH` overrides the Fusion location.
+`--work-dir` / `SANDBOX_WORK_DIR` are accepted but skipped with a warning
+(see [Shared host folder](#shared-host-folder)).
 
 ## Building your own images
 

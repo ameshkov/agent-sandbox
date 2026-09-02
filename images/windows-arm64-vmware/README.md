@@ -17,9 +17,8 @@ This is the VMware sibling of the
 [QEMU-based image](../windows-arm64-qemu/README.md): same Windows 11 Pro
 ARM64 guest, same toolchain, same credentials. See
 [docs/windows-vmware.md](../../docs/windows-vmware.md) for the user guide
-(boot it with
-[scripts/run-windows-vmware-sandbox.sh](../../scripts/run-windows-vmware-sandbox.sh))
-and [docs/windows-qemu.md](../../docs/windows-qemu.md) for the QEMU variant.
+(boot it with `npx agent-dev-env run windows-vmware`) and
+[docs/windows-qemu.md](../../docs/windows-qemu.md) for the QEMU variant.
 
 ## Prerequisites
 
@@ -49,25 +48,25 @@ bundle; `FUSION_APP_PATH` overrides a non-standard install).
 ```bash
 # From the repository root
 WINDOWS_ISO_PATH=/path/to/Win11_25H2_English_Arm64_v2.iso \
-  ./scripts/build.sh sandbox-windows-11-arm64-vmware
+  npx agent-dev-env build sandbox-windows-11-arm64-vmware
 ```
 
-`scripts/build.sh` delegates to `images/windows-arm64-vmware/build.sh` when a
-platform directory ships its own wrapper. The wrapper:
+`agent-dev-env` is the CLI shipped by this repo (see
+[docs/cli.md](../../docs/cli.md)). The windows-vmware build flow:
 
 1. Verifies the host (Apple Silicon), the tools, the Fusion install (must
    ship the ARM64 drivers zip and tools ISO), and the Windows ISO (SHA256
    against `iso_sha256` from the vars file).
 2. Stages the ARM64 `vmxnet3` driver (inf/sys/cat) into
-   `build/windows-arm64-vmware/drivers/staging/` at the root of the
-   unattend CD — Windows 11 ARM64 has no in-box VMware NIC driver, and it
-   must land before any network use (WinRM from the host).
+   `drivers/staging/` at the root of the unattend CD — Windows 11 ARM64
+   has no in-box VMware NIC driver, and it must land before any network
+   use (WinRM from the host).
 3. Runs `packer init` + `packer build` with the vars file; the template
    attaches Fusion's ARM64 tools ISO (`tools_mode "attach"`) and
    `autounattend.xml` installs it at first logon (before WinRM comes up —
    the tools installer rebinds the NIC and would kill a live WinRM
    session).
-4. Runs the VNC **build watchdog** (`scripts/watch-build.sh`) alongside
+4. Runs the VNC **build watchdog** (bundled `assets/watchdog/`) alongside
    `packer build` (pinned VNC port 5901) to auto-dismiss Windows Setup
    dialogs and rescue a boot that lands in the UEFI shell. Needs
    `pip3 install vncdotool` + Xcode command line tools; skipped with a
@@ -83,10 +82,10 @@ platform directory ships its own wrapper. The wrapper:
 
 A build takes roughly 30 minutes on an M-series Mac (Windows Setup
 dominates; Fusion runs the guest near-native). Everything per image lives
-in a top-level `build/` directory (gitignored):
-`build/windows-arm64-<platform>/output/` (the vmx + vmdk +
-nvram), plus `packer_cache/` and `drivers/staging/`. The macOS/tart images
-build no files and have no such directory.
+under the CLI's data root:
+`~/Library/Application Support/agent-dev-env/build/windows-vmware/output/`
+(the vmx + vmdk + nvram), plus `packer_cache/` and `drivers/staging/`.
+The macOS/tart images build no files and have no such directory.
 
 ## What's in the image
 
@@ -109,28 +108,28 @@ build no files and have no such directory.
 | OpenChamber web UI | npm global (`@openchamber/web`), native service on `0.0.0.0:4000` |
 | OpenSSH Server + RDP | Enabled; Administrator/sandbox1 (see the vars file) |
 | Docker CLI | Client only (`docker` + `docker compose`), remote engine via the host bridge |
-| Bridge tooling | Node relays (in-image `node.exe`, rendered by the runner from `scripts/lib/windows-vmware/`) + host `socat` for the SSH-agent/Docker bridges; `C:\tools\socat.exe` + `npiperelay.exe` ship as utilities |
+| Bridge tooling | Node relays (in-image `node.exe`, written by the bundled guest agent) for the SSH-agent/Docker bridges — the host side is the CLI's own forwarder (no socat) |
 
 ## Versioning
 
 Same convention as the other images: the image version lives in
 `image_version` in the vars file; every release bumps it, adds a
 `CHANGELOG.md` entry, and creates a `windows-arm64-vmware-v<version>` git
-tag via `./scripts/tag.sh <image>`.
+tag via `npx agent-dev-env tag <image>`.
 
 ## Running and publishing
 
-- Run the sandbox: `./scripts/run-windows-vmware-sandbox.sh` — extracts
+- Run the sandbox: `npx agent-dev-env run windows-vmware` — extracts
   the archive, clones a working VM with `vmrun`, discovers the guest IP
   via VMware Tools, and bridges the host's Docker engine and SSH agent
   into the guest (see [docs/windows-vmware.md](../../docs/windows-vmware.md)).
-- Publish: `./scripts/deploy.sh sandbox-windows-11-arm64-vmware` packs the
-  output directory into `${image_name}.tar.gz` and pushes it to
-  `ghcr.io/<owner>/sandbox-windows-11-arm64-vmware:<version>` + `:latest` as an
-  OCI artifact via `oras` (the platform ships its own deploy wrapper —
-  `images/windows-arm64-vmware/deploy.sh` — because `tart push` only works
-  for Tart VMs). Needs `brew install oras` and a GHCR token with
-  `write:packages` (`oras login ghcr.io`).
+- Publish: `npx agent-dev-env deploy sandbox-windows-11-arm64-vmware` packs
+  the output directory into `${image_name}.tar.gz` and pushes it to
+  `ghcr.io/<owner>/sandbox-windows-11-arm64-vmware:<version>` + `:latest` as
+  an OCI artifact via `oras` (the CLI packs and pushes directly — no
+  platform wrapper — because `tart push` only works for Tart VMs). Needs
+  `brew install oras` and a GHCR token with `write:packages`
+  (`oras login ghcr.io`).
 
 ## Gotchas
 

@@ -47,29 +47,29 @@ Every sandbox guest has a single local user, used for SSH and RDP:
 brew install qemu swtpm
 ```
 
-[`socat`](https://linux.die.net/man/1/socat) is needed for the SSH agent and
-Docker bridges (the runner offers to install it when a bridge is needed):
-
-```bash
-brew install socat
-```
+No socat is needed anymore — the SSH agent and Docker bridges use the
+CLI's own forwarder (see [the CLI reference](cli.md) and
+[the SSH agent guide](ssh-agent.md)).
 
 ### 2. Run the sandbox
 
-The repo ships a runner script that boots the image, forwards the guest
-ports, and wires up the bridges. From the repo root:
+The [`agent-dev-env`](../docs/cli.md) CLI boots the image, forwards the
+guest ports, and wires up the bridges. Run it once without installing it:
 
 ```bash
-./scripts/run-windows-qemu-sandbox.sh
+npx agent-dev-env run windows-qemu
 ```
 
-On first use it picks the disk image: the local build output
-(`build/windows-arm64-qemu/output/sandbox-windows-11-arm64-qemu.qcow2`) when
-present, otherwise it asks to pull `sandbox-windows-11-arm64-qemu:latest` from GHCR
-via [oras](https://oras.land/) (one-time, ~14 GB — `brew install oras`).
-It then
-creates a working VM — a copy-on-write overlay plus persistent TPM and EFI
-state under `~/Library/Application Support/agent-sandbox/windows-11-arm64-qemu` — the
+or install the CLI globally (`npm install -g agent-dev-env`) and use
+`agent-dev-env run windows-qemu` everywhere below. On first use it picks
+the disk image: the local build output
+(`~/Library/Application Support/agent-dev-env/build/windows-qemu/...`)
+when present, otherwise it asks to pull
+`sandbox-windows-11-arm64-qemu:latest` from GHCR via
+[oras](https://oras.land/) (one-time, ~14 GB — `brew install oras`).
+It then creates a working VM — a copy-on-write overlay plus persistent TPM
+and EFI state under
+`~/Library/Application Support/agent-dev-env/windows-qemu/<image>/` — the
 pristine image is never written to. The guest boots headless or in a QEMU
 window (default), and SSH/RDP/OpenChamber ports are forwarded to the host:
 
@@ -81,10 +81,10 @@ window (default), and SSH/RDP/OpenChamber ports are forwarded to the host:
 | 5985 | WinRM (advanced use) |
 
 When a Docker engine is running on the host (Docker Desktop, Colima,
-OrbStack, ...), the runner bridges it into the guest; same for a
+OrbStack, ...), the CLI bridges it into the guest; same for a
 password-manager SSH agent (see
 [Docker (remote engine)](#docker-remote-engine) and
-[SSH agent bridge](#ssh-agent-bridge)). On the very first run the runner
+[SSH agent bridge](#ssh-agent-bridge)). On the very first run the CLI
 also offers to enable Windows' auto-logon and reboot the guest once — the
 image ships with auto-logon disabled after the OOBE boot, and the
 OpenChamber web UI only starts at logon (see
@@ -156,24 +156,24 @@ openchamber restart
 - **Stop the sandbox** — from the host:
 
   ```bash
-  ./scripts/stop-windows-qemu-sandbox.sh
+  npx agent-dev-env stop windows-qemu
   ```
 
-  This stops qemu (via the `qemu.pid` the runner writes), swtpm and the
-  host SSH agent / Docker bridge listeners. The manual fallback is:
+  This stops qemu (via the `qemu.pid` the CLI writes), swtpm and the host
+  SSH agent / Docker bridge listeners. The manual fallback is:
 
   ```bash
-  kill $(cat "$HOME/Library/Application Support/agent-sandbox/windows-11-arm64-qemu/qemu.pid")
+  kill $(cat "$HOME/Library/Application Support/agent-dev-env/windows-qemu/sandbox-windows-11-arm64-qemu/working/qemu.pid")
   ```
 
   (or `pkill -f qemu-system-aarch64`). Start it again with
-  `./scripts/run-windows-qemu-sandbox.sh`.
+  `npx agent-dev-env run windows-qemu`.
 
 - **Reset the sandbox** — wipe the working VM and start from the pristine
   image:
 
   ```bash
-  ./scripts/run-windows-qemu-sandbox.sh --reset
+  npx agent-dev-env run windows-qemu --reset
   ```
 
 - **Delete the sandbox** — remove the state from the host (the working disk
@@ -181,16 +181,16 @@ openchamber restart
   disk space:
 
   ```bash
-  ./scripts/delete-windows-qemu-sandbox.sh --yes
+  npx agent-dev-env delete windows-qemu --yes
   ```
 
-  This stops qemu + swtpm first (delegating to `stop-windows-qemu-sandbox.sh`),
-  then removes `~/Library/Application Support/agent-sandbox/windows-11-arm64-qemu/`
-  (override with `SANDBOX_STATE_DIR`). The next run re-pulls the image and
-  starts fresh. Without `--yes` it asks before deleting.
+  This stops qemu + swtpm first, then removes the platform's state dir
+  under `~/Library/Application Support/agent-dev-env/windows-qemu/`. The
+  next run re-pulls the image and starts fresh. Without `--yes` it asks
+  before deleting.
 
-- **Run several sandboxes side by side** — set `SANDBOX_STATE_DIR` to a
-  different directory and `SANDBOX_SSH_PORT` / `SANDBOX_RDP_PORT` /
+- **Run several sandboxes side by side** — set `AGENT_DEV_ENV_DATA_HOME` to
+  a different root and `SANDBOX_SSH_PORT` / `SANDBOX_RDP_PORT` /
   `SANDBOX_OPENCHAMBER_PORT` to free ports.
 
 ---
@@ -222,7 +222,7 @@ and runs under `qemu-system-aarch64` with HVF. It ships:
 | OpenChamber web UI | npm global (`@openchamber/web`), scheduled task on `0.0.0.0:4000` |
 | OpenSSH Server + RDP | Enabled; Administrator/sandbox1 (see the vars file) |
 | Docker CLI | Client only (`docker` + `docker compose`), remote engine via the host bridge |
-| Bridge tooling | Node.js (in-image) relays + host socat for the SSH-agent/Docker bridges |
+| Bridge tooling | Node.js (in-image) relays for the SSH-agent/Docker bridges (the host side is the CLI's own forwarder — no socat) |
 
 Verify the toolchain over SSH (`ssh -p 2222 Administrator@127.0.0.1`,
 password `sandbox1`):
@@ -250,8 +250,8 @@ docker compose version
 [OpenChamber](https://openchamber.dev) is the web UI for OpenCode: start
 sessions, supervise them, review changes — all from your host browser. The
 image installs it as a scheduled task (`dev.openchamber.web`) that starts at
-**logon**, listening on `0.0.0.0:4000`; the runner forwards it to the host,
-so with the VM running:
+**logon**, listening on `0.0.0.0:4000`; the CLI forwards it to the host, so
+with the VM running:
 
 ```bash
 open "http://127.0.0.1:4000"
@@ -259,7 +259,7 @@ open "http://127.0.0.1:4000"
 
 The default UI password is `sandbox`. Notes:
 
-- Because the task fires at logon, the guest must be logged in. The runner
+- Because the task fires at logon, the guest must be logged in. The CLI
   enables Windows' auto-logon on first use (with your confirmation) so the
   guest logs itself in at boot and the UI comes up without interaction. The
   image's `autounattend.xml` deliberately sets `LogonCount=1` — one OOBE
@@ -277,18 +277,19 @@ Desktop / WSL2 inside the sandbox would fail their hypervisor checks — the
 same constraint as the macOS guest. The CLI works as-is against any remote
 engine.
 
-**The runner wires the host's engine into the guest automatically.** When a
+**The CLI wires the host's engine into the guest automatically.** When a
 Docker engine socket is found on the host (Docker Desktop at
 `~/.docker/run/docker.sock`, Colima, OrbStack, or `/var/run/docker.sock`),
-it bridges it: a host-side `socat` exposes the socket on TCP `4201`
-(loopback only), and a guest-side Node relay (served by the image's
-`node.exe`) presents it as the `\\.\pipe\docker_engine` named pipe — the
-exact pipe Docker on Windows looks for by default. A docker context named
-`host` is created and made the default, so `docker`, `docker compose`, and
-docker clients that read the default pipe all hit the host engine:
+it bridges it: a host-side forwarder (the bundled `bridge.js`, no socat)
+exposes the socket on TCP `4201` (loopback only), and a guest-side Node
+relay (served by the image's `node.exe`) presents it as the
+`\\.\pipe\docker_engine` named pipe — the exact pipe Docker on Windows
+looks for by default. A docker context named `host` is created and made the
+default, so `docker`, `docker compose`, and docker clients that read the
+default pipe all hit the host engine:
 
 ```powershell
-# inside the guest — the runner already set up the context
+# inside the guest — the CLI already set up the context
 docker context show          # host
 docker run --rm hello-world
 ```
@@ -302,12 +303,12 @@ Notes:
   `curl http://10.0.2.2:8080`. From the host itself the port is
   `http://localhost:8080` as usual.
 - The bridge survives guest reboots (an ONLOGON scheduled task restarts the
-  relays at logon) and the host side reconnects on the next run of the
-  runner. The host listener binds to the loopback interface only — the
-  engine is not exposed to your LAN.
-- The engine must be running when the runner bridges it. If Docker Desktop
-  isn't started yet, the runner skips the bridge — start the engine and
-  re-run the script (the setup is idempotent).
+  relays at logon) and the host side reconnects on the next run of the CLI.
+  The host listener binds to the loopback interface only — the engine is
+  not exposed to your LAN.
+- The engine must be running when the CLI bridges it. If Docker Desktop
+  isn't started yet, the bridge is skipped — start the engine and re-run
+  the command (the setup is idempotent).
 - Pass `--no-docker` to skip; `SANDBOX_DOCKER_PORT` overrides the bridge
   port (default `4201`; VMware uses `4301`, macOS `4101`, so all three
   sandboxes can run side by side).
@@ -317,10 +318,11 @@ Notes:
 
 ### SSH agent bridge
 
-The runner also bridges a password-manager SSH agent (Bitwarden, 1Password,
-...) into the guest: a host-side `socat` turns the agent socket into TCP
-`4200` (loopback only), and a guest-side Node relay serves it as the
-`\\.\pipe\openssh-ssh-agent` named pipe. The guest's `SSH_AUTH_SOCK`
+The CLI also bridges a password-manager SSH agent (Bitwarden, 1Password,
+...) into the guest: a host-side forwarder (the bundled `bridge.js`, no
+socat — see [the SSH agent guide](ssh-agent.md)) turns the agent socket
+into TCP `4200` (loopback only), and a guest-side Node relay serves it as
+the `\\.\pipe\openssh-ssh-agent` named pipe. The guest's `SSH_AUTH_SOCK`
 environment variable points at that pipe, so `ssh`/`git` inside the guest
 authenticate with the host's keys — no keys are copied into the guest.
 
@@ -345,39 +347,15 @@ volume. Your code stays on the host; get it into the sandbox with:
 - **The OpenChamber web UI** — attach a host directory to a session, or use
   the workspace picker.
 
-### Runner script reference
+### CLI reference
 
-[`scripts/run-windows-qemu-sandbox.sh`](../scripts/run-windows-qemu-sandbox.sh) is the
-automated way to boot, run, and wire up the sandbox. Everything it accepts:
-
-Options:
-
-- `--headless` — run without a window (`-display none`)
-- `--foreground` — keep the terminal attached and block until the VM stops
-  (Cmd+C stops it). Default is background: the script exits after the
-  summary and the VM keeps running
-- `--no-agent` — skip the SSH agent bridge setup
-- `--no-docker` — skip the Docker engine bridge setup
-- `--reset` — delete the working VM state (overlay + TPM + EFI NVRAM) and
-  start fresh from the pristine image
-
-Environment variables (defaults in parentheses):
-
-| Variable | Default | What it does |
-| --- | --- | --- |
-| `WINDOWS_IMAGE` | — | Path to a local `sandbox-windows-11-arm64-qemu.qcow2` to run instead of the discovered/pulled one |
-| `SANDBOX_STATE_DIR` | `~/Library/Application Support/agent-sandbox/windows-11-arm64-qemu` | Working VM state (overlay, TPM, EFI NVRAM) |
-| `WINDOWS_PASSWORD` | from the vars file | Administrator password in the guest (override after changing it) |
-| `SANDBOX_SSH_PORT` | `2222` | Host port forwarded to guest SSH |
-| `SANDBOX_RDP_PORT` | `3389` | Host port forwarded to guest RDP |
-| `SANDBOX_WINRM_PORT` | `5985` | Host port forwarded to guest WinRM |
-| `SANDBOX_OPENCHAMBER_PORT` | `4000` | Guest port of OpenChamber (host forward) |
-| `SANDBOX_AGENT_PORT` | `4200` | TCP port for the SSH agent bridge |
-| `SANDBOX_DOCKER_PORT` | `4201` | TCP port for the Docker engine bridge |
-| `SANDBOX_CPU_COUNT` | from the vars file | CPUs for the VM |
-| `SANDBOX_MEMORY_MB` | from the vars file | RAM for the VM, in MB |
-| `GHCR_OWNER` | from the git remote | GHCR owner used when pulling the image |
-| `NO_COLOR` | unset | Any non-empty value disables colored output |
+[`agent-dev-env run windows-qemu`](cli.md) is the automated way to boot,
+run, and wire up the sandbox. Everything it accepts — the full option list
+and the environment variable table — is in [the CLI reference](cli.md);
+notable defaults: image `sandbox-windows-11-arm64-qemu`, SSH/RDP/WinRM
+host forwards `2222`/`3389`/`5985`, agent bridge port `4200`, Docker bridge
+port `4201`, `4` CPUs / 8 GB. A local disk image can be pinned with
+`WINDOWS_IMAGE`.
 
 ## Building your own images
 

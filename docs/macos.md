@@ -47,17 +47,19 @@ brew install cirruslabs/cli/tart
 
 ### 2. Run the sandbox
 
-The repo ships a runner script that replaces the manual pull, clone, configure,
-and run steps. From the repo root:
+The [`agent-dev-env`](../docs/cli.md) CLI replaces the manual pull, clone,
+configure, and run steps. Run it once without installing it:
 
 ```bash
-./scripts/run-macos-sandbox.sh
+npx agent-dev-env run macos
 ```
 
-Share a specific workspace instead of the default `/Volumes/dev`:
+or install the CLI globally (`npm install -g agent-dev-env`) and use
+`agent-dev-env run macos` everywhere below. Share a specific workspace
+instead of the default `/Volumes/dev`:
 
 ```bash
-SANDBOX_WORK_DIR=/path/to/your/workspace ./scripts/run-macos-sandbox.sh
+npx agent-dev-env run macos --work-dir /path/to/your/workspace
 ```
 
 On first use it asks before pulling the image (~50 GB, one-time) and cloning
@@ -95,8 +97,8 @@ all projects (see [The one-VM, many-projects workflow in depth](#the-one-vm-many
 By default the script shares `/Volumes/dev` — the host directory with all your
 projects — into the guest at `/Volumes/My Shared Files/dev`.
 
-Two environment variables cover most needs (the full list is in [Runner script
-reference](#runner-script-reference)):
+Two environment variables cover most needs (the full list is in the
+[CLI reference](cli.md)):
 
 | Variable | Default | What it does |
 | --- | --- | --- |
@@ -106,13 +108,13 @@ reference](#runner-script-reference)):
 For example, a separate sandbox for one project:
 
 ```bash
-SANDBOX_VM=my-project SANDBOX_WORK_DIR="$HOME/dev/my-project" ./scripts/run-macos-sandbox.sh
+SANDBOX_VM=my-project SANDBOX_WORK_DIR="$HOME/dev/my-project" npx agent-dev-env run macos
 ```
 
 ### 3. Configure the environment
 
 If you already have opencode configured on this Mac, you're likely done:
-`run-macos-sandbox.sh` syncs your local settings (config, provider
+`agent-dev-env run macos` syncs your local settings (config, provider
 credentials, skills, ...) into the guest, so the agent is ready to work right
 away. Only configure it here if you haven't used opencode on the host, or
 want a different provider in the sandbox.
@@ -169,13 +171,13 @@ in an isolated sandbox, with your code safely on the host.
 - **Force-sync your host settings into the sandbox** — opencode config and
   auth, OpenCodeReview config, Copilot config and skills, VS Code config and
   extensions, mcp-compress-router, `~/.ssh` and `~/.gitconfig` (the same set
-  as on first run). The VM must be running; from the repo root:
+  as on first run). The VM must be running:
 
   ```bash
-  ./scripts/sync-macos-sandbox.sh --yes
+  npx agent-dev-env sync macos --yes
   ```
 
-  The sync script always copies everything (unlike the runner, which only
+  The sync command always copies everything (unlike `run`, which only
   offers the copy when the settings version changed), so this is the command
   to re-sync after editing a config on the host. `--yes` skips the
   confirmation prompt. It restarts OpenChamber so the new settings take
@@ -185,33 +187,32 @@ in an isolated sandbox, with your code safely on the host.
 - **Stop the sandbox** — graceful shutdown of the guest, up to 30 seconds:
 
   ```bash
-  ./scripts/stop-macos-sandbox.sh
+  npx agent-dev-env stop macos
   ```
 
   This stops the working VM (`tart stop`, graceful with a force fallback)
   and the host SSH agent / Docker bridge listeners the runner left up — a
-  bare `tart stop` would leave the socat listeners running. `sandbox-macos`
-  is the default working VM name (override with `SANDBOX_VM`; the stop
-  script honors the same `SANDBOX_AGENT_PORT` / `SANDBOX_DOCKER_PORT`
-  overrides). If the guest hangs, `tart stop` force-terminates it after a
-  timeout; the stop script passes none, so wait longer manually with
+  bare `tart stop` would leave the bridge listeners running. `sandbox-macos`
+  is the default working VM name (override with `SANDBOX_VM`; `stop` honors
+  the same `SANDBOX_AGENT_PORT` / `SANDBOX_DOCKER_PORT` overrides). If the
+  guest hangs, `tart stop` force-terminates it after a timeout; `stop`
+  passes none, so wait longer manually with
   `tart stop <vm> --timeout <seconds>`. Start it again with
-  `./scripts/run-macos-sandbox.sh`.
+  `npx agent-dev-env run macos`.
 
 - **Delete the sandbox** — remove the VM(s) from the Tart VM store, disk
   included:
 
   ```bash
-  ./scripts/delete-macos-sandbox.sh --yes
+  npx agent-dev-env delete macos --yes
   ```
 
-  This stops the sandbox first (delegating to `stop-macos-sandbox.sh`),
-  then `tart delete`s the working VM — the next run re-clones it from the
-  pristine image. Without `--pristine`, the pristine image (~50 GB,
-  re-pulled from GHCR on the next run) is kept when deleting interactively
-  — press `y` at the prompt or pass `--pristine` / `--yes` to delete it
-  too. Options are the same `SANDBOX_VM` / `SANDBOX_IMAGE` overrides as the
-  runner.
+  This stops the sandbox first, then `tart delete`s the working VM — the
+  next run re-clones it from the pristine image. Without `--pristine`, the
+  pristine image (~50 GB, re-pulled from GHCR on the next run) is kept when
+  deleting interactively — press `y` at the prompt or pass `--pristine` /
+  `--yes` to delete it too. Options are the same `SANDBOX_VM` /
+  `SANDBOX_IMAGE` overrides as `run`.
 
 ---
 
@@ -341,20 +342,20 @@ virtualization only for **Linux** guests (M3+ chips, macOS 15+), so Docker
 Desktop, Colima and similar fail their hypervisor check inside the sandbox.
 The CLI works as-is against any remote engine.
 
-**The runner wires the host's engine into the guest automatically.**
-`run-macos-sandbox.sh` looks for a Docker engine socket on the host (Docker
-Desktop at `~/.docker/run/docker.sock`, Colima, OrbStack, or
+**The CLI wires the host's engine into the guest automatically.**
+`agent-dev-env run macos` looks for a Docker engine socket on the host
+(Docker Desktop at `~/.docker/run/docker.sock`, Colima, OrbStack, or
 `/var/run/docker.sock`); when it finds one, it bridges it into the guest the
-same way as the SSH agent: a host-side `socat` for the current run, and a
-guest-side `socat` (persisted in `~/.zprofile`, recreated on every login)
-that serves the socket at `~/.docker/run/docker.sock`. A docker context
-named `host` is created in the guest and made the default, so `docker`,
-`docker compose`, `docker buildx` — from a terminal or from the coding agent
-— all hit the host engine. The guest's `~/.zprofile` also exports
-`DOCKER_HOST` (the bridged socket) and `TESTCONTAINERS_HOST_OVERRIDE` (the
-NAT gateway), so docker clients that don't read contexts — e.g. the
-testcontainers library — find the engine and its published ports too (see
-the note below):
+same way as the SSH agent: a host-side forwarder (the bundled `bridge.js`,
+no socat) for the current run, and a guest-side one (installed by the macOS
+guest agent as a LaunchAgent, recreated on every login) that serves the
+socket at `~/.docker/run/docker.sock`. A docker context named `host` is
+created in the guest and made the default, so `docker`, `docker compose`,
+`docker buildx` — from a terminal or from the coding agent — all hit the
+host engine. The guest's `~/.zprofile` also exports `DOCKER_HOST` (the
+bridged socket) and `TESTCONTAINERS_HOST_OVERRIDE` (the NAT gateway), so
+docker clients that don't read contexts — e.g. the testcontainers library —
+find the engine and its published ports too (see the note below):
 
 ```bash
 # inside the guest — the runner already set up the context
@@ -371,8 +372,8 @@ Notes:
   From the host itself, the same port is `http://localhost:8080` as usual.
   Verify the gateway with `route -n get default` inside the guest.
 - Container-based test frameworks (testcontainers and similar) work in the
-  guest out of the box: the runner's `~/.zprofile` exports make them dial
-  the host engine and its published ports via the NAT gateway. Without
+  guest out of the box: the guest agent's `~/.zprofile` exports make them
+  dial the host engine and its published ports via the NAT gateway. Without
   `TESTCONTAINERS_HOST_OVERRIDE` they assume the engine is local and try
   `localhost`, where nothing is published — this shows up as
   `Failed to connect to Reaper` (the testcontainers cleanup container
@@ -476,36 +477,35 @@ credentials and preferences out of the box. What it copies:
 | `~/.gitconfig` | same path | Git identity, aliases, signing config |
 
 The step runs **once per VM**: after copying, a versioned marker file inside
-the guest (`~/.config/agent-sandbox/settings-copied`) records the settings
+the guest (`~/.config/agent-dev-env/settings-copied`) records the settings
 version that was copied, and later runs skip the step. When new settings are
-added to the script (and its `settings_version` is bumped), the step runs
-again and copies the additional files. Each time it runs it asks for
-confirmation and lists what it will copy. To force a re-copy, delete the
-marker and re-run:
+added (and the settings version is bumped), the step runs again and copies
+the additional files. Each time it runs it asks for confirmation and lists
+what it will copy. To force a re-copy, delete the marker and re-run:
 
 ```bash
-tart exec sandbox rm ~/.config/agent-sandbox/settings-copied
-./scripts/run-macos-sandbox.sh
+tart exec sandbox rm ~/.config/agent-dev-env/settings-copied
+npx agent-dev-env run macos
 ```
 
 To re-sync the settings **without** restarting the VM — e.g. after editing
 `~/.config/opencode/opencode.json`, adding a skill or command, or updating
-your Git identity — run the sync script from the repo root:
+your Git identity — run `sync`:
 
 ```bash
-./scripts/sync-macos-sandbox.sh
+npx agent-dev-env sync macos
 ```
 
-It copies exactly the same files as the runner (both share the same code),
-asks for confirmation unless you pass `--yes`, and restarts OpenChamber so
-the new settings take effect. The VM must be running — start it with
-`./scripts/run-macos-sandbox.sh` first if it isn't. A sync also updates the
-guest's version marker, so the runner won't re-offer the copy on its next
-run. Like the runner, the script honors `SANDBOX_VM` (default
-`sandbox-macos`) — use it to sync a non-default sandbox:
+It copies exactly the same files as `run` (both share the same code), asks
+for confirmation unless you pass `--yes`, and restarts OpenChamber so the
+new settings take effect. The VM must be running — start it with
+`npx agent-dev-env run macos` first if it isn't. A sync also updates the
+guest's version marker, so `run` won't re-offer the copy on its next run.
+Like the runner, sync honors `SANDBOX_VM` (default `sandbox-macos`) — use
+it to sync a non-default sandbox:
 
 ```bash
-SANDBOX_VM=my-project ./scripts/sync-macos-sandbox.sh --yes
+SANDBOX_VM=my-project npx agent-dev-env sync macos --yes
 ```
 
 Notes:
@@ -543,8 +543,8 @@ file into the guest's coding agents — opencode's global rules
 runtime topology without being told. The rules explain the Docker remote
 engine (context `host`, published ports reachable at the NAT gateway instead
 of `localhost`, volume mounts needing host paths), the shared-directory path
-mapping and the SSH agent bridge. The content ships in the repo
-([`scripts/agent-rules.md`](../scripts/agent-rules.md)).
+mapping and the SSH agent bridge. The content ships inside the npm package
+(`assets/rules/agent-rules.md`).
 
 Notes:
 
@@ -555,44 +555,18 @@ Notes:
   run settings (`SANDBOX_WORK_DIR`, `SANDBOX_MOUNT_NAME`), and the SSH agent
   section is included only when the agent bridge is actually up — the rules
   never claim a bridge that isn't running.
-- The rules are not part of the user-settings copy. An updated
-  `scripts/agent-rules.md` is offered on the next run; the runner asks
+- The rules are not part of the user-settings copy. An updated rules file
+  (from a newer CLI version) is offered on the next run; the runner asks
   before replacing the guest's copy.
 
-### Runner script reference
+### CLI reference
 
-[`scripts/run-macos-sandbox.sh`](../scripts/run-macos-sandbox.sh) is the
-automated way to pull, run, and wire up the sandbox. Everything it accepts:
-
-Options:
-
-- `--headless` — run without a window (`tart run --no-graphics`; system
-  shortcuts are only captured into the guest in windowed runs)
-- `--foreground` — keep the terminal attached and block until the VM stops
-  (Cmd+C in the terminal stops it). Default is background: the script exits
-  after the summary and the VM keeps running
-  ([`stop-macos-sandbox.sh`](../scripts/stop-macos-sandbox.sh) to stop it,
-  [`delete-macos-sandbox.sh`](../scripts/delete-macos-sandbox.sh) to delete
-  it, tart output in `~/Library/Logs/agent-sandbox/tart-<vm>.log`)
-- `--no-agent` — skip the SSH agent bridge setup
-- `--no-docker` — skip the Docker engine bridge setup
-- `--no-settings` — skip copying the host's user settings into the guest
-
-Environment variables (defaults in parentheses):
-
-| Variable | Default | What it does |
-| --- | --- | --- |
-| `SANDBOX_IMAGE` | `sandbox-macos-tahoe` | Pristine image VM to pull and clone from |
-| `SANDBOX_VM` | `sandbox-macos` | Name of the working VM |
-| `SANDBOX_WORK_DIR` | `/Volumes/dev` | Host directory shared into the guest; empty disables the mount |
-| `SANDBOX_MOUNT_NAME` | `dev` | Mount name inside the guest (appears at `/Volumes/My Shared Files/<name>`) |
-| `SANDBOX_AGENT_PORT` | `4100` | TCP port for the SSH agent bridge |
-| `SANDBOX_DOCKER_PORT` | `4101` | TCP port for the Docker engine bridge |
-| `SANDBOX_OPENCHAMBER_PORT` | `4000` | Guest port of OpenChamber |
-| `SANDBOX_CPU_COUNT` | `8` | CPUs for a freshly cloned VM |
-| `SANDBOX_MEMORY_MB` | `16384` | RAM for a freshly cloned VM, in MB |
-| `GHCR_OWNER` | from the git remote | GHCR owner used when pulling the image |
-| `NO_COLOR` | unset | Any non-empty value disables colored output |
+[`agent-dev-env run macos`](cli.md) is the automated way to pull, run, and
+wire up the sandbox. Everything it accepts — the full option list and the
+environment variable table — is in [the CLI reference](cli.md); the
+defaults: image `sandbox-macos-tahoe`, working VM `sandbox-macos`, agent
+bridge port `4100`, Docker bridge port `4101`, 8 CPUs / 16 GB. Logs land in
+`~/Library/Logs/agent-dev-env/tart-<vm>.log`.
 
 ## Building your own images
 

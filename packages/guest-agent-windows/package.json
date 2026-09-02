@@ -1,0 +1,13 @@
+{
+  "name": "guest-agent-windows",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Windows 11 (ARM64) sandbox guest agent: SSH agent + Docker bridges over named pipes (shared by the QEMU and VMware backends).",
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "bridge-core": "workspace:*"
+  }
+}

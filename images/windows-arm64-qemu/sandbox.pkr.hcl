@@ -319,7 +319,7 @@ source "qemu" "windows" {
   # still watchable via the plugin's VNC server (e.g. vncdotool captures).
   headless = true
 
-  # VNC server for the build watchdog (scripts/watch-build.sh): pinned to a
+  # VNC server for the build watchdog (bundled watch-build.py): pinned to a
   # single port so the platform build.sh can start the watchdog before
   # `packer build` without scanning for the port.
   vnc_bind_address = "127.0.0.1"
@@ -332,7 +332,7 @@ source "qemu" "windows" {
   # (Windows cannot be booted reliably from the shell). The keys are typed
   # within the first ~15 s, long before Setup's UI appears, so the Cancel
   # dialog they trigger on the "Installing Windows 11" screen is auto-
-  # dismissed by the build watchdog (see scripts/watch-build.sh on the host).
+  # dismissed by the build watchdog (bundled watch-build.py on the host).
   boot_wait = "1s"
   boot_command = [
     "<enter><wait1><enter><wait1><enter><wait1><enter><wait1><enter><wait1><enter><wait1><enter><wait1><enter><wait1><enter><wait1><enter><wait1><enter><wait1><enter><wait1><enter><wait1><enter><wait1><enter>",
@@ -843,7 +843,7 @@ if (Test-Path $envFile) {
   }
 
   # ===== OpenSSH Server + RDP =====
-  # sshd gives the host a management channel (scripts/run-windows-qemu-sandbox.sh
+  # sshd gives the host a management channel (agent-dev-env run windows-qemu
   # forwards guest 22 to host 2222); RDP gives a desktop session. Password
   # auth is enabled for the Administrator account so the fixed sandbox
   # credentials from the vars file work.

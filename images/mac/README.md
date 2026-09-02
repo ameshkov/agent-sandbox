@@ -21,7 +21,7 @@ Images are published with semantic version tags (`:1.2.0`, `:latest`). The
 current version lives in the image's vars file (`image_version`); every release
 bumps it, adds a [CHANGELOG.md](CHANGELOG.md) entry, and tags the release
 commit `mac-v<version>` (e.g. `mac-v1.2.0`, created with
-`./scripts/tag.sh <image>`).
+`npx agent-dev-env tag <image>`).
 
 ## Building locally
 
@@ -32,17 +32,18 @@ The Tart Packer plugin is installed automatically by `packer init`.
 ```bash
 # Run from the repository root
 
-./scripts/build.sh <image-name>
+npx agent-dev-env build <image-name>
 
 # Example:
-./scripts/build.sh sandbox-macos-tahoe
+npx agent-dev-env build sandbox-macos-tahoe
 
 # Or build every image:
-./scripts/build.sh
+npx agent-dev-env build
 ```
 
-The first build pulls the ~50 GB base image
-(`ghcr.io/cirruslabs/macos-tahoe-xcode:26.4.1`) and takes a while.
+`agent-dev-env` is the CLI shipped by this repo (see
+[docs/cli.md](../../docs/cli.md)). The first build pulls the ~50 GB base
+image (`ghcr.io/cirruslabs/macos-tahoe-xcode:26.4.1`) and takes a while.
 Note that the builder fails if a VM with the same name already exists —
 remove it first with `tart delete <image-name>`.
 
@@ -50,13 +51,13 @@ remove it first with `tart delete <image-name>`.
 
 Images are published to GHCR under
 `ghcr.io/<owner>/<image>:<version>` (the package name equals the image
-name, e.g. `sandbox-macos-tahoe`) — build locally with `./scripts/build.sh`,
-then push with `./scripts/deploy.sh`. The version tag is the image's
-`image_version` from its vars file:
+name, e.g. `sandbox-macos-tahoe`) — build locally with
+`npx agent-dev-env build`, then push with `npx agent-dev-env deploy`. The
+version tag is the image's `image_version` from its vars file:
 
 ```bash
 # One-time: authenticate against GHCR with a token that has `packages:write`
 tart login ghcr.io
 
-./scripts/deploy.sh sandbox-macos-tahoe
+npx agent-dev-env deploy sandbox-macos-tahoe
 ```

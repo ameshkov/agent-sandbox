@@ -21,8 +21,9 @@ config:
   link-fragments: false
 
 globs:
-  - "**/*.{md,markdown}"
+  - '**/*.{md,markdown}'
 
 ignores:
-  - node_modules/**
+  - '**/node_modules/**'
+  - '**/dist/**'
   - build/**

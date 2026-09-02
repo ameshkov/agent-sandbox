@@ -1,0 +1,14 @@
+{
+  "name": "guest-agent-mac",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "macOS sandbox guest agent: SSH agent + Docker bridges (launchd), env exports, agent rules.",
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "bridge-core": "workspace:*",
+    "guest-rules": "workspace:*"
+  }
+}

@@ -30,10 +30,10 @@ openchamber_ui_password = "sandbox"
 # TCP port the OpenChamber web UI listens on inside the guest (host access:
 # http://<vm-ip>:4000). 4000 — not the Vite dev-server default 3000 — so
 # frontend dev servers don't collide with it. Keep
-# scripts/run-macos-sandbox.sh's SANDBOX_OPENCHAMBER_PORT in sync.
+# the CLI's SANDBOX_OPENCHAMBER_PORT default (lib/platform.ts) in sync.
 openchamber_port = 4000
 
 # Semantic version this image is published under (also the GHCR push tag,
 # besides :latest).  For every release: bump it, add a CHANGELOG.md entry,
-# and create the mac-v<version> git tag (./scripts/tag.sh <image>).
+# and create the mac-v<version> git tag (agent-dev-env tag <image>).
 image_version = "1.6.0"

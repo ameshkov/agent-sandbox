@@ -8,5 +8,10 @@
 # drivers/staging — created by the platform build wrappers)
 build/
 
+# Node (the agent-dev-env CLI in this repo)
+node_modules/
+.pnpm-store/
+dist/
+
 # Python bytecode
 __pycache__/

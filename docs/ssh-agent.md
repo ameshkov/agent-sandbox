@@ -1,34 +1,22 @@
 # Sharing the SSH agent with the sandbox
 
-Your SSH keys can live in a password manager on the host — Bitwarden, 1Password,
-KeePassXC, ... — while the coding agent inside the sandbox VM uses them for
-`git push`, `ssh`, `scp`, and anything else that needs authentication. This
-guide explains how to expose the host's SSH agent socket to the guest.
+Your SSH keys can live in a password manager on the host — Bitwarden,
+1Password, KeePassXC, ... — while the coding agent inside the sandbox VM
+uses them for `git push`, `ssh`, `scp`, and anything else that needs
+authentication. This guide explains how the `agent-dev-env` CLI exposes
+the host's SSH agent socket to the guest.
 
 ## Why a shared directory won't work
 
 `SSH_AUTH_SOCK` points to a Unix domain socket. The socket "file" is only a
-pointer to a socket endpoint inside the kernel of the machine that created it
-(your host). A directory mount (`tart run --dir=...`, virtiofs) moves file
+pointer to a socket endpoint inside the kernel of the machine that created
+it (your host). A directory mount (`--work-dir`, virtiofs/HGFS) moves file
 contents, not kernel objects — so mounting the directory that contains the
-socket and pointing `SSH_AUTH_SOCK` at it fails (`connect: No such file or
-directory`). The guest needs a **real socket in its own kernel**, backed by a
-transport to the host.
+socket and pointing `SSH_AUTH_SOCK` at it fails
+(`connect: No such file or directory`). The guest needs a **real socket in
+its own kernel**, backed by a transport to the host.
 
-> Note: the `launchctl setenv SSH_AUTH_SOCK ...` trick some setup guides show
-> only makes host GUI apps use the agent — it has nothing to do with the guest.
-> Not needed here.
-
-## Requirements
-
-- The password manager must run on the host with its SSH agent enabled, e.g.
-  Bitwarden: Settings → Vault → SSH Agent (approve the approval requests it
-  shows, or enable auto-approval).
-- `socat` on both sides. The sandbox image ships it (macOS images from the
-  current version on); for older VMs and for the host itself:
-  `brew install socat`.
-
-## Recommended: socat socket bridge
+## How the CLI bridges it
 
 ```text
  guest (sandbox VM)                          host (your Mac)
@@ -36,74 +24,68 @@ transport to the host.
  git / ssh / opencode
    │
    ▼
- /tmp/ssh-agent.sock  (Unix socket in guest)
-   │
- socat UNIX-LISTEN ──► TCP ──► gateway IP ──► socat TCP-LISTEN ──► agent socket
+ /tmp/ssh-agent.sock  (Unix socket in guest)          SSH_AUTH_SOCK
+   │                                        (Bitwarden, 1Password, ...)
+ guest agent ──► TCP ──► gateway IP ──► host bridge ──► agent socket
 ```
 
-The bridge is two `socat` processes: the host turns the agent socket into a TCP
-port on Tart's VM network; the guest turns that port back into a Unix socket at
-a fixed path.
+The bridge is two forwarders (no socat, no shell scripts — the same bundled
+`bridge.js` runs on both sides): `agent-dev-env run <platform>` detects an
+*overridden* agent socket on the host and
 
-### Host
+- starts a host-side forwarder that turns the agent socket into a TCP port
+  on the VM network (bound to the NAT/gateway address — not exposed to
+  your LAN; loopback for the QEMU hostfwd),
+- installs and starts the platform's guest agent, which creates the socket
+  in the guest at a fixed path and points `SSH_AUTH_SOCK` at it
+  (macOS: LaunchAgent + `~/.zprofile` + the `IdentityAgent` patch in
+  `~/.ssh/config`; Ubuntu: systemd user services + `/etc/profile.d`;
+  Windows: ONLOGON scheduled tasks + the `\\.\pipe\openssh-ssh-agent`
+  named pipe), and
+- verifies the bridge, so `ssh`/`git` inside the guest authenticate with
+  the host's keys — **no keys are copied into the guest**.
+
+The guest-side bridge persists (launchd/systemd/schtasks restart it at
+every logon), so it survives guest reboots; the host-side listener lives
+only for the run (in background mode it stays up until `stop`).
+
+## Requirements
+
+- The password manager must run on the host with its SSH agent enabled,
+  e.g. Bitwarden: Settings → Vault → SSH Agent (approve the approval
+  requests it shows, or enable auto-approval).
+- Nothing to install for the bridge — `doctor` no longer checks for socat
+  (the CLI's Node forwarder replaced it everywhere).
+
+Only an *overridden* agent is bridged: with the stock macOS launchd agent
+(`/tmp/...` or the default agent), there are no keys to share, so the CLI
+skips the bridge. A non-default `SSH_AUTH_SOCK` (password manager's
+socket) is what makes it worth bridging. Check what you have:
 
 ```bash
-GW=$(tart ip sandbox | awk -F. '{print $1"."$2"."$3".1"}')   # host's address on Tart's bridge
-socat TCP-LISTEN:4100,reuseaddr,fork,bind="$GW" \
-    UNIX-CONNECT:"$HOME/Library/Containers/com.bitwarden.desktop/Data/.bitwarden-ssh-agent.sock"
+echo "$SSH_AUTH_SOCK"      # e.g. ~/Library/Containers/com.bitwarden.desktop/...
+ssh-add -l                 # the keys the agent holds
 ```
 
-- The gateway derivation works because every VM on Tart's default shared
-  network lives on the same /24, and the host is always `.1`. There is no
-  `tart` command that returns the host-facing address directly.
-- `bind="$GW"` keeps the listener off your LAN: only the VM bridge can reach
-  it. With **bridged** networking the `.1` assumption breaks — use the guest's
-  default gateway
-  (`netstat -nr | awk '/default/{print $2; exit}'`) to find the host address
-  instead.
-- The Bitwarden socket path is an example; other managers use different paths
-  (e.g. 1Password's CLI agent lives at `~/.1password/agent.sock`). Find yours
-  with `ls "$HOME"/Library/Containers/*/Data/*.sock` or in the manager's docs.
+## Verify
 
-### Guest
+Once the sandbox is running:
 
 ```bash
-HOST_GW=$(netstat -nr | awk '/default/{print $2; exit}')     # the host = default gateway
-socat UNIX-LISTEN:/tmp/ssh-agent.sock,fork,unlink-early,mode=600 \
-    TCP:"$HOST_GW":4100 &
-export SSH_AUTH_SOCK=/tmp/ssh-agent.sock   # add to ~/.zprofile so every shell gets it
-printf 'Host *\n    IdentityAgent /tmp/ssh-agent.sock\n' >> ~/.ssh/config
+sudo ssh-add -l                   # inside the guest (or `ssh-add -l`)
+ssh -T git@github.com             # or whatever server you actually use
 ```
 
-`HOST_GW` is the authoritative address the guest uses to reach the host — no
-hardcoding, and it stays correct on any network layout.
+## Notes
 
-The `IdentityAgent` line in `~/.ssh/config` makes `ssh(1)` reach the bridged
-socket directly, so authentication keeps working even where `SSH_AUTH_SOCK` is
-not exported (cron jobs, launchd agents, GUI tools, `tart exec` commands).
-
-### Verify
-
-```bash
-ssh-add -l                    # should list the keys stored in Bitwarden
-ssh -T git@github.com         # or whatever server you actually use
-```
-
-### Making it persistent
-
-- **Guest**: put the `export` in `~/.zprofile`; add the `IdentityAgent` line
-  to `~/.ssh/config`; run the guest `socat` as a background job or a
-  LaunchAgent (a LaunchAgent survives reboots — `/tmp` is cleared per boot, so
-  the socket must be recreated after every boot).
-- **Host**: keep the `socat` line in your `run-sandbox.sh` next to `tart run`,
-  or run it as a LaunchAgent. One host-side listener can serve all your
-  sandboxes. The repo's [`scripts/run-macos-sandbox.sh`](../scripts/run-macos-sandbox.sh)
-  automates the whole flow: it detects the host agent socket and starts the
-  host bridge for the current run (nothing is written to the host's shell
-  profile), then sets up the guest bridge and persists it in the guest's
-  `~/.zprofile` and `~/.ssh/config` (the `IdentityAgent` patch), so it
-  survives guest reboots.
-
-Tip: with the bridge in place, even `tart exec` commands can use the agent,
-e.g. `tart exec sandbox git push` — the `~/.ssh/config` `IdentityAgent` patch
-removes the need for an explicit `SSH_AUTH_SOCK` there.
+- Skip the bridge for a run with `--no-agent`; `SANDBOX_AGENT_PORT`
+  overrides the bridge port (defaults: macOS `4100`, Windows QEMU `4200`,
+  Windows VMware `4300`, Ubuntu `4400` — so all four sandboxes can run
+  side by side).
+- The `IdentityAgent` patch in the guest's `~/.ssh/config` makes `ssh(1)`
+  reach the bridged socket directly, so authentication keeps working even
+  where `SSH_AUTH_SOCK` is not exported (cron jobs, launchd agents, GUI
+  tools, `tart exec` commands).
+- The host listener binds only to the VM network gateway address (or
+  loopback for QEMU), so your keys are never exposed to your LAN — same
+  trust model as the Docker engine bridge.

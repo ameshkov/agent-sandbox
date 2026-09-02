@@ -1,0 +1,37 @@
+{
+  "name": "agent-sandbox",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "The agent-dev-env monorepo workspace: sandbox image recipes (Packer) and the CLI + guest agents that build, run, and wire up dev sandbox VMs.",
+  "engines": {
+    "node": ">=20",
+    "pnpm": ">=10"
+  },
+  "packageManager": "pnpm@10.14.0",
+  "scripts": {
+    "build": "node packages/agent-dev-env-cli/scripts/copy-assets.mjs",
+    "typecheck": "tsc -p packages/agent-dev-env-cli/tsconfig.app.json --noEmit && tsc -p packages/agent-dev-env-cli/tsconfig.test.json && tsc -p packages/bridge-core/tsconfig.json && tsc -p packages/guest-rules/tsconfig.json && tsc -p packages/guest-agent-mac/tsconfig.json && tsc -p packages/guest-agent-windows/tsconfig.json && tsc -p packages/guest-agent-ubuntu/tsconfig.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "format:check": "prettier --check --no-error-on-unmatched-pattern --cache . && markdownlint-cli2 .",
+    "format:fix": "prettier --write --no-error-on-unmatched-pattern --cache . && markdownlint-cli2 --fix .",
+    "lint": "oxlint packages && pnpm knip",
+    "lint:fix": "oxlint packages --fix",
+    "knip": "knip --production",
+    "check": "pnpm run format:check && pnpm run lint && pnpm run typecheck && pnpm run build && pnpm run test",
+    "prepare": "husky || true"
+  },
+  "devDependencies": {
+    "@types/node": "20.19.43",
+    "@types/ssh2": "1.15.5",
+    "esbuild": "0.28.2",
+    "husky": "9.1.7",
+    "knip": "6.29.0",
+    "markdownlint-cli2": "0.23.2",
+    "oxlint": "1.76.0",
+    "prettier": "3.9.6",
+    "typescript": "5.9.3",
+    "vitest": "4.1.11"
+  }
+}

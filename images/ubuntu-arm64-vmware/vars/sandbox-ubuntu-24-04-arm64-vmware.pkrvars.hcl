@@ -67,5 +67,5 @@ openchamber_port = 4000
 # Semantic version this image is published under (also the GHCR push tag,
 # besides :latest). For every release: bump it, add a CHANGELOG.md entry,
 # and create the ubuntu-arm64-vmware-v<version> git tag
-# (./scripts/tag.sh <image>).
+# (npx agent-dev-env tag <image>).
 image_version = "1.1.0"

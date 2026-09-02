@@ -19,8 +19,7 @@ The sibling images are the macOS
 ([QEMU](../windows-arm64-qemu/README.md),
 [VMware](../windows-arm64-vmware/README.md)) sandboxes. See
 [docs/ubuntu-vmware.md](../../docs/ubuntu-vmware.md) for the user
-guide (boot it with
-[scripts/run-ubuntu-vmware-sandbox.sh](../../scripts/run-ubuntu-vmware-sandbox.sh)).
+guide (boot it with `npx agent-dev-env run ubuntu-vmware`).
 
 ## Prerequisites
 
@@ -52,11 +51,11 @@ staging from Fusion is needed (unlike the Windows image).
 ```bash
 # From the repository root
 UBUNTU_ISO_PATH=/path/to/ubuntu-24.04.4-live-server-arm64.iso \
-  ./scripts/build.sh sandbox-ubuntu-24-04-arm64-vmware
+  npx agent-dev-env build sandbox-ubuntu-24-04-arm64-vmware
 ```
 
-`scripts/build.sh` delegates to `images/ubuntu-arm64-vmware/build.sh` when
-a platform directory ships its own wrapper. The wrapper:
+`agent-dev-env` is the CLI shipped by this repo (see
+[docs/cli.md](../../docs/cli.md)). The ubuntu-vmware build flow:
 
 1. Verifies the host (Apple Silicon), the local ISO (SHA256 against
    `iso_sha256` from the vars file) and the Fusion install (only needed
@@ -72,7 +71,7 @@ a platform directory ships its own wrapper. The wrapper:
    LVM over the whole disk, user `admin` (password from the vars file),
    openssh-server, open-vm-tools — then reboots into the installed system
    and is provisioned over SSH.
-3. Runs the VNC **build watchdog** (`scripts/watch-build.sh`) alongside
+3. Runs the VNC **build watchdog** (bundled `assets/watchdog/`) alongside
    `packer build` (pinned VNC port 5901) to auto-dismiss installer dialogs
    and rescue a boot that lands in the UEFI shell. Needs
    `pip3 install vncdotool` + Xcode command line tools; skipped with a
@@ -88,11 +87,10 @@ a platform directory ships its own wrapper. The wrapper:
 
 A build takes roughly 30 minutes on an M-series Mac (the Ubuntu installer
 dominates, plus the ~8 min GNOME desktop apt install; Fusion runs the
-guest near-native). Everything per image lives
-in a top-level `build/` directory (gitignored):
-`build/ubuntu-arm64-vmware/output/` (the vmx + vmdk + nvram), plus
-`packer_cache/`. The macOS/tart images build no files and have no such
-directory.
+guest near-native). Everything per image lives under the CLI's data root:
+`~/Library/Application Support/agent-dev-env/build/ubuntu-vmware/output/`
+(the vmx + vmdk + nvram), plus `packer_cache/`. The macOS/tart images
+build no files and have no such directory.
 
 ## What's in the image
 
@@ -113,29 +111,29 @@ directory.
 | OpenCodeReview (`ocr`) | npm global (`@alibaba-group/open-code-review`) |
 | OpenChamber web UI | npm global (`@openchamber/web`), systemd **user** service (`agent-sandbox-openchamber`) on `0.0.0.0:4000`, started at boot (`loginctl enable-linger`) |
 | SSH | openssh-server with password auth; `admin`/sandbox1 (see the vars file); Ubuntu's default cloud-init finalization |
-| systemd user services | Linger enabled for `admin`; the runner's socat bridges and OpenChamber auto-start in the guest |
+| systemd user services | Linger enabled for `admin`; the guest agent's bridge services and OpenChamber auto-start in the guest |
 
 ## Versioning
 
 Same convention as the other images: the image version lives in
 `image_version` in the vars file; every release bumps it, adds a
 `CHANGELOG.md` entry, and creates a `ubuntu-arm64-vmware-v<version>` git
-tag via `./scripts/tag.sh <image>`.
+tag via `npx agent-dev-env tag <image>`.
 
 ## Running and publishing
 
-- Run the sandbox: `./scripts/run-ubuntu-vmware-sandbox.sh` — extracts
+- Run the sandbox: `npx agent-dev-env run ubuntu-vmware` — extracts
   the archive, clones a working VM with `vmrun`, discovers the guest IP
   via open-vm-tools, and bridges the host's Docker engine and SSH agent
   into the guest (see
   [docs/ubuntu-vmware.md](../../docs/ubuntu-vmware.md)).
-- Publish: `./scripts/deploy.sh sandbox-ubuntu-24-04-arm64-vmware` packs
-  the output directory into `${image_name}.tar.gz` and pushes it to
+- Publish: `npx agent-dev-env deploy sandbox-ubuntu-24-04-arm64-vmware`
+  packs the output directory into `${image_name}.tar.gz` and pushes it to
   `ghcr.io/<owner>/sandbox-ubuntu-24-04-arm64-vmware:<version>` +
-  `:latest` as an OCI artifact via `oras` (the platform ships its own
-  deploy wrapper — `images/ubuntu-arm64-vmware/deploy.sh` — because
-  `tart push` only works for Tart VMs). Needs `brew install oras` and a
-  GHCR token with `write:packages` (`oras login ghcr.io`).
+  `:latest` as an OCI artifact via `oras` (the CLI packs and pushes
+  directly — no platform wrapper — because `tart push` only works for
+  Tart VMs). Needs `brew install oras` and a GHCR token with
+  `write:packages` (`oras login ghcr.io`).
 
 ## Gotchas
 
@@ -151,18 +149,18 @@ tag via `./scripts/tag.sh <image>`.
   folder ships only `windows.iso`; open-vm-tools are the only in-guest
   tools available for arm64 Linux VMs. The image installs them from the
   Ubuntu archive, so their version tracks Ubuntu, not Fusion.
-- **The autoinstall seed comes over the wrapper's HTTP server, and the
+- **The autoinstall seed comes over the build flow's HTTP server, and the
   grub typing is done by the build watchdog.** The seed is fetched via
   `ds=nocloud-net` from `python3 -m http.server 8004` (`autoinstall/`),
-  and `scripts/watch-build.py` types the kernel command when grub appears
-  (`WATCH_BUILD_BOOT_CMD`; the firmware's No-Media/PXE probe cycle before
-  grub is variable-length, so the plugin's own boot_command typing was
-  unreliable and could boot the interactive Subiquity installer — a build
-  then hangs waiting for SSH; check the VNC watchdog frames in
-  `build/ubuntu-arm64-vmware/packer_cache/watchdog/`). The watchdog polls
-  every 3 s until the command is typed (grub's menu countdown is ~20 s
-  wide — the slow ~2 min-per-frame poll could miss it entirely), then
-  relaxes to the slow cadence.
+  and the bundled `watch-build.py` types the kernel command when grub
+  appears (`WATCH_BUILD_BOOT_CMD`; the firmware's No-Media/PXE probe
+  cycle before grub is variable-length, so the plugin's own boot_command
+  typing was unreliable and could boot the interactive Subiquity installer
+  — a build then hangs waiting for SSH; check the VNC watchdog frames in
+  `~/Library/Application Support/agent-dev-env/build/ubuntu-vmware/packer_cache/watchdog/`).
+  The watchdog polls every 3 s until the command is typed (grub's menu
+  countdown is ~20 s wide — the slow ~2 min-per-frame poll could miss it
+  entirely), then relaxes to the slow cadence.
 - **Keep `autoinstall/user-data` in sync with the vars file**: the seed
   bakes the sandbox user (name + crypt hash of `ssh_password`). Change
   the credentials in the vars file *and* the `identity:` block together.

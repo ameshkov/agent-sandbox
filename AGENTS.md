@@ -1,237 +1,437 @@
 # AGENTS.md
 
-Sandbox VM image recipes for AI coding agents: Packer templates (Tart) that
-build a macOS VM with a full coding toolchain, plus user docs. There is no app
-code, no tests, no CI — the deliverable is the Packer config, the vars files,
-and the docs. Read [DEVELOPMENT.md](DEVELOPMENT.md) before touching image
-recipes; it is the authoritative build/release guide.
+agent-dev-env — sandbox VM image recipes plus the CLI that builds, runs,
+and wires up developer sandbox VMs: macOS (Tart), Windows 11 ARM64
+(QEMU / VMware Fusion), Ubuntu 24.04 ARM64 (VMware Fusion). The repo hosts
+the Packer image recipes and the TypeScript CLI distributed as the
+`agent-dev-env` npm package; the npm package bundles everything the CLI
+needs at runtime.
 
-## Layout
+## Table of Contents
 
-- `images/mac/sandbox.pkr.hcl` — the only Packer template; source is the
-  `tart-cli` builder (Cirrus Labs base images from GHCR, `tart-cli` clones a
-  `ghcr.io/cirruslabs/macos-<version>-xcode:<tag>` base).
-- `images/mac/vars/<image>.pkrvars.hcl` — one vars file per image (per macOS
-  version): OS/toolchain versions, VM resources, `image_version`. Single
-  source of truth for versions — wire changes through template variables,
-  never hardcode in the template.
-- `images/windows-arm64-qemu/` — Windows 11 (ARM64) sandbox images: Packer QEMU
-  template (`sandbox.pkr.hcl`) with `autounattend.xml` + `build.sh` /
-  `qemu-with-tpm.sh` wrappers (the platform build wrapper is required — swtpm,
-  the bring-your-own ISO, and the ARM64 virtio driver staging can't be
-  expressed in the template).
-- `images/windows-arm64-vmware/` — the VMware sibling: Packer `vmware-iso`
-  template (`sandbox.pkr.hcl`) with `autounattend.xml` + `build.sh` /
-  `deploy.sh` wrappers (the ARM64 vmxnet3 driver staging + the VMware Tools
-  attach come from the Fusion app bundle; the published artifact is a tar.gz
-  of the output vmx/vmdk). Same guest and toolchain as the QEMU image.
-- `images/ubuntu-arm64-vmware/` — Ubuntu 24.04 LTS (ARM64) sandbox image:
-  Packer `vmware-iso` template with an `autoinstall/` cloud-init seed
-  (user-data + meta-data; served by a wrapper-started HTTP server on port
-  8004, fetched via the kernel's `ds=nocloud-net`; the grub autoinstall
-  command is typed by the VNC build watchdog via `WATCH_BUILD_BOOT_CMD`
-  because the plugin's own boot typing raced the firmware's probe cycle)
-  and `build.sh` / `deploy.sh` wrappers. No Fusion driver/tools staging
-  (vmxnet3 + NVMe are in-box in the Ubuntu kernel; open-vm-tools come
-  from the Ubuntu archive — Fusion ships no Linux tools ISO for arm64
-  guests). Same bare-metal mechanics as the Windows VMware image: NAT +
-  vmxnet3 + EFI, tar.gz OCI artifact.
-- `scripts/build.sh`, `scripts/deploy.sh`, `scripts/tag.sh` — wrappers that
-  discover images from `images/*/vars/*.pkrvars.hcl`; they resolve the repo
-  root themselves, so run them from anywhere. `build.sh` delegates to a
-  platform's `build.sh` when the platform directory ships one.
-- `scripts/run-macos-sandbox.sh` — user-facing runner: pulls/clones the sandbox
-  if needed, runs it with the recommended settings, bridges the host's SSH
-  agent into the guest (see `docs/ssh-agent.md`) and the host's Docker engine
-  into the guest when one is running (see `docs/macos.md`), copies the host's
-  user settings into the guest once per VM (versioned marker inside the guest,
-  see `docs/macos.md`), installs the sandbox environment rules into the
-  guest's agents (`scripts/agent-rules.md`), and verifies OpenChamber.
-- `scripts/run-windows-qemu-sandbox.sh` — user-facing runner for the Windows
-  sandbox: boots the qcow2 under QEMU + swtpm (working VM = COW overlay +
-  persistent TPM/NVRAM under `~/Library/Application Support/agent-sandbox/`),
-  forwards SSH/RDP/WinRM/OpenChamber ports, bridges the host's SSH agent and
-  Docker engine into the guest (Node relays on named pipes + host socat),
-  and verifies OpenChamber. See `docs/windows-qemu.md`.
-- `scripts/run-windows-vmware-sandbox.sh` — user-facing runner for the
-  VMware Windows sandbox: extracts the vmx/vmdk archive and clones a
-  working VM with `vmrun` (Fusion NAT; no port forwarding — the guest IP
-  comes from `vmrun getGuestIPAddress`), bridges the host's SSH agent and
-  Docker engine into the guest the same way, accepts `SANDBOX_WORK_DIR` /
-  `--work-dir` but skips the HGFS shared folder with a warning (not
-  supported for Windows 11 ARM guests on Apple silicon), and verifies
-  OpenChamber. See `docs/windows-vmware.md`.
-- `scripts/run-ubuntu-vmware-sandbox.sh` — user-facing runner for the
-  Ubuntu VMware sandbox: same vmrun cloning/IP/NAT mechanics as the
-  Windows runner, with Linux guests — bridges the host's SSH agent and
-  Docker engine as systemd **user** services (`socat` relays rendered from
-  `scripts/lib/ubuntu-vmware/`, linger enabled in the image), shares a host
-  folder (HGFS, `SANDBOX_WORK_DIR` / `--work-dir` → `/mnt/hgfs/work`),
-  installs the sandbox
-  agent rules (`scripts/agent-rules-linux.md`) into the guest's
-  opencode/Copilot configs, copies the host's user settings into the guest
-  once per VM (versioned marker, `--no-settings` skips; same file set as
-  the macOS runner), and verifies OpenChamber. See `docs/ubuntu-vmware.md`.
-- `scripts/stop-macos-sandbox.sh`, `scripts/stop-windows-qemu-sandbox.sh`,
-  `scripts/stop-windows-vmware-sandbox.sh`,
-  `scripts/stop-ubuntu-vmware-sandbox.sh` — user-facing counterparts to the
-  `run-*` scripts: stop the sandbox VM (`tart stop` / `vmrun stop`, the QEMU
-  one kills qemu + swtpm via the runner's pid files) and kill the host socat
-  bridge listeners the runner left up.
-- `scripts/delete-macos-sandbox.sh`,
-  `scripts/delete-windows-qemu-sandbox.sh`,
-  `scripts/delete-windows-vmware-sandbox.sh`,
-  `scripts/delete-ubuntu-vmware-sandbox.sh` — delete the sandbox: stop it
-  (delegating to the matching `stop-*` script), then remove the VM/state —
-  `tart delete` for the macOS VMs (optionally the pristine image with
-  `--pristine`), `rm -rf` of the state dir for the Windows/Ubuntu ones
-  (working VM disk/clone + TPM/NVRAM/overlay + pulled image cache). Asks
-  first unless `--yes`.
-- `scripts/agent-rules.md` — sandbox environment rules installed into the
-  guest's coding agents (opencode global `AGENTS.md`, Copilot CLI
-  `copilot-instructions.md`): Docker remote-engine topology, shared-directory
-  path mapping, SSH agent bridge. The runner templates in the actual
-  work-dir/mount paths, drops the SSH section when no agent bridge is up,
-  asks before installing or updating the rules, and only replaces
-  user-modified files after a confirmation. `scripts/agent-rules-linux.md`
-  is the Ubuntu-guest flavor (installed by `run-ubuntu-vmware-sandbox.sh`).
-- `scripts/sync-macos-sandbox.sh` — user-facing: copies the host's user
-  settings (opencode config/agents/skills/commands/plugins, Copilot
-  config/skills, SSH/Git dotfiles)
-  into the guest on demand and restarts OpenChamber; requires a running VM.
-- `scripts/sync-ubuntu-vmware-sandbox.sh` — the Ubuntu-guest counterpart of
-  the sync script above: same file set (guest paths mapped to the Linux
-  layout), same marker, same OpenChamber restart; requires a running
-  sandbox VM.
-- `scripts/lib/macos-settings.sh` — shared code for the two scripts above:
-  output helpers, VM helpers, and the user-settings copy logic
-  (`collect_settings_files`, marker, OpenChamber restart). Keep the settings
-  logic here, not in the scripts.
-- `scripts/lib/vmware.sh` — shared vmrun helpers for the VMware sandboxes
-  (vmrun resolution, post-build hardware-version upgrade, vmx displayName);
-  sourced by the VMware platform `build.sh` files and both VMware runners.
-- `scripts/lib/windows-vmware/` — shared helpers for the VMware Windows
-  sandbox: `lib.sh` (shim forwarding to `../vmware.sh`) and the
-  guest-side bridge templates (`bridge-relay.js`, `bridges.ps1`,
-  `start-relays.cmd`, `guest-setup.ps1`) that the runner renders into the
-  guest.
-- `scripts/lib/ubuntu-vmware/` — the Ubuntu VMware sandbox's shared
-  templates/libs: the guest bridge template (`guest-setup.sh`: systemd user
-  services + profile.d exports, rendered with the run's host alias and
-  bridge ports by the runner) and the host-side user-settings copy logic
-  (`settings.sh`: SSH/scp transport, guest-layout mapping, gitconfig
-  sanitization for `/home/admin`, marker; shared by the runner and the
-  sync script).
-- `docs/` — user guides. `macos.md`, `windows-qemu.md`, `windows-vmware.md`,
-  `ubuntu-vmware.md` and `ssh-agent.md` are real.
-- `images/mac/CHANGELOG.md` — per-image changelog, keep in sync with
-  `image_version`; always keeps an `[Unreleased]` section on top and links to
-  the release tags (`mac-v<version>`) at the bottom.
+- [Project Overview](#project-overview)
+- [Technical Context](#technical-context)
+- [Project Structure](#project-structure)
+- [Build and Test Commands](#build-and-test-commands)
+- [Contribution Instructions](#contribution-instructions)
+- [Code Guidelines](#code-guidelines)
+    - [Architecture](#architecture)
+    - [Code Quality](#code-quality)
+    - [Testing](#testing)
+    - [Dependency Management](#dependency-management)
+    - [Configuration & Documentation](#configuration--documentation)
+    - [Project Conventions](#project-conventions)
+    - [Markdown Formatting](#markdown-formatting)
 
-## Commands
+## Project Overview
 
-- Build one image: `./scripts/build.sh sandbox-macos-tahoe` (all images if no
-  arg). Fails if a VM with that name already exists — `tart delete
-  sandbox-macos-tahoe` first. The Windows images are built with
-  `WINDOWS_ISO_PATH=/path/to/iso ./scripts/build.sh sandbox-windows-11-arm64-qemu`
-  (QEMU) or `./scripts/build.sh sandbox-windows-11-arm64-vmware` (VMware),
-  and the Ubuntu image with
-  `UBUNTU_ISO_PATH=/path/to/iso ./scripts/build.sh sandbox-ubuntu-24-04-arm64-vmware` —
-  `build.sh` delegates to the platform wrapper (`images/windows-arm64-qemu/build.sh`
-  for swtpm + ISO staging, `images/windows-arm64-vmware/build.sh` for the
-  Fusion ARM64 driver staging, `images/ubuntu-arm64-vmware/build.sh` for
-  the ISO check + autoinstall build; the Windows builds run a VNC build
-  watchdog, `scripts/watch-build.sh`, that auto-dismisses Windows Setup
-  dialogs — needs `pip3 install vncdotool`), see the platform READMEs.
-- Fast HCL check without a build (from `images/mac/`):
-  `packer validate -var-file=vars/<image>.pkrvars.hcl sandbox.pkr.hcl`.
-- Publish: `./scripts/deploy.sh <image>` — pushes `<version>` + `:latest` to
-  `ghcr.io/<owner>/<image>`; macOS needs a one-time `tart login ghcr.io` with
-  `packages:write`, the Windows images delegate to their platform deploy
-  wrappers (`images/windows-arm64-qemu/deploy.sh`,
-  `images/windows-arm64-vmware/deploy.sh`, oras push — needs
-  `brew install oras` + `oras login ghcr.io`). Owner comes from the git
-  remote, override with `GHCR_OWNER`.
-- Tag a release: `./scripts/tag.sh <image>` — creates and pushes the annotated
-  git tag `<platform>-v<version>` (e.g. `mac-v1.2.0`); fails on a dirty tree
-  or a missing `[<tag>]` CHANGELOG entry. Run after committing a release,
-  before `build.sh` + `deploy.sh`.
-- Verify Markdown: `npx --yes markdownlint-cli2@0.23.2 .` — lints every
-  `*.md` file in the repo against `.markdownlint-cli2.yaml` (repo root); pass
-  `--fix` to auto-fix what can be fixed automatically.
+Two deliverables share this repo:
 
-## Releases & tags
+- **Image recipes** — `images/<platform>/` holds the per-platform Packer
+  templates (`sandbox.pkr.hcl`), per-image vars files
+  (`vars/<image>.pkrvars.hcl`, the single source of truth for versions),
+  guest seeds (`autounattend.xml`, `autoinstall/`), and platform build /
+  deploy wrappers. Images are published to GHCR.
+- **The `agent-dev-env` CLI** — a TypeScript npm CLI that replaced the
+  legacy shell scripts: per-platform runners, image lifecycle (build /
+  deploy / tag), and diagnostics (`doctor`, `status`, `list`). The port is
+  complete — the shell scripts are removed (see docs/plan.md).
 
-- Version source of truth: `image_version` in the image's vars file; every
-  release bumps it. Git tags are repo-wide, so a release tag is prefixed with
-  the platform: `<platform>-v<version>` (e.g. `mac-v1.2.0`). This is separate
-  from the GHCR push tags, which are `<image>:<image_version>` + `:latest`.
-- Every version bump creates a tag: bump `image_version`, add the CHANGELOG
-  entry, commit, then `./scripts/tag.sh <image>`. `tag.sh` enforces the rules:
-  it refuses to tag a dirty working tree (so the tag always points at the
-  release commit, never at uncommitted changes), refuses a changelog without a
-  `[<tag>]` entry, and never overwrites an existing tag. The tag is annotated
-  and pushed to origin.
-- CHANGELOG format (`images/mac/CHANGELOG.md`, mirrored for new platforms):
-    - Always keep `## [Unreleased]` on top — never remove it. *All* new
-      changes land there, under a `###` section (Added/Changed/Fixed/...);
-      never create or edit a release heading while landing changes.
-    - A release heading is the tag name: `## [mac-v1.2.0] - <date>` (Keep a
-      Changelog / semver). It is created only in the release step, when
-      `image_version` is bumped and the tag is cut — not per change.
-    - At the bottom: `[unreleased]` → compare URL against the newest tag, and
-      one `[mac-vX.Y.Z]` → `releases/tag/mac-vX.Y.Z` per release. Update both
-      in the same change as the release entry, never for Unreleased changes.
-- Release sequence: bump + changelog entry → commit → `./scripts/tag.sh
-  <image>` → `./scripts/build.sh <image>` → `./scripts/deploy.sh <image>`.
-  The full guide is in DEVELOPMENT.md → "Releasing a new image version".
+The CLI runs on the host (macOS, Apple Silicon only — Tart/VMware/QEMU
+cannot virtualize ARM64 guests on Intel). VM state, logs, and caches live
+under the `agent-dev-env` XDG-aware dirs (`src/lib/paths.ts`), not the
+legacy `agent-sandbox` paths.
 
-## Conventions & gotchas
+## Technical Context
 
-- Image name = vars file name = VM name = `sandbox-macos-<macos-version>`
-  (macOS) or `sandbox-windows-<windows_version>-arm64-qemu` /
-  `sandbox-windows-<windows_version>-arm64-vmware` (Windows) or
-  `sandbox-ubuntu-<ubuntu_version>-arm64-vmware` (Ubuntu). The Xcode
-  version is **not** part of the mac name (it only selects the base
-  image). Never introduce a separate naming scheme.
-- Every release: bump `image_version` in the vars file, add a CHANGELOG entry,
-  commit, create the release tag, then `build.sh` + `deploy.sh` — see
-  "Releases & tags" above. Keep them in sync.
-- Any change to an image — the Packer template, its vars file, or the
-  provisioner scripts — must be recorded in `images/mac/CHANGELOG.md`, not
-  just released versions. Update the changelog in the same change as the
-  image itself; never land an image change without a corresponding entry.
-- Build prerequisites: Apple Silicon host (Tart VMs can't run on Intel),
-  Tart + Packer via Homebrew, ~150 GB free disk; the first build pulls the
-  ~50 GB base image. `PACKER_LOG=1` for verbose output.
-- SSH provisioning credentials are fixed by the Cirrus base images:
-  `admin`/`admin`.
-- Windows templates: inline PowerShell **string literals** must stay
-  ASCII-only. The Packer WinRM transfer mangles non-ASCII characters
-  (e.g. an em-dash `—` came back as a smart quote, which closed the
-  string literal early and failed the whole script's parse at the last
-  provisioner — a 47-min build). Em-dashes are fine in comments, in
-  HCL/Python/shell comments and in the `autounattend.xml`
-  `CommandLine`s, but never inside a PowerShell string in an inline
-  provisioner or `powershell` script.
-- `scripts/deploy.sh` pushes images flat as `ghcr.io/<owner>/<image>` — the
-  platform is part of the image name (`sandbox-macos-…`,
-  `sandbox-windows-…-arm64-qemu`, `sandbox-windows-…-arm64-vmware`),
-  so no path mapping is needed; mirror the `mac` layout (template + `vars/` +
-  README + CHANGELOG) when a new platform lands.
-- Docs are part of the deliverable and must stay in sync with the template:
-  the "What's in the image" table in `docs/macos.md`, the layout tree in
-  `DEVELOPMENT.md`, and `images/mac/README.md` all describe the image — change
-  them together.
-- There is no automated verification: the only end-to-end check is a full
-  image build (~1 hr). Use `packer validate` and review the provisioner shell
-  scripts (`set -e -x` inline blocks) carefully before running a build.
-- Every Markdown file must pass markdownlint before landing — run
-  `npx --yes markdownlint-cli2@0.23.2 .` from the repo root and fix all
-  findings, see the "Markdown Formatting" section below. The config is
-  `.markdownlint-cli2.yaml` at the repo root.
+| Field | Value |
+| --- | --- |
+| Language | TypeScript 5.x, ES2022 target, strict mode |
+| Runtime | Node.js 20+ (host: macOS Apple Silicon) |
+| Package Manager | pnpm 10+ |
+| CLI Framework | commander |
+| Guest Transport | ssh2 (Phase 4 — Ubuntu VMware backend) |
+| VM Tooling | Tart, Packer (tart-cli builder), QEMU + swtpm, VMware Fusion (vmrun) |
+| Image Distribution | GHCR via tart push / oras push |
+| Linting | oxlint (category-based config) + Knip |
+| Formatting | Prettier 3.x, Markdownlint (markdownlint-cli2) |
+| Unit tests | Vitest |
+| Workspace | pnpm workspaces (`packages/*`; the CLI package is `agent-dev-env-cli`) |
 
-## Markdown Formatting
+## Project Structure
+
+```text
+agent-sandbox/
+├── packages/                   # pnpm workspace packages
+│   ├── agent-dev-env-cli/      # The agent-dev-env CLI package (published)
+│   │   ├── src/
+│   │   │   ├── cli.ts          #   CLI entry point (commander)
+│   │   │   ├── commands/       #   command implementations + register.ts
+│   │   │   ├── lifecycle/      #   image logic: catalog.ts (discovery/vars),
+│   │   │   │                   #   build.ts (dispatcher) + build-{macos,qemu,
+│   │   │   │                   #   windows-vmware,ubuntu}.ts (flows) +
+│   │   │   │                   #   build-shared.ts (prereqs/context/packer
+│   │   │   │                   #   pipeline/arg builders) +
+│   │   │   │                   #   build-watchdog.ts (VNC watchdog spawn),
+│   │   │   │                   #   deploy.ts + tag.ts + watch-build.ts
+│   │   │   ├── runners/        #   run framework (docs/plan.md §7) + the macOS
+│   │   │   │                   #   backend (macos*.ts: bridges/guest/rules/
+│   │   │   │                   #   summary), the Ubuntu VMware backend
+│   │   │   │                   #   (ubuntu*.ts: image/shared/bridges/guest/
+│   │   │   │                   #   rules/summary), the Windows VMware
+│   │   │   │                   #   backend (windows*.ts: image/guest/bridges/
+│   │   │   │                   #   autologon/shared/summary, via the shared
+│   │   │   │                   #   vmware-image.ts/vmware-common.ts) and the
+│   │   │   │                   #   Windows QEMU backend (windows-qemu.ts +
+│   │   │   │                   #   qemu-image.ts + windows-qemu-summary.ts via
+│   │   │   │                   #   the shared windows-bridges/windows-guest/
+│   │   │   │                   #   windows-autologon + lib/qemu.ts)
+│   │   │   ├── settings/       #   user-settings copy: shared builders
+│   │   │   │                   #   (common.ts) + per-transport IO — macos.ts/
+│   │   │   │                   #   macos-copy.ts (tart) and ubuntu.ts/
+│   │   │   │                   #   ubuntu-copy.ts (ssh2)
+│   │   │   ├── lib/            #   foundations: logger, prompt, vars, template,
+│   │   │   │                   #   ghcr, paths, exec, git, platform, vmrun,
+│   │   │   │                   #   tart, ssh, network, qemu, ...
+│   │   │   └── **/*.test.ts    #   co-located unit tests
+│   │   ├── scripts/
+│   │   │   └── copy-assets.mjs #   build step: tsc + esbuild bundles +
+│   │   │                       #   copy assets/ + images/ into dist/
+│   │   ├── tsconfig*.json      #   app (build) + test (noEmit) configs
+│   │   └── dist/               #   build output (gitignored): compiled CLI +
+│   │                           #   bundled bridge.js + guest-agent-*.js
+│   ├── bridge-core/            # Zero-dep forwarder (endpoints, forwarder,
+│   │                           # probe, host CLI entry bin.ts)
+│   ├── guest-rules/            # Shared agent-rules probe/apply logic
+│   ├── guest-agent-mac/        # macOS guest agent (launchd, env, rules)
+│   ├── guest-agent-windows/    # Windows 11 ARM64 guest agent (schtasks,
+│   │                           # named pipes; shared by qemu + vmware)
+│   └── guest-agent-ubuntu/     # Ubuntu guest agent (systemd units, env)
+├── assets/                     # Runtime assets bundled into the npm package
+│   ├── rules/                  # Agent rules for guests
+│   ├── watchdog/               # VNC build watchdog
+│   └── images/                 # images/ snapshot, copied at publish
+├── images/                     # Image recipes (the repo's other deliverable)
+│   ├── mac/                    # macOS (Tart) template + vars + CHANGELOG
+│   ├── windows-arm64-qemu/     # Windows 11 ARM64 (QEMU) template +
+│   │                           # qemu-with-tpm.sh + vars + CHANGELOG
+│   ├── windows-arm64-vmware/   # Windows 11 ARM64 (VMware) template + vars
+│   │                           # + CHANGELOG
+│   └── ubuntu-arm64-vmware/    # Ubuntu 24.04 ARM64 (VMware) template + vars
+│                               # + CHANGELOG
+├── docs/                       # User guides (cli/macos/windows-qemu/windows-
+│                               # vmware/ubuntu-vmware/ssh-agent) + plan.md
+├── DEVELOPMENT.md              # Authoritative build/release guide
+├── CHANGELOG.md                # Repo changelog (Unreleased on top)
+├── tsconfig.base.json          # Shared TypeScript compiler options
+├── oxlint.config.ts            # oxlint category-based config
+├── knip.config.ts              # Knip unused-export analysis config
+├── vitest.config.ts            # Vitest configuration
+└── package.json                # Private workspace root (dev deps + scripts)
+```
+
+## Build and Test Commands
+
+CLI:
+
+- `pnpm build` — compile the CLI TypeScript to
+  `packages/agent-dev-env-cli/dist/`, bundle the workspace guest-side
+  packages into single-file JS artifacts (`dist/assets/bridge/bridge.js`,
+  `dist/assets/guest/guest-agent-*.js`, esbuild), and copy the runtime
+  assets (`assets/**`, `images/**` snapshot) into `dist/`
+  (`packages/agent-dev-env-cli/scripts/copy-assets.mjs`)
+- `pnpm typecheck` — check for TypeScript type errors in production and
+  test code
+- `pnpm lint` — lint source files with oxlint and check for unused
+  exports with Knip
+- `pnpm lint:fix` — lint and auto-fix issues
+- `pnpm knip` — run Knip unused-export analysis separately
+- `pnpm format:check` — check formatting with Prettier and Markdownlint
+- `pnpm format:fix` — fix formatting issues
+- `pnpm test` — run the Vitest unit tests
+- `pnpm check` — the full gate: `format:check`, `lint`, `typecheck`,
+  `build`, `test`
+
+Image recipes (via the `agent-dev-env` CLI, see docs/cli.md and
+DEVELOPMENT.md):
+
+- `npx agent-dev-env build <image>` — build one image (all images without
+  an arg); per-platform flows handle swtpm/ISO/Fusion staging
+- `npx agent-dev-env deploy <image>` — push `<version>` + `:latest` to
+  GHCR
+- `npx agent-dev-env tag <image>` — create and push the annotated git
+  release tag (clean tree + CHANGELOG entry enforced)
+- `packer validate -var-file=vars/<image>.pkrvars.hcl sandbox.pkr.hcl` —
+  fast HCL check without a build (from `images/<platform>/`)
+
+## Contribution Instructions
+
+You MUST follow the following rules for EVERY task that you perform:
+
+- You MUST verify it with linter, formatter, and TypeScript compiler.
+  Use the following commands:
+    - `pnpm typecheck` to check for TypeScript type errors
+    - `pnpm lint` to run the linter (oxlint) and Knip unused-export
+      analysis
+    - `pnpm lint:fix` to fix linting issues that can be fixed
+      automatically
+    - `pnpm format:check` to check the formatting (Prettier and Markdownlint)
+    - `pnpm format:fix` to fix the formatting issues
+
+- When making changes to the project structure, ensure the Project
+  Structure section in `AGENTS.md` is updated and remains valid.
+
+- If the prompt essentially asks you to refactor or improve existing code,
+  check if you can phrase it as a code guideline. If it's possible, add it
+  to the relevant Code Guidelines section in `AGENTS.md`.
+
+- You MUST update the unit tests for changed code (co-located
+  `*.test.ts` files), and MUST run `pnpm test` to verify that your
+  changes do not break existing functionality.
+
+- After completing the task you MUST verify that the code you've written
+  follows the Code Guidelines in this file.
+
+- When the coding task is finished update `CHANGELOG.md` and explain
+  changes in the Unreleased section. Add entries to the appropriate
+  subsection (Added, Changed, or Fixed) if it already exists; do not
+  create duplicate subsections. Image-recipe changes additionally land in
+  the platform's `images/<platform>/CHANGELOG.md` (same format, links to
+  the release tags).
+
+## Code Guidelines
+
+### Architecture
+
+Universal design principles this codebase follows:
+
+- **Separation of Concerns** — each module handles one aspect of the
+  system (`lib/` foundations, `lifecycle/` image logic, `commands/`
+  surface, `runners/` per-platform VM flows).
+- **Single Responsibility Principle** — every file, class, or function has
+  one reason to change.
+- **Dependency Direction** — dependencies point downward; never from lower
+  layers to higher ones. Commands may use lifecycle and lib; lifecycle may
+  use lib; lib never imports commands.
+- **Explicit Boundaries** — module interfaces are intentional. The CLI
+  uses plain module imports (no barrel `index.ts` files): import modules
+  directly by file path, never via aggregation barrels.
+- **Data Flow Clarity** — data moves through a predictable path: command
+  → runner/lifecycle → lib. Guest-side operations render templates from
+  `assets/` with `{{TOKEN}}` substitution and report status back as
+  parseable lines.
+- **Minimize Coupling, Maximize Cohesion** — modules are self-contained
+  and interact through narrow interfaces.
+- **Make Invalid States Impossible** — use TypeScript strict mode and
+  validation to prevent illegal combinations at compile time.
+- **Bounded Startup Latency** — anything network-bound (image pulls,
+  engine discovery, guest probes) runs with explicit retries and
+  timeouts (`withTimeout`), never an unbounded wait.
+- **Keep It Boring** — prefer well-understood patterns over clever or
+  novel solutions. Behavior must match the shell scripts' established
+  semantics (prompts, port defaults, messages) unless a deviation is
+  explicitly planned.
+
+CLI layer map:
+
+```text
+cli.ts / commands (surface)
+     ↓
+runners / lifecycle (per-platform flows, image logic)
+     ↓
+lib (path, exec, vars, template, ghcr, platform)
+```
+
+### Code Quality
+
+All code MUST meet documentation and style requirements before merge:
+
+- **Public API documentation**: Exported functions, classes, interfaces,
+  and their properties MUST have JSDoc comments describing purpose,
+  arguments, return values, and thrown errors (use `@throws` only for
+  specific errors).
+- **Static analysis gates**: Every change MUST pass TypeScript compilation
+  (`pnpm typecheck`), oxlint (`pnpm lint`), and Prettier/Markdownlint
+  (`pnpm format:check`) before merge.
+- **Do not modify linter or formatter configurations**: Never change
+  oxlint, Prettier, Markdownlint, or TypeScript configuration files
+  (`oxlint.config.ts`, `.prettierrc`, `.prettierignore`,
+  `.markdownlint-cli2.yaml`, `tsconfig*.json`) to work around lint or
+  formatting errors. Fix the source code instead. If the issue cannot be
+  resolved after a few attempts, ask the human for help. The only
+  sanctioned deviation is the documented `knip.config.ts` `ignore` list
+  and `@internal` tags for modules/exports awaiting a later port phase —
+  each entry names its phase and is removed as soon as the module is used
+  (Knip prints the corresponding config/tag hints).
+- **oxlint category selection**: oxlint groups rules into categories
+  rather than a single `recommended` preset. This project enables only the
+  `correctness` category (error) plus explicit project rules
+  (`no-unused-vars`, `max-lines`, `max-lines-per-function`,
+  `preserve-caught-error`). The `suspicious`, `restriction`, `pedantic`,
+  and `style` categories, and the `unicorn` plugin, are intentionally
+  disabled: they forbid idiomatic TypeScript (async/await, optional
+  chaining, object spread, `undefined`) and the project's conventions.
+  Do not re-enable these without explicit justification.
+- **Error handling strategy**: Prefer throwing errors over returning error
+  values. Handle errors at top-level entry points where they can be
+  logged (`cli.ts` maps them to a non-zero exit; `logger.die()` prints and
+  exits like the shell's `die`).
+- **Import style**: Use top-level static `import` statements exclusively.
+  Do NOT scatter dynamic `await import()` calls inside function bodies
+  ("inline imports"). When a dynamic import is genuinely necessary,
+  extract it into a named, cached helper function at module scope.
+- **File naming**: Use kebab-case for all file names. TypeScript source
+  files MUST use lower-case kebab-case. Do NOT use PascalCase or camelCase
+  file names.
+- **Knip unused-export analysis**: The project uses Knip
+  (`knip.config.ts`) to detect unused exports. All Knip findings MUST
+  be resolved — either remove the unused export or, when the export is
+  genuinely needed but not reachable through the production graph, mark it
+  with the JSDoc `@internal` tag. `@internal` is allowed for
+  test-only exports and for exports awaiting a later port phase; every
+  `@internal` tag MUST include a short explanation of why the export is
+  excluded. Do NOT use `@internal` to silence legitimate unused-export
+  warnings — remove the export instead.
+- **No `@public` tag**: Do NOT use the `@public` JSDoc tag. This is an
+  application (CLI + recipes), not a library, so no symbol is part of a
+  "public API" consumed by external consumers.
+- **File size limit**: Source files MUST stay within 300 lines of code.
+  This is an enforced oxlint `max-lines` gate (`'error'` severity,
+  `max: 300`; blank lines and comments are skipped) — a hard gate, not a
+  soft target. When a file approaches or exceeds this limit, your FIRST
+  and default response MUST be to **split the file into several smaller,
+  cohesive files**, each with a single, clear responsibility. For test
+  files, the `max-lines` gate is raised to 500 (and
+  `max-lines-per-function` is disabled); split a large `*.test.ts` into
+  multiple focused `*.test.ts` files grouped by the behavior they
+  verify — multiple test files per source module are explicitly allowed.
+  **Do NOT** satisfy the limit by making the existing code shorter: no
+  condensing tests into table-driven blocks purely to save lines, no
+  shortening of identifiers, string literals, or file paths, no merging
+  statements onto one line, and no removing blank lines, comments, or
+  JSDoc. Formatting is managed by Prettier and must stay uniform —
+  readability and clarity always win over line count.
+  Exceptions: auto-generated files (the copied image/asset snapshots in
+  `dist/`).
+- **Function size limit**: Functions SHOULD stay within 50 lines of code.
+  When approaching or exceeding this limit, break the function into
+  smaller, named helper functions with single, clear responsibilities.
+  **Do NOT** condense logic into dense one-liners, inline multiple
+  statements on a single line, or strip whitespace to fit the limit —
+  formatting is managed by Prettier and must not be sacrificed for
+  brevity.
+
+**Rationale**: Consistent documentation and tooling enforcement prevents
+technical debt accumulation and ensures codebase navigability.
+
+### Testing
+
+Every module MUST have test coverage:
+
+- **Test file placement**: Test files are co-located with their source
+  files in `src/` and MUST use the `.test.ts` suffix (e.g.,
+  `src/lib/vars.test.ts` next to `src/lib/vars.ts`).
+- **Test style**: Write behavior-named `it()` descriptions (e.g. "returns
+  the default owner when nothing is set"), import `describe`/`it`/`expect`
+  explicitly from `vitest`, and prefer real fixtures over mocks: use
+  real temp dirs (`tmpdir()` + `beforeEach`/`afterEach` cleanup) for file
+  I/O, real vars files for catalog tests, and fake streams only where the
+  unit under test is a stream writer (logger).
+- **Shared test utilities**: Common test infrastructure lives in the
+  `test/` directory when shared across modules (fixture servers, setup
+  helpers). These files MUST NOT use the `.test.ts` suffix — they are
+  test support code, not test cases.
+- **End-to-end tests**: Full-VM/E2E tests live in `test/e2e/`. The repo
+  has no CI — the only end-to-end checks are full image builds (~1 hr)
+  and per-phase smoke runs of the CLI against real platforms.
+- **Test verification mandatory**: All changes MUST pass `pnpm test`
+  before merge. Tests MUST NOT be deleted or weakened without explicit
+  justification.
+- **Use real integrations where practical**: Prefer integration-style
+  tests that exercise real components (real vars files, real catalog
+  discovery, real process spawning) over mock-heavy unit tests. Where a
+  boundary cannot run in a unit test (Tart, vmrun, guest SSH), keep the
+  logic in a pure function and test that.
+
+**Rationale**: Co-locating tests with source keeps related files close;
+testing against real components catches bugs that mocks hide.
+
+### Dependency Management
+
+- **Pin all dependency versions explicitly**: Do not use `^` or `~` in
+  `package.json`.
+
+External dependencies MUST be carefully evaluated before adoption:
+
+- **Prefer vanilla solutions**: Use Node.js built-in APIs and standard
+  language features when they adequately solve the problem. Only add a
+  dependency when it provides significant value over a vanilla
+  implementation.
+- **Reputable sources only**: Dependencies MUST come from
+  well-established, actively maintained projects. Evaluate by: weekly
+  downloads, GitHub stars, recent commit activity, and known maintainers.
+- **Avoid unpopular libraries**: Do NOT add niche or obscure packages
+  with limited community adoption.
+- **Minimize dependency count**: Each new dependency increases attack
+  surface, bundle size, and maintenance burden. Justify every addition.
+- **Use the latest stable version**: When adding a new dependency,
+  explicitly check the package registry for the latest stable release and
+  use it. Do not copy outdated version numbers from memory, training
+  data, or existing lock files of other projects.
+
+**Rationale**: Fewer, well-vetted dependencies reduce security
+vulnerabilities, supply chain risks, and long-term maintenance costs.
+
+### Configuration & Documentation
+
+Configuration and documentation MUST stay synchronized with code:
+
+- **Documentation updates required**: Changes to build process or
+  configuration MUST update relevant documentation.
+- **Structure tracking**: Changes to project structure MUST update the
+  Project Structure section in `AGENTS.md`.
+- **Image/recipe docs sync**: The "What's in the image" tables in
+  `docs/*.md`, the layout tree in `DEVELOPMENT.md`, and the per-platform
+  `images/<platform>/README.md` all describe the images — change them
+  together with the recipes.
+- **Versions as the single source of truth**: The image version lives in
+  the image's vars file (`image_version`); the CLI version lives in
+  `package.json`. Wire changes through the vars-file variables, never
+  hardcode in the templates.
+
+**Rationale**: Stale documentation causes onboarding friction and
+operational incidents.
+
+### Project Conventions
+
+- **Image naming**: image name = vars file name = VM name
+  (`sandbox-macos-<version>`, `sandbox-windows-<version>-arm64-qemu`,
+  `sandbox-windows-<version>-arm64-vmware`,
+  `sandbox-ubuntu-<version>-arm64-vmware`). The Xcode version is NOT part
+  of the mac name. Never introduce a separate naming scheme.
+- **Releases**: bump `image_version` (vars file) + CLI version
+  (`package.json`) together in one release, add CHANGELOG entries, commit,
+  then tag. Tag names are prefixed by platform: `<platform>-v<version>`
+  (e.g. `mac-v1.2.0`); the tag must be created on a clean tree with the
+  matching CHANGELOG entry, after the commit and before
+  `build.sh`/`deploy.sh`.
+- **GHCR owner resolution**: `GHCR_OWNER` env → `--owner` flag → git
+  remote (in a checkout) → default `ameshkov` (`src/lib/ghcr.ts`). Images
+  are pushed flat as `ghcr.io/<owner>/<image>` — the platform is part of
+  the image name.
+- **PowerShell assets ASCII-only**: Windows templates: inline PowerShell
+  **string literals** must stay ASCII-only (the Packer WinRM transfer
+  mangles non-ASCII — an em-dash once closed a string literal early and
+  failed the whole build). Enforced by a unit test; em-dashes are fine in
+  comments and in non-PowerShell files.
+- **Guest markers**: guest-side state markers live under
+  `~/.config/agent-dev-env/` (green-field policy; no legacy agent-sandbox
+  paths).
+
+**Rationale**: These invariants keep the CLI, recipes, and releases
+consistent.
+
+### Markdown Formatting
 
 All Markdown files MUST follow these formatting rules:
 

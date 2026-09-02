@@ -1,0 +1,87 @@
+import { mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { describe, expect, it } from 'vitest';
+import { SETTINGS_MARKER } from './common.js';
+import {
+  collectSettingsFiles,
+  guestSettingsCheckScript,
+  guestSettingsMarkerScript,
+  guestUnpackCommand,
+  openchamberRestartScript,
+  sanitizeGitconfig,
+} from './macos.js';
+
+describe('collectSettingsFiles', () => {
+  it('lists only existing files, keeping the fixed order', () => {
+    const home = mkdtempSync(join(tmpdir(), 'settings-'));
+    mkdirSync(join(home, '.config', 'opencode'), { recursive: true });
+    mkdirSync(join(home, '.ssh'), { recursive: true });
+    writeFileSync(join(home, '.config', 'opencode', 'opencode.json'), '{}');
+    writeFileSync(join(home, '.gitconfig'), '[user]\n');
+    writeFileSync(join(home, '.ssh', 'sign.sh'), '#!/bin/sh\n');
+
+    const files = collectSettingsFiles(home);
+    expect(files).toContain('.config/opencode/opencode.json');
+    expect(files).toContain('.gitconfig');
+    expect(files).not.toContain('.copilot/config.json');
+    // the fixed list comes before the ~/.ssh glob
+    expect(files.indexOf('.gitconfig')).toBeLessThan(files.indexOf('.ssh/sign.sh'));
+  });
+
+  it('collects the ~/.ssh/*.sh helpers', () => {
+    const home = mkdtempSync(join(tmpdir(), 'settings-'));
+    mkdirSync(join(home, '.ssh'), { recursive: true });
+    writeFileSync(join(home, '.ssh', 'sign.sh'), '#!/bin/sh\n');
+    writeFileSync(join(home, '.ssh', 'config'), 'Host *\n');
+    expect(collectSettingsFiles(home)).toContain('.ssh/sign.sh');
+  });
+
+  it('returns an empty list for an empty home', () => {
+    const home = mkdtempSync(join(tmpdir(), 'settings-'));
+    expect(collectSettingsFiles(home)).toEqual([]);
+  });
+});
+
+describe('sanitizeGitconfig', () => {
+  it('rewrites host home paths to the guest home', () => {
+    const input = [
+      'signingkey = ssh-ed25519',
+      'helper = /Users/ameshkov/.ssh/helper.sh',
+      'email = me@example.com',
+    ].join('\n');
+    expect(sanitizeGitconfig(input, '/Users/ameshkov', '/Users/admin')).toBe(
+      [
+        'signingkey = ssh-ed25519',
+        'helper = /Users/admin/.ssh/helper.sh',
+        'email = me@example.com',
+      ].join('\n'),
+    );
+  });
+});
+
+describe('guest scripts', () => {
+  it('the marker check compares the marker against the version', () => {
+    const script = guestSettingsCheckScript();
+    expect(script).toContain(`marker="$HOME/${SETTINGS_MARKER}"`);
+    expect(script).toContain('"$(cat "$marker" 2>/dev/null)" -ge "$version"');
+  });
+
+  it('the marker write targets the green-field agent-dev-env path', () => {
+    const script = guestSettingsMarkerScript();
+    expect(script).toContain(`printf '%s\\n' "$version" > "$HOME/${SETTINGS_MARKER}"`);
+    expect(script).toContain('.config/agent-dev-env/settings-copied');
+    expect(script).not.toContain('agent-sandbox');
+  });
+
+  it('the unpack command tightens ~/.ssh', () => {
+    expect(guestUnpackCommand()).toContain('tar -C "$HOME" -xf -');
+    expect(guestUnpackCommand()).toContain('chmod 700 "$HOME/.ssh"');
+  });
+
+  it('the OpenChamber restart sources ~/.zprofile', () => {
+    const script = openchamberRestartScript();
+    expect(script).toContain('. "$HOME/.zprofile"');
+    expect(script).toContain('exec openchamber restart');
+  });
+});

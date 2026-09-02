@@ -1,0 +1,16 @@
+{
+  "name": "bridge-core",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Zero-dependency socket forwarder shared by the agent-dev-env host bridges and the guest agents.",
+  "exports": {
+    ".": "./src/index.ts",
+    "./endpoints": "./src/endpoints.ts",
+    "./forwarder": "./src/forwarder.ts",
+    "./probe": "./src/probe.ts"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

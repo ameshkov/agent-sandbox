@@ -66,8 +66,8 @@ variable "openchamber_port" {
   default = 4000
   # TCP port the OpenChamber web UI listens on inside the guest. Not 3000 —
   # that is the default Vite dev-server port and would collide with frontend
-  # dev servers in the guest. scripts/run-macos-sandbox.sh's
-  # SANDBOX_OPENCHAMBER_PORT default must stay in sync with this.
+  # dev servers in the guest. The CLI's SANDBOX_OPENCHAMBER_PORT default
+  # (lib/platform.ts) must stay in sync with this.
 }
 
 variable "image_version" {
@@ -315,7 +315,7 @@ END
   # (https://github.com/alibaba/open-code-review). Installed via npm (the
   # image ships Node.js via nvm), provides the `ocr` command; its global
   # config (~/.opencodereview/config.json) is synced from the host by the
-  # user-settings copy (see scripts/lib/macos-settings.sh).
+  # user-settings copy (settings/macos.ts).
   provisioner "shell" {
     inline = [<<-END
 set -e -x

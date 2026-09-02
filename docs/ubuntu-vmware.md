@@ -65,29 +65,31 @@ app bundle — no `brew` step.
 
 ### 2. Run the sandbox
 
-The repo ships a runner script that extracts the image, clones a working
-VM, and wires up the bridges. From the repo root:
+The [`agent-dev-env`](../docs/cli.md) CLI extracts the image, clones a
+working VM, and wires up the bridges. Run it once without installing it:
 
 ```bash
-./scripts/run-ubuntu-vmware-sandbox.sh
+npx agent-dev-env run ubuntu-vmware
 ```
 
-On first use it picks the image archive: the local build output
-(`build/ubuntu-arm64-vmware/output/sandbox-ubuntu-24-04-arm64-vmware.tar.gz`)
+or install the CLI globally (`npm install -g agent-dev-env`) and use
+`agent-dev-env run ubuntu-vmware` everywhere below. On first use it picks
+the image archive: the local build output
+(`~/Library/Application Support/agent-dev-env/build/ubuntu-vmware/...`)
 when present, otherwise it asks to pull
 `sandbox-ubuntu-24-04-arm64-vmware:latest` from GHCR via
 [oras](https://oras.land/) (one-time, ~15 GB — `brew install oras`). It
 then extracts the pristine VM and clones a working VM under
-`~/Library/Application Support/agent-sandbox/ubuntu-24-04-arm64-vmware/`
+`~/Library/Application Support/agent-dev-env/ubuntu-vmware/<image>/`
 (the clone's display name in Fusion's library is
 `agent-sandbox-ubuntu-24-04-arm64-vmware` — the base keeps the image's
-name) — the pristine image is never written to. On the first clone the
-runner also upgrades the working VM's virtual hardware to the version your
+name) — the pristine image is never written to. On the first clone the CLI
+also upgrades the working VM's virtual hardware to the version your
 Fusion supports (`vmrun upgradevm`, recorded once per clone) — without it
 a newer Fusion shows its one-time "Upgrade this virtual machine?" dialog
 on the first windowed start. The guest boots headless or in a Fusion
 window (default) — with the GNOME image the window shows the desktop
-(auto-login as `admin`), and the runner discovers its NAT IP via
+(auto-login as `admin`), and the CLI discovers its NAT IP via
 open-vm-tools:
 
 | Port | Guest service |
@@ -96,9 +98,9 @@ open-vm-tools:
 | 4000 | OpenChamber web UI |
 
 No port forwarding is needed: the VM sits on Fusion's NAT network
-(vmnet8), and the host is that network's router, so the guest IP the
-runner prints is reachable directly from the host. When a Docker engine is
-running on the host (Docker Desktop, Colima, OrbStack, ...), the runner
+(vmnet8), and the host is that network's router, so the guest IP the CLI
+prints is reachable directly from the host. When a Docker engine is
+running on the host (Docker Desktop, Colima, OrbStack, ...), the CLI
 bridges it into the guest; same for a password-manager SSH agent (see
 [Docker (remote engine)](#docker-remote-engine) and
 [SSH agent bridge](#ssh-agent-bridge)). The bridges are installed as
@@ -119,7 +121,7 @@ skip a bridge, `--no-settings` to skip the host user-settings copy,
 > clone — everything inside the guest is lost; the pristine image is not
 > touched.
 
-The runner notices when the image itself changes: it records the archive's
+The CLI notices when the image itself changes: it records the archive's
 modification time and size (not just its path — a rebuild or `oras pull`
 replaces the archive at the same path), so the next run after a rebuild or
 re-pull automatically re-extracts the pristine VM and drops the old
@@ -128,7 +130,7 @@ as with `--reset`; pass `--reset` to force it right away.
 
 ### 3. Use the sandbox
 
-The runner prints the guest IP (or find it anytime with
+The CLI prints the guest IP (or find it anytime with
 `vmrun -T fusion getGuestIPAddress <vmx>`). Everything is set up now —
 use it from the host or inside the VM:
 
@@ -152,7 +154,7 @@ use it from the host or inside the VM:
   [OpenCodeReview quick start](https://github.com/alibaba/open-code-review#quick-start).
 - **Shared folder**: if you shared a host directory (see
   [Shared host folder](#shared-host-folder)), it is available in the guest
-  at `/mnt/hgfs/work`. The runner's summary also prints the exact mapping.
+  at `/mnt/hgfs/work`. The run summary also prints the exact mapping.
 - **Desktop (in the VM window)**: the guest boots to GNOME (auto-login as
   `admin`) — run without `--headless` and the Fusion window is the desktop,
   with VS Code, Firefox and the OpenChamber UI in the guest browser.
@@ -178,19 +180,19 @@ systemctl --user restart agent-sandbox-openchamber
 - **Stop the sandbox** — from the host:
 
   ```bash
-  ./scripts/stop-ubuntu-vmware-sandbox.sh
+  npx agent-dev-env stop ubuntu-vmware
   ```
 
   This stops the working VM (`vmrun -T fusion stop`, graceful via VM
   tools with a hard power-off fallback) and kills the host SSH agent /
   Docker bridge listeners. Start it again with
-  `./scripts/run-ubuntu-vmware-sandbox.sh`.
+  `npx agent-dev-env run ubuntu-vmware`.
 
 - **Reset the sandbox** — wipe the working VM and start from the pristine
   image:
 
   ```bash
-  ./scripts/run-ubuntu-vmware-sandbox.sh --reset
+  npx agent-dev-env run ubuntu-vmware --reset
   ```
 
 - **Delete the sandbox** — remove the state from the host (extracted
@@ -198,21 +200,19 @@ systemctl --user restart agent-sandbox-openchamber
   space:
 
   ```bash
-  ./scripts/delete-ubuntu-vmware-sandbox.sh --yes
+  npx agent-dev-env delete ubuntu-vmware --yes
   ```
 
-  This stops the working VM first (delegating to
-  `stop-ubuntu-vmware-sandbox.sh`), then removes
-  `~/Library/Application Support/agent-sandbox/ubuntu-24-04-arm64-vmware/`
-  (override with `SANDBOX_STATE_DIR`). The next run re-pulls the archive
-  and re-clones. Without `--yes` it asks before deleting. Note: Fusion's VM
-  library may still list the deleted working VM
-  (`agent-sandbox-ubuntu-24-04-arm64-vmware`) — remove the stale entry in
-  the Fusion UI (harmless).
+  This stops the working VM first, then removes the platform's state dir
+  under `~/Library/Application Support/agent-dev-env/ubuntu-vmware/`. The
+  next run re-pulls the archive and re-clones. Without `--yes` it asks
+  before deleting. Note: Fusion's VM library may still list the deleted
+  working VM (`agent-sandbox-ubuntu-24-04-arm64-vmware`) — remove the
+  stale entry in the Fusion UI (harmless).
 
-- **Run several sandboxes side by side** — set `SANDBOX_STATE_DIR` to a
-  different directory (the guest IPs differ per NAT lease; the runner
-  prints them).
+- **Run several sandboxes side by side** — set `AGENT_DEV_ENV_DATA_HOME` to
+  a different root (the guest IPs differ per NAT lease; the CLI prints
+  them).
 
 ### Desktop
 
@@ -305,20 +305,20 @@ sandboxes (a Linux guest *could* run containers, but the sandbox config
 keeps engines out of the guest — the host engine is faster and has no
 nested-virt surprises).
 
-**The runner wires the host's engine into the guest automatically.** When a
+**The CLI wires the host's engine into the guest automatically.** When a
 Docker engine socket is found on the host (Docker Desktop at
 `~/.docker/run/docker.sock`, Colima, OrbStack, or `/var/run/docker.sock`),
-it bridges it: a host-side `socat` exposes the socket on TCP `4401` (bound
-to the host's vmnet8 address — reachable from the guest), and a guest-side
-systemd user service (`agent-sandbox-docker`) presents it as the Unix
-socket `/tmp/docker.sock`. `DOCKER_HOST` (and
-`TESTCONTAINERS_HOST_OVERRIDE` for clients that ignore it) is exported in
-`/etc/profile.d/agent-sandbox.sh`, and the docker context `host` points at
-the same socket, so `docker`, `docker compose`, and testcontainers all hit
-the host engine:
+it bridges it: a host-side forwarder (the bundled `bridge.js`, no socat)
+exposes the socket on TCP `4401` (bound to the host's vmnet8 address —
+reachable from the guest), and a guest-side systemd user service
+(`agent-sandbox-docker`) presents it as the Unix socket `/tmp/docker.sock`.
+`DOCKER_HOST` (and `TESTCONTAINERS_HOST_OVERRIDE` for clients that ignore
+it) is exported in `/etc/profile.d/agent-sandbox.sh`, and the docker
+context `host` points at the same socket, so `docker`, `docker compose`,
+and testcontainers all hit the host engine:
 
 ```bash
-# inside the guest — the runner already set up the socket
+# inside the guest — the CLI already set up the socket
 docker context show          # host
 docker run --rm hello-world
 ```
@@ -330,25 +330,27 @@ Notes:
   address (the guest's default gateway — Fusion's NAT runs in userspace,
   so there is no vmnet8 interface on the host), *not* `localhost`.
 - Volume mounts are resolved by the host daemon: bind-mount **host paths**
-  in `docker run -v` and compose `volumes:` entries, not guest paths (see
-  [scripts/agent-rules-linux.md](../scripts/agent-rules-linux.md)).
+  in `docker run -v` and compose `volumes:` entries, not guest paths (the
+  agent rules explain this; see
+  [Sandbox agent rules](#sandbox-agent-rules)).
 - The bridge survives guest reboots (systemd user services restart the
-  relays) and the host side reconnects on the next run of the runner. The
+  relays) and the host side reconnects on the next run of the CLI. The
   host listener binds to the vmnet8 address only — the engine is not
   exposed to your LAN.
-- The engine must be running when the runner bridges it. If Docker Desktop
-  isn't started yet, the runner skips the bridge — start the engine and
-  re-run the script (the setup is idempotent).
+- The engine must be running when the CLI bridges it. If Docker Desktop
+  isn't started yet, the bridge is skipped — start the engine and re-run
+  the command (the setup is idempotent).
 - Pass `--no-docker` to skip; `SANDBOX_DOCKER_PORT` overrides the bridge
   port (default `4401`; macOS `4101`, Windows QEMU `4201`, Windows VMware
   `4301`, so all four sandboxes can run side by side).
 
 ### SSH agent bridge
 
-The runner also bridges a password-manager SSH agent (Bitwarden, 1Password,
-...) into the guest: a host-side `socat` turns the agent socket into TCP
-`4400` on the host's NAT address (the guest's default gateway), and a
-guest-side systemd user service serves it as the Unix socket
+The CLI also bridges a password-manager SSH agent (Bitwarden, 1Password,
+...) into the guest: a host-side forwarder (the bundled `bridge.js`, no
+socat — see [the SSH agent guide](ssh-agent.md)) turns the agent socket
+into TCP `4400` on the host's NAT address (the guest's default gateway),
+and a guest-side systemd user service serves it as the Unix socket
 `/tmp/ssh-agent.sock`. The guest's `SSH_AUTH_SOCK` environment variable
 points at that socket, so `ssh`/`git` inside the guest authenticate with
 the host's keys — no keys are copied into the guest.
@@ -367,20 +369,19 @@ Notes:
 
 The image ships open-vm-tools (vmhgfs-fuse), so a host directory can be
 shared into the guest (HGFS). Set it with `SANDBOX_WORK_DIR` (works for
-every platform runner) or pass `--work-dir` on the runner (overrides the
-env var):
+every platform) or pass `--work-dir` on `run` (overrides the env var):
 
 ```bash
-SANDBOX_WORK_DIR="$HOME/projects" ./scripts/run-ubuntu-vmware-sandbox.sh
-./scripts/run-ubuntu-vmware-sandbox.sh --work-dir "$HOME/projects"
+SANDBOX_WORK_DIR="$HOME/projects" npx agent-dev-env run ubuntu-vmware
+npx agent-dev-env run ubuntu-vmware --work-dir "$HOME/projects"
 ```
 
-The folder appears in the guest at `/mnt/hgfs/work` (mounted by the runner
-on each run). The runner's summary prints the mapping
+The folder appears in the guest at `/mnt/hgfs/work` (mounted by the CLI on
+each run). The run summary prints the mapping
 (`Shared: /mnt/hgfs/work -> <host path>`) — or `Shared: not shared` when
 nothing is shared. Notes:
 
-- Best-effort: the runner waits for VMware Tools to report running and
+- Best-effort: the CLI waits for VMware Tools to report running and
   retries the registration before giving up; when the share still could
   not be mounted (e.g. tools never came up), it warns and continues.
   Mount it manually in the guest:
@@ -390,7 +391,7 @@ nothing is shared. Notes:
 
 ### User settings on the guest
 
-On first run — and again whenever the settings change — the runner offers to
+On first run — and again whenever the settings change — `run` offers to
 copy your host's user settings into the guest, so the agent works with your
 credentials and preferences out of the box. What it copies (most files keep
 their relative path; the two macOS-only locations are mapped to the Linux
@@ -423,32 +424,32 @@ XDG layout):
 | `~/.gitconfig` | same path | Git identity, aliases, signing config |
 
 The step runs **once per VM**: after copying, a versioned marker file inside
-the guest (`~/.config/agent-sandbox/settings-copied`) records the settings
+the guest (`~/.config/agent-dev-env/settings-copied`) records the settings
 version that was copied, and later runs skip the step. When new settings are
-added to the script (and its `settings_version` is bumped), the step runs
-again and copies the additional files. Each time it runs it asks for
-confirmation and lists what it will copy. To re-copy at any time, use the
-sync script below (it copies regardless of the marker); to make the runner
-offer the copy again, delete the marker in the guest first and re-run:
+added (and the settings version is bumped), the step runs again and copies
+the additional files. Each time it runs it asks for confirmation and lists
+what it will copy. To re-copy at any time, use `sync` below (it copies
+regardless of the marker); to make `run` offer the copy again, delete the
+marker in the guest first and re-run:
 
 ```bash
-ssh admin@<guest-ip> rm ~/.config/agent-sandbox/settings-copied
-./scripts/run-ubuntu-vmware-sandbox.sh
+ssh admin@<guest-ip> rm ~/.config/agent-dev-env/settings-copied
+npx agent-dev-env run ubuntu-vmware
 ```
 
 To re-sync the settings **without** restarting the VM — e.g. after editing
 `~/.config/opencode/opencode.json`, adding a skill or command, or updating
-your Git identity — run the sync script from the repo root:
+your Git identity — run `sync`:
 
 ```bash
-./scripts/sync-ubuntu-vmware-sandbox.sh
+npx agent-dev-env sync ubuntu-vmware
 ```
 
-It copies exactly the same files as the runner (both share the same code),
-asks for confirmation unless you pass `--yes`, and restarts OpenChamber so
-the new settings take effect. The VM must be running — start it with
-`./scripts/run-ubuntu-vmware-sandbox.sh` first if it isn't. A sync also
-updates the guest's version marker, so the runner won't re-offer the copy on
+It copies exactly the same files as `run` (both share the same code), asks
+for confirmation unless you pass `--yes`, and restarts OpenChamber so the
+new settings take effect. The VM must be running — start it with
+`npx agent-dev-env run ubuntu-vmware` first if it isn't. A sync also
+updates the guest's version marker, so `run` won't re-offer the copy on
 its next run.
 
 Notes:
@@ -480,51 +481,26 @@ Notes:
 
 ### Sandbox agent rules
 
-On each run the runner (after your confirmation) installs the sandbox
+On each run the CLI (after your confirmation) installs the sandbox
 environment rules into the guest's coding agents — opencode's global
 `~/.config/opencode/AGENTS.md` and the Copilot CLI's
-`~/.copilot/copilot-instructions.md`. The content ships in
-[scripts/agent-rules-linux.md](../scripts/agent-rules-linux.md) and
-explains the runtime topology: the shared-directory path mapping (host
-paths vs `/mnt/hgfs/work`), the Docker remote-engine bridge (host paths in
-bind mounts, published ports at the NAT gateway), and the SSH agent
-socket. Files the user edited are never overwritten without a separate
+`~/.copilot/copilot-instructions.md`. The content ships inside the npm
+package (`assets/rules/agent-rules-linux.md`) and explains the runtime
+topology: the shared-directory path mapping (host paths vs
+`/mnt/hgfs/work`), the Docker remote-engine bridge (host paths in bind
+mounts, published ports at the NAT gateway), and the SSH agent socket.
+Files the user edited are never overwritten without a separate
 confirmation.
 
-### Runner script reference
+### CLI reference
 
-[`scripts/run-ubuntu-vmware-sandbox.sh`](../scripts/run-ubuntu-vmware-sandbox.sh)
-is the automated way to boot, run, and wire up the sandbox. Everything it
-accepts:
-
-Options:
-
-- `--headless` — run without a window
-- `--foreground` — keep the terminal attached and block until the VM stops
-  (Cmd+C stops it). Default is background: the script exits after the
-  summary and the VM keeps running
-- `--no-agent` — skip the SSH agent bridge setup
-- `--no-docker` — skip the Docker engine bridge setup
-- `--no-settings` — skip copying the host's user settings into the guest
-- `--work-dir PATH` — share the host directory into the guest as
-  `/mnt/hgfs/work` (VMware Tools HGFS); overrides `SANDBOX_WORK_DIR`
-- `--reset` — delete the working VM state (extracted base + clone) and
-  start fresh from the pristine image
-
-Environment variables (defaults in parentheses):
-
-| Variable | Default | What it does |
-| --- | --- | --- |
-| `UBUNTU_VMWARE_IMAGE` | — | Path to a local `sandbox-ubuntu-24-04-arm64-vmware.tar.gz` to run instead of the discovered/pulled one |
-| `SANDBOX_STATE_DIR` | `~/Library/Application Support/agent-sandbox/ubuntu-24-04-arm64-vmware` | Working VM state (extracted base + clone) |
-| `UBUNTU_PASSWORD` | from the vars file | `admin` password in the guest (override after changing it) |
-| `SANDBOX_OPENCHAMBER_PORT` | `4000` | Guest port of OpenChamber |
-| `SANDBOX_AGENT_PORT` | `4400` | TCP port for the SSH agent bridge |
-| `SANDBOX_DOCKER_PORT` | `4401` | TCP port for the Docker engine bridge |
-| `SANDBOX_WORK_DIR` | unset | Host directory to share into the guest (`/mnt/hgfs/work`); empty disables the share, `--work-dir` overrides it |
-| `GHCR_OWNER` | from the git remote | GHCR owner used when pulling the image |
-| `NO_COLOR` | unset | Any non-empty value disables colored output |
-| `FUSION_APP_PATH` | `/Applications/VMware Fusion.app` | VMware Fusion install location |
+[`agent-dev-env run ubuntu-vmware`](cli.md) is the automated way to boot,
+run, and wire up the sandbox. Everything it accepts — the full option list
+and the environment variable table — is in [the CLI reference](cli.md);
+notable defaults: image `sandbox-ubuntu-24-04-arm64-vmware`, agent bridge
+port `4400`, Docker bridge port `4401`, `4` CPUs / 8 GB. A local image
+archive can be pinned with `UBUNTU_VMWARE_IMAGE`; `FUSION_APP_PATH`
+overrides the Fusion location.
 
 ## Building your own images
 

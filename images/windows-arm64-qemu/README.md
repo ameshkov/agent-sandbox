@@ -8,8 +8,8 @@ performance — HVF can only virtualize ARM64 guests, so this image is
 ARM64-only).
 
 See [docs/macos.md](../../docs/macos.md) for the macOS images and
-[docs/windows-qemu.md](../../docs/windows-qemu.md) for the Windows sandbox user guide
-(boot it with [scripts/run-windows-qemu-sandbox.sh](../../scripts/run-windows-qemu-sandbox.sh)).
+[docs/windows-qemu.md](../../docs/windows-qemu.md) for the Windows sandbox
+user guide (boot it with `npx agent-dev-env run windows-qemu`).
 
 ## Prerequisites
 
@@ -38,20 +38,18 @@ See [docs/macos.md](../../docs/macos.md) for the macOS images and
 ```bash
 # From the repository root
 WINDOWS_ISO_PATH=/path/to/Win11_24H2_English_Arm64.iso \
-  ./scripts/build.sh sandbox-windows-11-arm64-qemu
+  npx agent-dev-env build sandbox-windows-11-arm64-qemu
 ```
 
-`scripts/build.sh` delegates to `images/windows-arm64-qemu/build.sh` when a platform
-directory ships its own wrapper. The wrapper:
+`agent-dev-env` is the CLI shipped by this repo (see
+[docs/cli.md](../../docs/cli.md)). The windows-qemu build flow:
 
 1. Verifies the host (Apple Silicon), the tools, and the Windows ISO
    (SHA256 against `iso_sha256` from the vars file).
-2. Downloads virtio-win.iso into
-   `build/windows-arm64-qemu/packer_cache/` unless `VIRTIO_WIN_ISO_PATH`
-   is set.
+2. Downloads virtio-win.iso into the build cache unless
+   `VIRTIO_WIN_ISO_PATH` is set.
 3. Mounts virtio-win.iso and stages the ARM64 `viostor` / `vioscsi` /
-   `NetKVM` driver subset into
-   `build/windows-arm64-qemu/drivers/staging/`, which Packer packs
+   `NetKVM` driver subset into `drivers/staging/`, which Packer packs
    into the same CD as `autounattend.xml` (WinPE drive-letter
    enumeration on ARM64 is non-deterministic, so a separate drivers CD
    would be a guessing game).
@@ -59,7 +57,7 @@ directory ships its own wrapper. The wrapper:
    with the vars file; Packer's `qemu_binary` points at
    `qemu-with-tpm.sh`, which appends the TPM/ramfb/USB/CD-ROM wiring the
    plugin's `qemuargs` option cannot express.
-5. Runs a VNC **build watchdog** (`scripts/watch-build.sh`) alongside
+5. Runs a VNC **build watchdog** (bundled `assets/watchdog/`) alongside
    `packer build`: the headless boot's Enter-spam can hit "Cancel" on
    Windows Setup's "Installing Windows 11" screen, and boot races can land
    in the UEFI shell — the watchdog OCRs the VNC framebuffer (Apple
@@ -70,11 +68,11 @@ directory ships its own wrapper. The wrapper:
 
 A build takes roughly 30 minutes on an M-series Mac (Windows Setup itself
 dominates; HVF runs the guest at near-native speed). Everything per image
-lives in a top-level `build/` directory (gitignored):
-`build/windows-arm64-<platform>/output/`
-(`sandbox-windows-11-arm64-qemu.qcow2`, compressed with zstd), plus `packer_cache/`
-and `drivers/staging/`. The macOS/tart images build no files and have no
-such directory.
+lives under the CLI's data root:
+`~/Library/Application Support/agent-dev-env/build/windows-qemu/output/`
+(`sandbox-windows-11-arm64-qemu.qcow2`, compressed with zstd), plus
+`packer_cache/` and `drivers/staging/`. The macOS/tart images build no
+files and have no such directory.
 
 ## What's in the image
 
@@ -96,27 +94,28 @@ such directory.
 | OpenChamber web UI | npm global (`@openchamber/web`), native service on `0.0.0.0:4000` |
 | OpenSSH Server + RDP | Enabled; Administrator/sandbox1 (see the vars file) |
 | Docker CLI | Client only (`docker` + `docker compose`), remote engine via the host bridge |
-| Bridge tooling | Node relays (in-image `node.exe`, written by the runner) + host `socat` for the SSH-agent/Docker bridges; `C:\tools\socat.exe` + `npiperelay.exe` ship as utilities |
+| Bridge tooling | Node relays (in-image `node.exe`, written by the runner) for the SSH-agent/Docker bridges — the host side is the CLI's own forwarder (no socat) |
 
 ## Versioning
 
 Same convention as the macOS images: the image version lives in
 `image_version` in the vars file; every release bumps it, adds a
 `CHANGELOG.md` entry, and creates a `windows-arm64-qemu-v<version>` git
-tag via `./scripts/tag.sh <image>`.
+tag via `npx agent-dev-env tag <image>`.
 
 ## Running and publishing
 
-- Run the sandbox: `./scripts/run-windows-qemu-sandbox.sh` — boots the qcow2
+- Run the sandbox: `npx agent-dev-env run windows-qemu` — boots the qcow2
   under QEMU + swtpm in a resizable window, forwards SSH/RDP/OpenChamber
   ports, and bridges the host's Docker engine and SSH agent into the
   guest (see [docs/windows-qemu.md](../../docs/windows-qemu.md)).
-- Publish: `./scripts/deploy.sh sandbox-windows-11-arm64-qemu` pushes the qcow2 to
-  `ghcr.io/<owner>/sandbox-windows-11-arm64-qemu:<version>` + `:latest` as an OCI
-  artifact via `oras` (the platform ships its own deploy wrapper —
-  `images/windows-arm64-qemu/deploy.sh` — because `tart push` only works
-  for Tart VMs). Needs `brew install oras` and a GHCR token with
-  `write:packages` (`oras login ghcr.io`).
+- Publish: `npx agent-dev-env deploy sandbox-windows-11-arm64-qemu` pushes
+  the qcow2 to
+  `ghcr.io/<owner>/sandbox-windows-11-arm64-qemu:<version>` + `:latest` as
+  an OCI artifact via `oras` (the CLI pushes the qcow2 directly — no
+  platform wrapper — because `tart push` only works for Tart VMs). Needs
+  `brew install oras` and a GHCR token with `write:packages`
+  (`oras login ghcr.io`).
 
 ## Gotchas
 

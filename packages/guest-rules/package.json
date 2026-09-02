@@ -1,0 +1,13 @@
+{
+  "name": "guest-rules",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Shared guest agent rules probe/install logic (opencode AGENTS.md + Copilot instructions).",
+  "exports": {
+    ".": "./src/rules.ts"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
