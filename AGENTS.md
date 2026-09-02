@@ -37,19 +37,19 @@ Two deliverables share this repo:
 - **The `agent-dev-env` CLI** — a TypeScript npm CLI that replaced the
   legacy shell scripts: per-platform runners, image lifecycle (build /
   deploy / tag), and diagnostics (`doctor`, `status`, `list`). The port is
-  complete — the shell scripts are removed (see docs/plan.md).
+  complete — the shell scripts are removed.
 
 The CLI runs on the host (macOS, Apple Silicon only — Tart/VMware/QEMU
 cannot virtualize ARM64 guests on Intel). VM state, logs, and caches live
 under the `agent-dev-env` XDG-aware dirs (`src/lib/paths.ts`), not the
-legacy `agent-sandbox` paths.
+legacy shell-script paths.
 
 ## Technical Context
 
 | Field | Value |
 | --- | --- |
 | Language | TypeScript 5.x, ES2022 target, strict mode |
-| Runtime | Node.js 20+ (host: macOS Apple Silicon) |
+| Runtime | Node.js 26+ (host: macOS Apple Silicon) |
 | Package Manager | pnpm 10+ |
 | CLI Framework | commander |
 | Guest Transport | ssh2 (Phase 4 — Ubuntu VMware backend) |
@@ -63,8 +63,9 @@ legacy `agent-sandbox` paths.
 ## Project Structure
 
 ```text
-agent-sandbox/
-├── packages/                   # pnpm workspace packages
+agent-dev-env/
+├── .github/workflows/        # CI: quality gate + npm publish (latest + canary) + GitHub release
+├── packages/                 # pnpm workspace packages
 │   ├── agent-dev-env-cli/      # The agent-dev-env CLI package (published)
 │   │   ├── src/
 │   │   │   ├── cli.ts          #   CLI entry point (commander)
@@ -76,7 +77,7 @@ agent-sandbox/
 │   │   │   │                   #   pipeline/arg builders) +
 │   │   │   │                   #   build-watchdog.ts (VNC watchdog spawn),
 │   │   │   │                   #   deploy.ts + tag.ts + watch-build.ts
-│   │   │   ├── runners/        #   run framework (docs/plan.md §7) + the macOS
+│   │   │   ├── runners/        #   run framework + the macOS
 │   │   │   │                   #   backend (macos*.ts: bridges/guest/rules/
 │   │   │   │                   #   summary), the Ubuntu VMware backend
 │   │   │   │                   #   (ubuntu*.ts: image/shared/bridges/guest/
@@ -122,7 +123,7 @@ agent-sandbox/
 │   └── ubuntu-arm64-vmware/    # Ubuntu 24.04 ARM64 (VMware) template + vars
 │                               # + CHANGELOG
 ├── docs/                       # User guides (cli/macos/windows-qemu/windows-
-│                               # vmware/ubuntu-vmware/ssh-agent) + plan.md
+│                               # vmware/ubuntu-vmware/ssh-agent)
 ├── DEVELOPMENT.md              # Build/debug guide: CLI + recipes + prerequisites
 ├── CHANGELOG.md                # Repo changelog (Unreleased on top)
 ├── tsconfig.base.json          # Shared TypeScript compiler options
@@ -138,7 +139,7 @@ agent-sandbox/
 
 - macOS on Apple Silicon — Tart/QEMU/Fusion cannot virtualize ARM64
   guests on Intel.
-- Node.js 20+, pnpm 10+ (`corepack enable` or `npm install -g pnpm`).
+- Node.js 26+, pnpm 10+ (`corepack enable` or `npm install -g pnpm`).
 - Per-platform runtime tooling for `run`/`build` — see
   [Building Images](#building-images) and DEVELOPMENT.md for the full
   list; `agent-dev-env doctor` checks everything.
@@ -153,10 +154,23 @@ agent-sandbox/
   artifacts (`dist/assets/bridge/bridge.js`,
   `dist/assets/guest/guest-agent-*.js`, esbuild),
 - copies the runtime assets (`assets/**`) and the `images/**` snapshot
-  into `dist/` (`packages/agent-dev-env-cli/scripts/copy-assets.mjs`).
+  into `dist/` (`packages/agent-dev-env-cli/scripts/copy-assets.mjs`),
+- copies the repo root `README.md` into `packages/agent-dev-env-cli/`
+  root — npm shows a package readme only from the package root, so the
+  published `agent-dev-env` ships the repo README (generated file,
+  gitignored).
 
 `dist/` is the npm package payload — `npm pack --dry-run` (from
 `packages/agent-dev-env-cli`) verifies it.
+
+`pnpm publish-npm` (root script) builds and publishes `agent-dev-env` to
+npm: it runs `pnpm build` and then `pnpm --filter
+./packages/agent-dev-env-cli publish --no-git-checks --provenance
+--access public`. The CI workflow calls it on `agent-dev-env-v*` tags.
+`pnpm publish-npm:canary` is the same but with `--tag canary` — CI uses it
+on every push to `master` with a temporary
+`<version>-canary.<run>.<sha>` version. Use the scripts everywhere; do
+not run a raw `npm publish` from `packages/agent-dev-env-cli`.
 
 ### Using the in-tree CLI
 
@@ -259,11 +273,20 @@ and recorded separately:
 - Both changelogs keep an `[Unreleased]` section on top; the tag links at
   the bottom are updated in the release change (the `[unreleased]`
   compare link moves to the new tag).
+- **Canary channel:** the CI workflow publishes a canary build to npm on
+  every push to `master` (after the quality gate): `publish-npm:canary`
+  publishes the package with the `canary` dist-tag under a temporary
+  `<version>-canary.<run>.<sha>` version (written to the CLI package for
+  the publish only, never committed). Install it with
+  `npm install -g agent-dev-env@canary`; it never touches the `latest`
+  dist-tag.
 - **CI must not publish the npm package on per-image tags.** The
   `<platform>-v<version>` tags are image releases and only drive image
   builds or nothing. `agent-dev-env` is published to npm only for a CLI
-  release — the `agent-dev-env-v<version>` tag (or main, per the release
-  automation). Tag-prefix matching is the discriminator: never publish
+  release — from the `agent-dev-env-v<version>` tag, via the CI workflow
+  (`.github/workflows/ci.yml`, npm Trusted Publishers)
+  that runs the quality gate and then publishes the package and creates a
+  GitHub release. Tag-prefix matching is the discriminator: never publish
   npm from a tag that is not `agent-dev-env-v*`.
 - GHCR owner resolution: `GHCR_OWNER` env → `--owner` flag → git remote
   (in a checkout) → default `ameshkov` (`src/lib/ghcr.ts`). Images are
@@ -281,7 +304,9 @@ One release, step by step:
    (`agent-dev-env-v<version>`).
 4. Build the images locally
    (`pnpm agent-dev-env build <image>`) and publish them
-   (`pnpm agent-dev-env deploy <image>`).
+   (`pnpm agent-dev-env deploy <image>`). The CLI npm package is
+   published by the CI workflow on the `agent-dev-env-v*` tag via
+   `pnpm publish-npm` (or manually with the same command).
 
 ## Contribution Instructions
 
@@ -461,8 +486,11 @@ Every module MUST have test coverage:
   helpers). These files MUST NOT use the `.test.ts` suffix — they are
   test support code, not test cases.
 - **End-to-end tests**: Full-VM/E2E tests live in `test/e2e/`. The repo
-  has no CI — the only end-to-end checks are full image builds (~1 hr)
-  and per-phase smoke runs of the CLI against real platforms.
+  has no CI E2E — the only end-to-end checks are full image builds (~1 hr)
+  and per-phase smoke runs of the CLI against real platforms. The CI
+  workflow (`.github/workflows/ci.yml`) runs the unit-test gate and, on
+  `agent-dev-env-v*` tags, publishes the npm package and creates a GitHub
+  release; it never builds or tests real VMs.
 - **Test verification mandatory**: All changes MUST pass `pnpm test`
   before merge. Tests MUST NOT be deleted or weakened without explicit
   justification.
@@ -541,8 +569,7 @@ operational incidents.
   failed the whole build). Enforced by a unit test; em-dashes are fine in
   comments and in non-PowerShell files.
 - **Guest markers**: guest-side state markers live under
-  `~/.config/agent-dev-env/` (green-field policy; no legacy agent-sandbox
-  paths).
+  `~/.config/agent-dev-env/` (green-field policy; no legacy paths).
 
 **Rationale**: These invariants keep the CLI, recipes, and releases
 consistent.

@@ -77,7 +77,7 @@ function taskFor(role: 'ssh-agent' | 'docker', port: number, hostAlias: string):
   return {
     taskName: WINDOWS_TASK_NAMES[role],
     description:
-      role === 'ssh-agent' ? 'Agent Sandbox SSH agent bridge' : 'Agent Sandbox Docker bridge',
+      role === 'ssh-agent' ? 'Agent Dev Env SSH agent bridge' : 'Agent Dev Env Docker bridge',
     nodePath: NODE_PATH,
     agentPath: AGENT_PATH,
     role,

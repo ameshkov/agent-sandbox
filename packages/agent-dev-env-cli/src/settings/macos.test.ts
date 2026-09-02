@@ -71,6 +71,7 @@ describe('guest scripts', () => {
     const script = guestSettingsMarkerScript();
     expect(script).toContain(`printf '%s\\n' "$version" > "$HOME/${SETTINGS_MARKER}"`);
     expect(script).toContain('.config/agent-dev-env/settings-copied');
+    // Regression guard: the marker must never point at the legacy path.
     expect(script).not.toContain('agent-sandbox');
   });
 

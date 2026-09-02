@@ -11,7 +11,7 @@ import {
 } from './system.js';
 
 const BRIDGE: LaunchdBridge = {
-  label: 'dev.agent-sandbox.ssh-agent',
+  label: 'dev.agent-dev-env.ssh-agent',
   nodePath: '/usr/local/bin/node',
   agentPath: '/Users/admin/.local/lib/agent-dev-env/guest-agent-mac.js',
   role: 'ssh-agent',
@@ -24,7 +24,7 @@ const DOCKER_SOCKET = '/Users/admin/.docker/run/docker.sock';
 describe('system builders (mac)', () => {
   it('launchdPlist renders the bridge as ProgramArguments with the host alias', () => {
     const plist = launchdPlist(BRIDGE, DOCKER_SOCKET);
-    expect(plist).toContain('<key>Label</key><string>dev.agent-sandbox.ssh-agent</string>');
+    expect(plist).toContain('<key>Label</key><string>dev.agent-dev-env.ssh-agent</string>');
     expect(plist).toContain('<string>bridge</string>');
     expect(plist).toContain('<string>ssh-agent</string>');
     expect(plist).toContain('<string>--host-alias</string>');

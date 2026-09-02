@@ -1,0 +1,144 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+      - master
+    tags:
+      - 'agent-dev-env-v*'
+  pull_request:
+    branches:
+      - main
+      - master
+
+permissions:
+  contents: read
+
+# Cancel superseded runs on PRs (never on tag pushes, which drive releases).
+# CLI release tags are agent-dev-env-v*; per-image tags (<platform>-v*) do
+# NOT trigger this workflow — tag-prefix matching is the discriminator that
+# keeps per-image releases from publishing the npm package (AGENTS.md).
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  NODE_VERSION: '26'
+  PNPM_VERSION: '10.14.0'
+
+jobs:
+  ci:
+    name: Lint, Type-check and Unit Tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v6
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      # The full local gate: format:check, lint, typecheck, build, and tests.
+      - run: pnpm check
+
+  # Publishes to npm (tokenless via OIDC Trusted Publishers) and creates a
+  # GitHub release. Only runs on CLI release tags after the CI gate passes.
+  #
+  # npm Trusted Publisher setup: on npmjs.com, link the package to
+  #   repository = ameshkov/agent-dev-env, workflow filename = ci.yml
+  release:
+    name: Publish & GitHub Release
+    needs:
+      - ci
+    if: startsWith(github.ref, 'refs/tags/agent-dev-env-v')
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write # to create the GitHub release
+      id-token: write # to enable npm provenance (OIDC)
+    steps:
+      - uses: actions/checkout@v6
+      - name: Verify tag matches package version
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME#agent-dev-env-v}"
+          PKG_VERSION=$(node -p "require('./packages/agent-dev-env-cli/package.json').version")
+          echo "Tag version:   $TAG"
+          echo "Package version: $PKG_VERSION"
+          if [ "$TAG" != "$PKG_VERSION" ]; then
+            echo "::error::Tag $TAG does not match the CLI package version $PKG_VERSION"
+            exit 1
+          fi
+      - uses: pnpm/action-setup@v6
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+          registry-url: 'https://registry.npmjs.org'
+      - run: pnpm install --frozen-lockfile
+      # Builds the CLI package (dist/) and publishes it to npm in one
+      # command (the root publish-npm script). No token needed: npm
+      # authenticates via OIDC (Trusted Publishers). Provenance is
+      # generated automatically from the id-token permission.
+      - name: Publish to npm
+        run: pnpm publish-npm
+      - name: Build npm package tarball
+        working-directory: packages/agent-dev-env-cli
+        run: npm pack
+      - name: Create GitHub release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: ${{ github.ref_name }}
+          body: See [CHANGELOG.md](./CHANGELOG.md) for the list of changes.
+          draft: false
+          prerelease: false
+          fail_on_unmatched_files: true
+          files: packages/agent-dev-env-cli/agent-dev-env-*.tgz
+
+  # Publishes a canary build to npm (dist-tag `canary`) on every push to
+  # master, after the CI gate passes. The canary version is
+  # <package-version>-canary.<run>.<sha> — it is written only for the
+  # publish and never committed. Same tokenless npm Trusted Publishers
+  # auth and provenance as the release job.
+  canary:
+    name: Publish canary to npm
+    needs:
+      - ci
+    if: github.ref == 'refs/heads/master'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      id-token: write # to enable npm provenance (OIDC)
+    steps:
+      - uses: actions/checkout@v6
+      - uses: pnpm/action-setup@v6
+        with:
+          version: ${{ env.PNPM_VERSION }}
+      - uses: actions/setup-node@v6
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: pnpm
+          registry-url: 'https://registry.npmjs.org'
+      - run: pnpm install --frozen-lockfile
+      - name: Compute canary version
+        run: |
+          set -euo pipefail
+          PKG_VERSION=$(node -p "require('./packages/agent-dev-env-cli/package.json').version")
+          echo "CANARY_VERSION=${PKG_VERSION}-canary.${GITHUB_RUN_NUMBER}.${GITHUB_SHA::7}" >> "$GITHUB_ENV"
+      - name: Set canary version in the CLI package
+        run: |
+          set -euo pipefail
+          node -e '
+            const fs = require("fs");
+            const p = "./packages/agent-dev-env-cli/package.json";
+            const pkg = JSON.parse(fs.readFileSync(p, "utf8"));
+            pkg.version = process.env.CANARY_VERSION;
+            fs.writeFileSync(p, JSON.stringify(pkg, null, 2) + "\n");
+          '
+      - name: Publish canary to npm
+        run: pnpm publish-npm:canary

@@ -3,8 +3,8 @@ import { profileDScript, systemdUnit, type SystemdBridge } from './systemd.js';
 import { removeProfileBlock } from './index.js';
 
 const BRIDGE: SystemdBridge = {
-  unitName: 'agent-sandbox-ssh-agent.service',
-  description: 'Agent Sandbox SSH agent bridge',
+  unitName: 'agent-dev-env-ssh-agent.service',
+  description: 'Agent Dev Env SSH agent bridge',
   nodePath: '/usr/bin/node',
   agentPath: '/home/admin/.local/lib/agent-dev-env/guest-agent-ubuntu.js',
   role: 'ssh-agent',
@@ -17,7 +17,7 @@ describe('systemd builders (ubuntu)', () => {
   it('systemdUnit renders the bridge as ExecStart', () => {
     const unit = systemdUnit(BRIDGE);
     expect(unit).toContain('[Unit]');
-    expect(unit).toContain('Description=Agent Sandbox SSH agent bridge');
+    expect(unit).toContain('Description=Agent Dev Env SSH agent bridge');
     expect(unit).toContain('Restart=on-failure');
     expect(unit).toContain('WantedBy=default.target');
     expect(unit).toContain(
@@ -30,7 +30,7 @@ describe('systemd builders (ubuntu)', () => {
 
   it('profileDScript exports the bridge env for every login shell', () => {
     const script = profileDScript('192.168.24.1');
-    expect(script).toContain('# Agent sandbox bridge env');
+    expect(script).toContain('# Agent dev env bridge env');
     expect(script).toContain('export SSH_AUTH_SOCK=/tmp/ssh-agent.sock');
     expect(script).toContain('export DOCKER_HOST=unix:///tmp/docker.sock');
     expect(script).toContain('export TESTCONTAINERS_HOST_OVERRIDE=192.168.24.1');

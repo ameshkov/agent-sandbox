@@ -25,6 +25,14 @@ npm install -g agent-dev-env
 agent-dev-env --help
 ```
 
+Pre-release builds from the `master` branch are published to the npm
+`canary` dist-tag after every push (version
+`<version>-canary.<run>.<sha>`):
+
+```bash
+npm install -g agent-dev-env@canary
+```
+
 Contributors working in the repo can run the in-tree CLI after a build
 (`pnpm build`) with the root `agent-dev-env` script:
 
@@ -36,7 +44,7 @@ Runtime requirements (host, macOS only):
 
 - macOS (Apple Silicon only — Tart/QEMU/Fusion cannot virtualize ARM64
   guests on Intel).
-- Node.js 20+.
+- Node.js 26+.
 - Per-platform tooling: [Tart](https://tart.run/) for `macos`
   (`brew install cirruslabs/cli/tart`), QEMU + swtpm for `windows-qemu`
   (`brew install qemu swtpm`), VMware Fusion for `windows-vmware` /
@@ -81,7 +89,7 @@ below):
 | --- | --- | --- | --- | --- |
 | Hypervisor | Tart | QEMU + HVF | VMware Fusion | VMware Fusion |
 | Default image | `sandbox-macos-tahoe` | `sandbox-windows-11-arm64-qemu` | `sandbox-windows-11-arm64-vmware` | `sandbox-ubuntu-24-04-arm64-vmware` |
-| Default VM | `sandbox-macos` | `sandbox-windows-11-arm64-qemu` | `agent-sandbox-windows-11-arm64-vmware` | `agent-sandbox-ubuntu-24-04-arm64-vmware` |
+| Default VM | `sandbox-macos` | `sandbox-windows-11-arm64-qemu` | `agent-dev-env-windows-11-arm64-vmware` | `agent-dev-env-ubuntu-24-04-arm64-vmware` |
 | Shared host dir | `--work-dir` (Tart mount) | — | skipped (unsupported for Win11 ARM) | `--work-dir` (HGFS) |
 | Settings copy | yes | — | — | yes |
 | Agent rules | yes | — | — | yes |
@@ -208,10 +216,10 @@ Pushes locally built images to GHCR after confirming the image and owner:
 
 - macOS: `tart push --chunk-size 3` — version tag + `:latest`;
 - windows-qemu: `oras push` of the qcow2 as the
-  `application/vnd.agent-sandbox.qcow2` artifact;
+  `application/vnd.agent-dev-env.qcow2` artifact;
 - windows-vmware / ubuntu-vmware: pack the output into a tar.gz (vmx,
   nvram, vmdk; logs excluded) and `oras push` as
-  `application/vnd.agent-sandbox.vmware-vm`.
+  `application/vnd.agent-dev-env.vmware-vm`.
 
 Owner resolution: `GHCR_OWNER` env → `--owner` flag → git remote setup
 (inside a checkout) → default `ameshkov`. Images live flat as
@@ -285,7 +293,7 @@ Path overrides (see [Paths](#paths)): `AGENT_DEV_ENV_DATA_HOME`,
 ## Paths
 
 State lives under the XDG-aware `agent-dev-env` roots (designed from
-scratch — no legacy `agent-sandbox` paths, no migration):
+scratch — no legacy paths, no migration):
 
 | Role | macOS | Linux |
 | --- | --- | --- |

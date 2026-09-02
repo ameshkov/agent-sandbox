@@ -33,6 +33,8 @@ the next release.
 
 ### Changed
 
+- Node.js is bumped from 22 to 26 (`nodejs_version = "26.8.1"` in the
+  vars file, choco package `nodejs`).
 - The image was renamed from `sandbox-windows-11` to
   `sandbox-windows-11-arm64-qemu` (vars file, template `vm_name` —
   `sandbox-windows-<windows_version>-arm64-qemu.qcow2` — the GHCR package
@@ -183,7 +185,7 @@ the next release.
   runner, landing together with the user guide `docs/windows-qemu.md`: boots
   the qcow2 under `qemu-system-aarch64` + swtpm (working VM = COW overlay
   with persistent TPM/NVRAM under `~/Library/Application Support/
-  agent-sandbox/windows-11`), forwards SSH/RDP/WinRM/OpenChamber ports,
+  agent-dev-env/windows-11`), forwards SSH/RDP/WinRM/OpenChamber ports,
   re-enables Windows auto-logon (the image's `LogonCount=1` disables it
   after the OOBE boot) so the OpenChamber task fires at boot, and bridges
   the host's SSH agent and Docker engine into the guest: host-side socat
@@ -202,6 +204,6 @@ the next release.
   watermark. The sandbox agent rules (`scripts/agent-rules.md`) are
   macOS-flavored and not installed into Windows guests yet.
 
-[unreleased]: https://github.com/ameshkov/agent-sandbox/compare/windows-arm64-qemu-v1.1.0...HEAD
-[windows-arm64-qemu-v1.1.0]: https://github.com/ameshkov/agent-sandbox/releases/tag/windows-arm64-qemu-v1.1.0
-[windows-arm64-qemu-v1.0.0]: https://github.com/ameshkov/agent-sandbox/releases/tag/windows-arm64-qemu-v1.0.0
+[unreleased]: https://github.com/ameshkov/agent-dev-env/compare/windows-arm64-qemu-v1.1.0...HEAD
+[windows-arm64-qemu-v1.1.0]: https://github.com/ameshkov/agent-dev-env/releases/tag/windows-arm64-qemu-v1.1.0
+[windows-arm64-qemu-v1.0.0]: https://github.com/ameshkov/agent-dev-env/releases/tag/windows-arm64-qemu-v1.0.0

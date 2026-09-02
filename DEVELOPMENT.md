@@ -41,7 +41,7 @@ Everything a developer needs, at a glance:
 | Need | For | Install |
 | --- | --- | --- |
 | macOS host, Apple Silicon | everything — Tart/QEMU/Fusion cannot virtualize ARM64 guests on Intel | — |
-| Node.js 20+ + pnpm 10+ | building/dev-running the CLI | `corepack enable` or `npm i -g pnpm` |
+| Node.js 26+ + pnpm 10+ | building/dev-running the CLI | `corepack enable` or `npm i -g pnpm` |
 | Xcode command-line tools | the VNC build watchdog (Swift OCR) and `hdiutil` driver staging | `xcode-select --install` |
 | Tart + Packer | macOS image builds | `brew install cirruslabs/cli/tart` and `brew install hashicorp/tap/packer` |
 | QEMU + swtpm + Packer | Windows QEMU image builds | `brew install qemu swtpm` and `brew install hashicorp/tap/packer` |
@@ -86,12 +86,33 @@ disk check (see docs/cli.md).
    runtime deps; this is how guests get the bridge/agent code (SFTP'd in,
    run with `node`, no npm install inside guests);
 3. copies the runtime assets (`assets/**`) and the `images/**` snapshot
-   into `dist/assets/` (removed first, so stale files never survive).
+   into `dist/assets/` (removed first, so stale files never survive);
+4. copies the repo root `README.md` into the CLI package root — npm
+   shows a package readme only from a README at the package root, so the
+   published `agent-dev-env` package ships this repo README (the file is
+   generated and gitignored).
 
 `dist/` is the npm package payload — verify with `npm pack --dry-run`
-from `packages/agent-dev-env-cli`. The bundled `images/` snapshot is what
+from `packages/agent-dev-env-cli` (the README and LICENSE it adds are
+picked up automatically by npm). The bundled `images/` snapshot is what
 feeds the CLI's image catalog (`list`/`build`/`deploy` work without a
 repo checkout).
+
+### Publish to npm
+
+`pnpm publish-npm` (root script) builds the CLI (`pnpm build`) and
+publishes `agent-dev-env` with `pnpm --filter
+./packages/agent-dev-env-cli publish --no-git-checks --provenance
+--access public`. The CI workflow runs it on `agent-dev-env-v*` tags —
+npm authenticates via OIDC Trusted Publishers (no token) and provenance
+comes from the `id-token` permission. `pnpm publish-npm` replaces any
+raw `npm publish` from `packages/agent-dev-env-cli`.
+
+`pnpm publish-npm:canary` is the same publish with `--tag canary`: the CI
+workflow runs it on every push to `master` after setting a temporary
+`<version>-canary.<run>.<sha>` version in the CLI package (never
+committed). Install the pre-release build with
+`npm install -g agent-dev-env@canary`.
 
 ### Run
 
@@ -112,9 +133,12 @@ catches type errors without emitting.
   `test/` without the `.test.ts` suffix.
 - Prefer real fixtures over mocks: tmpdirs for file I/O, real vars files
   for catalog tests, real process spawning where possible.
-- There is no CI in this repo — the only end-to-end checks are full
-  image builds (~1 hr) and per-phase smoke runs of the CLI against real
-  platforms.
+- There is no CI E2E: the only end-to-end checks are full image builds
+  (~1 hr) and per-phase smoke runs of the CLI against real platforms. The
+  GitHub Actions workflow (`.github/workflows/ci.yml`) runs the full
+  local gate (`pnpm check`) on every push and PR and, on `agent-dev-env-v*`
+  tags, publishes the `agent-dev-env` npm package and creates a GitHub
+  release — it never builds or tests real VMs.
 
 ### Debug
 
@@ -281,7 +305,7 @@ The first push of an image creates a new GHCR package, and GitHub does
 **not** link it to this repository automatically. After the first
 `deploy` run, open the package settings page
 (`https://github.com/users/<owner>/packages/container/<image>/settings`)
-and link it to `agent-sandbox`; until then it does not show up on the
+and link it to `agent-dev-env`; until then it does not show up on the
 repository's Packages tab. New packages are also **private** by default —
 change the visibility to public on the same page if the images should be
 pullable by anyone.
@@ -538,7 +562,7 @@ autoinstalled by Subiquity, not unattended:
    as the default boot target and GDM3 auto-login as `admin` (Xorg
    session — software rendering, a Fusion arm64 guest has no GPU accel).
    OpenChamber runs as a systemd **user** service
-   (`agent-sandbox-openchamber`) on `0.0.0.0:4000` with
+   (`agent-dev-env-openchamber`) on `0.0.0.0:4000` with
    `loginctl enable-linger` — the Linux equivalent of the macOS
    LaunchAgent / Windows ONLOGON task.
 4. **Leaves a runnable vmx + vmdk** at
@@ -583,7 +607,7 @@ per image lives in `~/Library/Application Support/agent-dev-env/build/ubuntu-vmw
 | `iso_sha256` | string | `` | SHA256 of the Ubuntu ISO (verified by the build flow; empty = skip) |
 | `ssh_username` | string | `admin` | SSH provisioning user; must match `autoinstall/user-data` |
 | `ssh_password` | string | `sandbox1` | SSH provisioning password; must match the crypt hash in `autoinstall/user-data` |
-| `node_version` / `python_version` | string | `22` / `3.12` | Node major (nvm) and Python (apt archive) versions |
+| `node_version` / `python_version` | string | `26` / `3.12` | Node major (nvm) and Python (apt archive) versions |
 | `github_cli_version` / `go_version` / `rust_version` / `vscode_version` / `chrome_version` / `firefox_version` / `open_code_review_version` | string | pinned | Pinned toolchain versions (+ SHA256 vars for the direct downloads) |
 | `docker_version` / `docker_compose_version` / `docker_buildx_version` | string | pinned | Docker CLI + plugin versions (+ SHA256 vars) |
 | `disk_size` | number | `100` | VM disk size in GB |

@@ -5,7 +5,7 @@
   "type": "module",
   "description": "Windows 11 (ARM64) sandbox guest agent: SSH agent + Docker bridges over named pipes (shared by the QEMU and VMware backends).",
   "engines": {
-    "node": ">=20"
+    "node": ">=26"
   },
   "dependencies": {
     "bridge-core": "workspace:*"

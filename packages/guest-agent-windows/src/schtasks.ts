@@ -3,7 +3,7 @@
 // PowerShell command lines for the user env var + docker context.
 
 export interface WindowsTask {
-  taskName: string; // e.g. agent-sandbox-ssh-agent
+  taskName: string; // e.g. agent-dev-env-ssh-agent
   description: string;
   nodePath: string; // C:\Program Files\nodejs\node.exe
   agentPath: string; // C:\tools\agent-dev-env\guest-agent-windows.js
@@ -20,10 +20,10 @@ export const WINDOWS_PIPES = {
 } as const;
 
 export const WINDOWS_TASK_NAMES = {
-  'ssh-agent': 'agent-sandbox-ssh-agent',
-  docker: 'agent-sandbox-docker',
+  'ssh-agent': 'agent-dev-env-ssh-agent',
+  docker: 'agent-dev-env-docker',
   /** the SYSTEM ONCE task that starts both relays right after install. */
-  relays: 'agent-sandbox-relays',
+  relays: 'agent-dev-env-relays',
 } as const;
 
 const DOCKER_CONTEXT = 'host';

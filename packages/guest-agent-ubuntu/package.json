@@ -5,7 +5,7 @@
   "type": "module",
   "description": "Ubuntu 24.04 sandbox guest agent: SSH agent + Docker bridges (systemd user units), env exports, agent rules.",
   "engines": {
-    "node": ">=20"
+    "node": ">=26"
   },
   "dependencies": {
     "bridge-core": "workspace:*",

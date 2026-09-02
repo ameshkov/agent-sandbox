@@ -1,7 +1,7 @@
 // runners/bridges.ts — the host side of the SSH agent + Docker bridges:
 // socket discovery, the port probe (the legacy "is a listener already
 // bound" check), and the detached spawn of the bundled bridge.js (the
-// socat replacement, see docs/plan.md §6). The guest side lives in the
+// socat replacement). The guest side lives in the
 // per-platform guest agents (launchd/schtasks/systemd).
 //
 // The bridge is spawned detached with a pidfile under the logs/state dir

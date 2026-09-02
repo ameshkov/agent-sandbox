@@ -82,7 +82,7 @@ export async function tagCmd(requested: string[] = [], options: TagOptions = {})
   const repoRoot = options.repo ?? findRepoRoot();
   if (!repoRoot) {
     throw new Error(
-      'tag needs a checkout of the agent-sandbox repo (pass --repo or run it inside the repo).',
+      'tag needs a checkout of the agent-dev-env repo (pass --repo or run it inside the repo).',
     );
   }
   const targets = resolveRequestedImages(requested);

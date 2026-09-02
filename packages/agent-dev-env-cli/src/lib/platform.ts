@@ -83,7 +83,7 @@ export const PLATFORM_DEFAULTS: Record<Platform, PlatformDefaults> = {
   },
   'windows-vmware': {
     image: 'sandbox-windows-11-arm64-vmware',
-    vmName: 'agent-sandbox-windows-11-arm64-vmware',
+    vmName: 'agent-dev-env-windows-11-arm64-vmware',
     stateDir: 'windows-vmware',
     agentPort: 4300,
     dockerPort: 4301,
@@ -98,7 +98,7 @@ export const PLATFORM_DEFAULTS: Record<Platform, PlatformDefaults> = {
   },
   'ubuntu-vmware': {
     image: 'sandbox-ubuntu-24-04-arm64-vmware',
-    vmName: 'agent-sandbox-ubuntu-24-04-arm64-vmware',
+    vmName: 'agent-dev-env-ubuntu-24-04-arm64-vmware',
     stateDir: 'ubuntu-vmware',
     agentPort: 4400,
     dockerPort: 4401,

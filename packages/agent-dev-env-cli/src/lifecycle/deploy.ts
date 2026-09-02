@@ -112,7 +112,7 @@ async function deployQemu(image: CatalogImage, owner: string): Promise<void> {
   logger.info(`Artifact: ${artifact} (${await duHuman(artifact)})`);
   await runChecked(
     'oras',
-    orasPushArgs(ref, `${image.name}.qcow2`, 'application/vnd.agent-sandbox.qcow2'),
+    orasPushArgs(ref, `${image.name}.qcow2`, 'application/vnd.agent-dev-env.qcow2'),
     {
       cwd: dirs.output,
     },
@@ -163,7 +163,7 @@ async function deployVmware(image: CatalogImage, owner: string): Promise<void> {
   logger.info(`Artifact: ${artifact} (${await duHuman(artifact)})`);
   await runChecked(
     'oras',
-    orasPushArgs(ref, `${image.name}.tar.gz`, 'application/vnd.agent-sandbox.vmware-vm'),
+    orasPushArgs(ref, `${image.name}.tar.gz`, 'application/vnd.agent-dev-env.vmware-vm'),
     {
       cwd: dirs.output,
     },

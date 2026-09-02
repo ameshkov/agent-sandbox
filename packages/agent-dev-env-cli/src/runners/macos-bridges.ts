@@ -3,7 +3,7 @@
 // spawn). The guest side (upload/install/status) lives in macos-guest.ts,
 // the rules step in macos-rules.ts; this module wires them together —
 // port of run-macos-sandbox.sh §step 3, with the socat pair replaced by
-// the Node forwarder on both sides (docs/plan.md §6).
+// the Node forwarder on both sides.
 
 import { sleep } from '../lib/exec.js';
 import { logger } from '../lib/logger.js';

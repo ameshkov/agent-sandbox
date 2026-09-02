@@ -245,6 +245,26 @@ docker --version
 docker compose version
 ```
 
+### What's synced from the host
+
+The Windows guests run the same bridges as the other sandboxes, but the
+user settings copy and the shared work directory are macOS/Ubuntu-only:
+
+- **SSH agent bridge** — a password-manager SSH agent (Bitwarden,
+  1Password, ...) is bridged into the guest; `ssh`/`git` inside the
+  sandbox authenticate with the host's keys, no key leaves the host (see
+  [SSH agent bridge](#ssh-agent-bridge)).
+- **Docker engine bridge** — the host's Docker engine is bridged into the
+  guest, so the image's Docker CLI works as-is (see
+  [Docker (remote engine)](#docker-remote-engine)).
+
+Not synced: there is **no user settings copy** on Windows — opencode
+config and credentials, Copilot, VS Code extensions and `.gitconfig` stay
+on the host; configure the agent inside the guest (see
+[Configure the environment](#configure-the-environment)). There is also
+**no shared host directory** — the virtio-fs driver has no ARM64 Windows
+build (see [No shared folder](#no-shared-folder)).
+
 ### OpenChamber from the host
 
 [OpenChamber](https://openchamber.dev) is the web UI for OpenCode: start

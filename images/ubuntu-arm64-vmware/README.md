@@ -107,7 +107,7 @@ build no files and have no such directory.
 | Docker CLI | Client only (`docker` + `docker compose` + `docker buildx`, static aarch64 binaries, hash-pinned); no engine — bridged from the host |
 | OpenCode (`opencode-ai`) | npm global |
 | OpenCodeReview (`ocr`) | npm global (`@alibaba-group/open-code-review`) |
-| OpenChamber web UI | npm global (`@openchamber/web`), systemd **user** service (`agent-sandbox-openchamber`) on `0.0.0.0:4000`, started at boot (`loginctl enable-linger`) |
+| OpenChamber web UI | npm global (`@openchamber/web`), systemd **user** service (`agent-dev-env-openchamber`) on `0.0.0.0:4000`, started at boot (`loginctl enable-linger`) |
 | SSH | openssh-server with password auth; `admin`/sandbox1 (see the vars file); Ubuntu's default cloud-init finalization |
 | systemd user services | Linger enabled for `admin`; the guest agent's bridge services and OpenChamber auto-start in the guest |
 

@@ -3,7 +3,7 @@
 // with the run's actual paths and stream it into the guest's agent
 // (`rules --probe` / `rules --force`), keeping the shell's
 // probe/confirm/overwrite semantics (see run-macos-sandbox.sh
-// §"agent rules" and docs/plan.md §6 "rules").
+// §"agent rules").
 //
 // The probe only inspects the guest and reports the pending action; the
 // write happens only after the user confirmed. The SSH agent section is

@@ -1,5 +1,5 @@
 // paths.ts — the on-disk state layout, designed from scratch (XDG-aware,
-// no migration from the legacy agent-sandbox paths).
+// no migration from legacy paths).
 //
 // Resolution order (highest first):
 //

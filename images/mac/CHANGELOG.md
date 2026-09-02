@@ -173,7 +173,7 @@ is never removed — changes land there until the next release.
   so existing guests are offered the re-copy once.
 - `scripts/run-macos-sandbox.sh` now runs the VM in the background by
   default: `tart run` is nohup'd to
-  `~/Library/Logs/agent-sandbox/tart-<vm>.log` and the script exits after
+  `~/Library/Logs/agent-dev-env/tart-<vm>.log` and the script exits after
   the summary while the VM keeps running (`tart stop <vm>` to stop it). Pass
   `--foreground` to keep the terminal attached and block until the VM stops,
   as before. When the VM is already running, the script now asks whether to
@@ -188,7 +188,7 @@ is never removed — changes land there until the next release.
   `.jsonc`) and auth (`~/.local/share/opencode/auth.json`), plus
   `~/.ssh/allowed_signers`, `~/.ssh/known_hosts`, `~/.ssh/*.sh` and
   `~/.gitconfig` — once per VM, tracked by a versioned marker inside the
-  guest (`~/.config/agent-sandbox/settings-copied`); bumping the settings
+  guest (`~/.config/agent-dev-env/settings-copied`); bumping the settings
   version in the script re-copies when new settings are added. Skip with
   `--no-settings`.
 - The guest's `~/.ssh/config` now pins `IdentityAgent /tmp/ssh-agent.sock`
@@ -255,11 +255,11 @@ Xcode 26.4.1).
 - Visual Studio Code (latest stable) with the `code` CLI on PATH.
 - OpenCode (AI coding agent) via the anomalyco Homebrew tap.
 
-[unreleased]: https://github.com/ameshkov/agent-sandbox/compare/mac-v1.6.0...HEAD
-[mac-v1.6.0]: https://github.com/ameshkov/agent-sandbox/releases/tag/mac-v1.6.0
-[mac-v1.5.0]: https://github.com/ameshkov/agent-sandbox/releases/tag/mac-v1.5.0
-[mac-v1.4.0]: https://github.com/ameshkov/agent-sandbox/releases/tag/mac-v1.4.0
-[mac-v1.3.0]: https://github.com/ameshkov/agent-sandbox/releases/tag/mac-v1.3.0
-[mac-v1.2.0]: https://github.com/ameshkov/agent-sandbox/releases/tag/mac-v1.2.0
-[mac-v1.1.0]: https://github.com/ameshkov/agent-sandbox/releases/tag/mac-v1.1.0
-[mac-v1.0.0]: https://github.com/ameshkov/agent-sandbox/releases/tag/mac-v1.0.0
+[unreleased]: https://github.com/ameshkov/agent-dev-env/compare/mac-v1.6.0...HEAD
+[mac-v1.6.0]: https://github.com/ameshkov/agent-dev-env/releases/tag/mac-v1.6.0
+[mac-v1.5.0]: https://github.com/ameshkov/agent-dev-env/releases/tag/mac-v1.5.0
+[mac-v1.4.0]: https://github.com/ameshkov/agent-dev-env/releases/tag/mac-v1.4.0
+[mac-v1.3.0]: https://github.com/ameshkov/agent-dev-env/releases/tag/mac-v1.3.0
+[mac-v1.2.0]: https://github.com/ameshkov/agent-dev-env/releases/tag/mac-v1.2.0
+[mac-v1.1.0]: https://github.com/ameshkov/agent-dev-env/releases/tag/mac-v1.1.0
+[mac-v1.0.0]: https://github.com/ameshkov/agent-dev-env/releases/tag/mac-v1.0.0

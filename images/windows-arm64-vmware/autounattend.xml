@@ -124,8 +124,8 @@
 
       <UserData>
         <AcceptEula>true</AcceptEula>
-        <FullName>agent-sandbox</FullName>
-        <Organization>agent-sandbox</Organization>
+        <FullName>agent-dev-env</FullName>
+        <Organization>agent-dev-env</Organization>
         <!-- Generic install key for Windows 11 Pro: lets Setup complete
              without prompting; does NOT activate (the sandbox runs
              unactivated with a watermark). -->
@@ -175,8 +175,8 @@
            fail the specialize pass with hrResult=0x80220005. -->
       <ComputerName>win11-sandbox</ComputerName>
       <TimeZone>UTC</TimeZone>
-      <RegisteredOrganization>agent-sandbox</RegisteredOrganization>
-      <RegisteredOwner>agent-sandbox</RegisteredOwner>
+      <RegisteredOrganization>agent-dev-env</RegisteredOrganization>
+      <RegisteredOwner>agent-dev-env</RegisteredOwner>
     </component>
     <component name="Microsoft-Windows-International-Core"
                processorArchitecture="arm64"

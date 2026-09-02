@@ -23,7 +23,7 @@ virtio_win_sha256 = ""
 
 # Toolchain versions installed via Chocolatey (choco package versions —
 # must exist in the community repository).
-nodejs_version = "22.23.2"
+nodejs_version = "26.8.1"
 python_version = "3.13.15"
 github_cli_version = "2.97.0"
 ripgrep_version = "15.2.0"

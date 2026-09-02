@@ -3,12 +3,12 @@ import { DEFAULT_GHCR_OWNER, ownerFromGitRemote, registryRef, resolveOwnerFrom }
 
 describe('ghcr', () => {
   it('extracts the owner from https remotes', () => {
-    expect(ownerFromGitRemote('https://github.com/ameshkov/agent-sandbox.git')).toBe('ameshkov');
+    expect(ownerFromGitRemote('https://github.com/ameshkov/agent-dev-env.git')).toBe('ameshkov');
     expect(ownerFromGitRemote('https://github.com/hello/world')).toBe('hello');
   });
 
   it('extracts the owner from git@ ssh remotes', () => {
-    expect(ownerFromGitRemote('git@github.com:ameshkov/agent-sandbox.git')).toBe('ameshkov');
+    expect(ownerFromGitRemote('git@github.com:ameshkov/agent-dev-env.git')).toBe('ameshkov');
     expect(ownerFromGitRemote('git@github.com:some-org/repo.git')).toBe('some-org');
   });
 

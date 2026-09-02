@@ -159,7 +159,7 @@ async function requireVirtioWinIso(image: CatalogImage, cacheDir: string): Promi
  * @param stagingDir - The staging dir.
  */
 async function stageVirtioDrivers(virtioIso: string, stagingDir: string): Promise<void> {
-  const mountDir = mkdtempSync(join(tmpdir(), 'agent-sandbox-virtio-win.'));
+  const mountDir = mkdtempSync(join(tmpdir(), 'agent-dev-env-virtio-win.'));
   const missing: string[] = [];
   logger.step(`mounting ${basename(virtioIso)}`);
   try {

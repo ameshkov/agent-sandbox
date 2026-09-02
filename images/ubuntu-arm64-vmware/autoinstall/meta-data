@@ -1,2 +1,2 @@
-instance-id: agent-sandbox-ubuntu-vmware
+instance-id: agent-dev-env-ubuntu-vmware
 local-hostname: ubuntu-sandbox

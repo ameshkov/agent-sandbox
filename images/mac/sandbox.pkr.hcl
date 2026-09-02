@@ -170,9 +170,9 @@ sudo launchctl kickstart -k system/com.apple.screensharing || true
 sudo sysadminctl -autologin set -userName admin -password admin || true
 
 # Friendly hostname for the VM
-sudo scutil --set ComputerName "Agent Sandbox" || true
-sudo scutil --set HostName "agent-sandbox" || true
-sudo scutil --set LocalHostName "agent-sandbox" || true
+sudo scutil --set ComputerName "Agent Dev Env" || true
+sudo scutil --set HostName "agent-dev-env" || true
+sudo scutil --set LocalHostName "agent-dev-env" || true
 
 # Tart Guest Agent (pre-installed in Cirrus base images) powers clipboard
 # sharing in GUI mode and `tart exec`.  Check that it is present.
@@ -438,7 +438,7 @@ set -e -x
 source ~/.zprofile
 brew cleanup
 
-echo "===== Agent Sandbox image contents ====="
+echo "===== Agent Dev Env image contents ====="
 sw_vers
 xcodebuild -version
 brew --version | head -1

@@ -11,6 +11,6 @@
     "./probe": "./src/probe.ts"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=26"
   }
 }

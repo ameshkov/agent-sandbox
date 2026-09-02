@@ -81,7 +81,7 @@ variable "virtio_win_sha256" {
 
 variable "nodejs_version" {
   type        = string
-  description = "Node.js version, e.g. '22.23.2' (choco package version)."
+  description = "Node.js version, e.g. '26.8.1' (choco package version)."
 }
 
 variable "python_version" {

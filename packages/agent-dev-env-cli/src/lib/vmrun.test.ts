@@ -38,7 +38,7 @@ describe('rewriteVmxDisplayName', () => {
 
   it('rewrites a lowercase key written by vmrun', () => {
     const content = 'displayname = "sandbox-ubuntu-24-04-arm64-vmware"\n';
-    expect(rewriteVmxDisplayName(content, 'agent-sandbox')).toBe('displayname = "agent-sandbox"\n');
+    expect(rewriteVmxDisplayName(content, 'agent-dev-env')).toBe('displayname = "agent-dev-env"\n');
   });
 });
 

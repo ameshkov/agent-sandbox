@@ -456,7 +456,7 @@ GDM
       tar -C /usr/local -xzf "$TARBALL"
       rm -f "$TARBALL"
       # Persist for login shells (profile.d runs before every login shell).
-      echo 'export PATH=$PATH:/usr/local/go/bin' | tee /etc/profile.d/agent-sandbox-go.sh
+      echo 'export PATH=$PATH:/usr/local/go/bin' | tee /etc/profile.d/agent-dev-env-go.sh
       /usr/local/go/bin/go version
       END
     ]
@@ -498,7 +498,7 @@ GDM
         rustc --version
         cargo --version
       '
-      echo 'export PATH=$PATH:$HOME/.cargo/bin' | tee /etc/profile.d/agent-sandbox-rust.sh
+      echo 'export PATH=$PATH:$HOME/.cargo/bin' | tee /etc/profile.d/agent-dev-env-rust.sh
       echo "rust ready"
       END
     ]
@@ -653,7 +653,7 @@ EOF
       # systemd user unit — the deterministic service the sandbox runner
       # also restarts after the bridges come up.
       sudo -H -u ${var.ssh_username} mkdir -p "$ADMIN_HOME/.config/systemd/user"
-      cat > /tmp/agent-sandbox-openchamber.service <<EOF
+      cat > /tmp/agent-dev-env-openchamber.service <<EOF
 [Unit]
 Description=OpenChamber Web Server
 After=network.target
@@ -673,13 +673,13 @@ RestartSec=5
 [Install]
 WantedBy=default.target
 EOF
-      sudo -H -u ${var.ssh_username} cp /tmp/agent-sandbox-openchamber.service \
-        "$ADMIN_HOME/.config/systemd/user/agent-sandbox-openchamber.service"
-      rm -f /tmp/agent-sandbox-openchamber.service
+      sudo -H -u ${var.ssh_username} cp /tmp/agent-dev-env-openchamber.service \
+        "$ADMIN_HOME/.config/systemd/user/agent-dev-env-openchamber.service"
+      rm -f /tmp/agent-dev-env-openchamber.service
       sudo -H -u ${var.ssh_username} bash -c '
         export XDG_RUNTIME_DIR="/run/user/$(id -u)"
         systemctl --user daemon-reload
-        systemctl --user enable --now agent-sandbox-openchamber
+        systemctl --user enable --now agent-dev-env-openchamber
       '
       END
     ]
@@ -695,7 +695,7 @@ EOF
       set -e -x
       sudo -H -u ${var.ssh_username} bash -c '
         export XDG_RUNTIME_DIR="/run/user/$(id -u)"
-        systemctl --user is-active agent-sandbox-openchamber
+        systemctl --user is-active agent-dev-env-openchamber
       '
       n=0
       while [ "$n" -lt 60 ]; do
@@ -767,7 +767,7 @@ EOF
       done
       sudo -H -u ${var.ssh_username} bash -c '
         export XDG_RUNTIME_DIR="/run/user/$(id -u)"
-        systemctl --user list-unit-files | grep agent-sandbox-openchamber || true
+        systemctl --user list-unit-files | grep agent-dev-env-openchamber || true
         docker context ls | grep host || true
       '
       END

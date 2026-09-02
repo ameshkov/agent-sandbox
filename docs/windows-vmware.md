@@ -81,7 +81,7 @@ when present, otherwise it asks to pull
 then extracts the pristine VM and clones a working VM under
 `~/Library/Application Support/agent-dev-env/windows-vmware/<image>/`
 (the clone's display name in Fusion's library is
-`agent-sandbox-windows-11-arm64-vmware` — the base keeps the image's name) —
+`agent-dev-env-windows-11-arm64-vmware` — the base keeps the image's name) —
 the pristine image is never written to. On the first clone the CLI
 also upgrades the working VM's virtual hardware to the version your
 Fusion supports (`vmrun upgradevm`, recorded once per clone) — without
@@ -200,7 +200,7 @@ openchamber restart
   under `~/Library/Application Support/agent-dev-env/windows-vmware/`.
   The next run re-pulls the archive and re-clones. Without `--yes` it asks
   before deleting. Note: Fusion's VM library may still list the deleted
-  working VM (`agent-sandbox-windows-11-arm64-vmware`) — remove the stale
+  working VM (`agent-dev-env-windows-11-arm64-vmware`) — remove the stale
   entry in the Fusion UI (harmless).
 
 - **Run several sandboxes side by side** — set `AGENT_DEV_ENV_DATA_HOME` to
@@ -259,6 +259,27 @@ openchamber --version
 docker --version
 docker compose version
 ```
+
+### What's synced from the host
+
+The Windows guests run the same bridges as the other sandboxes, but the
+user settings copy and the shared work directory are macOS/Ubuntu-only:
+
+- **SSH agent bridge** — a password-manager SSH agent (Bitwarden,
+  1Password, ...) is bridged into the guest; `ssh`/`git` inside the
+  sandbox authenticate with the host's keys, no key leaves the host (see
+  [SSH agent bridge](#ssh-agent-bridge)).
+- **Docker engine bridge** — the host's Docker engine is bridged into the
+  guest, so the image's Docker CLI works as-is (see
+  [Docker (remote engine)](#docker-remote-engine)).
+
+Not synced: there is **no user settings copy** on Windows — opencode
+config and credentials, Copilot, VS Code extensions and `.gitconfig` stay
+on the host; configure the agent inside the guest (see
+[Configure the environment](#configure-the-environment)). There is also
+**no shared host folder** for Windows 11 ARM guests — `--work-dir` is
+accepted but skipped with a warning (see
+[Shared host folder](#shared-host-folder)).
 
 ### OpenChamber from the host
 

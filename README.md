@@ -1,4 +1,8 @@
-# agent-sandbox
+# agent-dev-env
+
+[![CI](https://github.com/ameshkov/agent-dev-env/actions/workflows/ci.yml/badge.svg)](https://github.com/ameshkov/agent-dev-env/actions/workflows/ci.yml)
+[![npm](https://img.shields.io/npm/v/agent-dev-env)](https://www.npmjs.com/package/agent-dev-env)
+[![GitHub release](https://img.shields.io/github/v/release/ameshkov/agent-dev-env)](https://github.com/ameshkov/agent-dev-env/releases)
 
 Local sandbox virtual machines for AI coding agents. A pre-built image with
 the full toolchain (macOS with Xcode/Homebrew, Windows 11 ARM64 with
@@ -29,11 +33,21 @@ npm install -g agent-dev-env
 agent-dev-env run macos
 ```
 
-On first use the CLI asks before pulling the image (~50 GB, one-time) and
-creating the working VM, then starts it with the recommended settings and
-your work directory shared. It also bridges the host's SSH agent and Docker
-engine into the guest and copy your user settings in — see the
-[macOS guide](docs/macos.md) for the full walkthrough and the
+Want the latest build from the `master` branch? The CI publishes a canary
+build on every push to npm under the `canary` dist-tag:
+
+```bash
+npm install -g agent-dev-env@canary
+```
+
+On first use the CLI asks before pulling the image (one-time, ~50 GB for
+macOS) and creating the working VM, then starts it with the recommended
+settings. Every guest gets the host's SSH agent and Docker engine bridged
+in; the macOS and Ubuntu guests additionally share your work directory and
+copy your user settings in. What works where differs per guest — see the
+[macOS guide](docs/macos.md), [Ubuntu guide](docs/ubuntu-vmware.md),
+[Windows QEMU guide](docs/windows-qemu.md) or
+[Windows VMware guide](docs/windows-vmware.md) for your OS, and the
 [CLI reference](docs/cli.md) for every command and option.
 
 > Tip: `agent-dev-env doctor` checks Tart/QEMU/Fusion/oras and free disk
@@ -51,8 +65,9 @@ Pick the guide for your operating system:
 | Windows (QEMU) | [Set up your Windows sandbox](docs/windows-qemu.md) |
 | Windows (VMware) | [Set up your Windows VMware sandbox](docs/windows-vmware.md) |
 
-The [macOS guide](docs/macos.md) starts with a short, four-step quick setup
-and is all you need to have a sandbox with a coding agent running.
+Each guide starts with a short quick setup — macOS takes four steps, the
+others three — and is all you need to have a sandbox with a coding agent
+running.
 
 ## Documentation
 
@@ -88,5 +103,4 @@ For maintainers and contributors:
   the images, releases/tags/changelogs, code guidelines.
 - [DEVELOPMENT.md](DEVELOPMENT.md) — prerequisites and how to build and
   debug the CLI and the recipes.
-- [docs/plan.md](docs/plan.md) — the design document of the CLI port.
 - [CHANGELOG.md](CHANGELOG.md) — the repo changelog.

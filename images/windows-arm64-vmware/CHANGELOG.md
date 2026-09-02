@@ -55,6 +55,8 @@ the next release.
 
 ### Changed
 
+- Node.js is bumped from 22 to 26 (`nodejs_version = "26.8.1"` in the
+  vars file, choco package `nodejs`).
 - The image was renamed from `sandbox-windows-11-vmware` to
   `sandbox-windows-11-arm64-vmware` (vars file, template `vm_name` —
   `sandbox-windows-<windows_version>-arm64-vmware` — the GHCR package
@@ -96,7 +98,7 @@ the next release.
   platforms and images never collides. Override the data root with
   `AGENT_DEV_ENV_DATA_HOME` (or `XDG_DATA_HOME`) as before.
 - `agent-dev-env run` (windows-vmware) — the working clone now gets a
-  distinct display name, `agent-sandbox-windows-11-arm64-vmware` (set in
+  distinct display name, `agent-dev-env-windows-11-arm64-vmware` (set in
   the cloned vmx before the first start), instead of inheriting the
   pristine image's `sandbox-windows-11-arm64-vmware`: `vmrun clone`
   copies the source vmx's `displayName`, so before this the working VM
@@ -248,7 +250,7 @@ the next release.
   runner, landing together with the user guide `docs/windows-vmware.md`:
   extracts the archive into the state dir and clones a working VM with
   `vmrun -T fusion clone ... full` (base never written to) under
-  `~/Library/Application Support/agent-sandbox/windows-11-vmware`, boots
+  `~/Library/Application Support/agent-dev-env/windows-11-vmware`, boots
   it with `vmrun start`, discovers the guest IP via `vmrun
   getGuestIPAddress` (VMware Tools are in the image — no port
   forwarding, the host is the NAT router for the vmnet8 subnet),
@@ -264,5 +266,5 @@ the next release.
   macOS-flavored and not installed into Windows guests yet; the shared
   folder is best-effort (HGFS must be enabled by VMware Tools).
 
-[unreleased]: https://github.com/ameshkov/agent-sandbox/compare/windows-arm64-vmware-v1.0.0...HEAD
-[windows-arm64-vmware-v1.0.0]: https://github.com/ameshkov/agent-sandbox/releases/tag/windows-arm64-vmware-v1.0.0
+[unreleased]: https://github.com/ameshkov/agent-dev-env/compare/windows-arm64-vmware-v1.0.0...HEAD
+[windows-arm64-vmware-v1.0.0]: https://github.com/ameshkov/agent-dev-env/releases/tag/windows-arm64-vmware-v1.0.0

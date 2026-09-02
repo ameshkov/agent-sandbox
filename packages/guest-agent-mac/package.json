@@ -5,7 +5,7 @@
   "type": "module",
   "description": "macOS sandbox guest agent: SSH agent + Docker bridges (launchd), env exports, agent rules.",
   "engines": {
-    "node": ">=20"
+    "node": ">=26"
   },
   "dependencies": {
     "bridge-core": "workspace:*",

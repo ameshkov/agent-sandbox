@@ -150,7 +150,7 @@ async function copySettingsToGuest(
       throw new Error('could not pack the staged settings.');
     }
 
-    await session.sftpWrite('/tmp/agent-sandbox-settings.tar.gz', readFileSync(archive));
+    await session.sftpWrite('/tmp/agent-dev-env-settings.tar.gz', readFileSync(archive));
     const unpack = await session.exec(guestUnpackScript(password));
     if (unpack.code !== 0) {
       throw new Error(`could not unpack the settings in the guest:\n${unpack.stderr.trim()}`);

@@ -1,11 +1,11 @@
 {
-  "name": "agent-sandbox",
+  "name": "agent-dev-env",
   "version": "0.1.0",
   "private": true,
   "type": "module",
   "description": "The agent-dev-env monorepo workspace: sandbox image recipes (Packer) and the CLI + guest agents that build, run, and wire up dev sandbox VMs.",
   "engines": {
-    "node": ">=20",
+    "node": ">=26",
     "pnpm": ">=10"
   },
   "packageManager": "pnpm@10.14.0",
@@ -21,10 +21,12 @@
     "lint:fix": "oxlint packages --fix",
     "knip": "knip --production",
     "check": "pnpm run format:check && pnpm run lint && pnpm run typecheck && pnpm run build && pnpm run test",
+    "publish-npm": "pnpm build && pnpm --filter ./packages/agent-dev-env-cli publish --no-git-checks --provenance --access public",
+    "publish-npm:canary": "pnpm build && pnpm --filter ./packages/agent-dev-env-cli publish --no-git-checks --provenance --access public --tag canary",
     "prepare": "husky || true"
   },
   "devDependencies": {
-    "@types/node": "20.19.43",
+    "@types/node": "26.4.1",
     "@types/ssh2": "1.15.5",
     "esbuild": "0.28.2",
     "husky": "9.1.7",

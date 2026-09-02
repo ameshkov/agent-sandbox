@@ -13,5 +13,9 @@ node_modules/
 .pnpm-store/
 dist/
 
+# The CLI package readme — generated from the repo root README.md by
+# copy-assets.mjs at build time, so the published npm package ships it.
+packages/agent-dev-env-cli/README.md
+
 # Python bytecode
 __pycache__/

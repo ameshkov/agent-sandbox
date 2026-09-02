@@ -1,12 +1,11 @@
-// runners/framework.ts — the shared runner flow (docs/plan.md §7): the
-// step order and state types every platform backend follows, plus the
-// host/arch preflight. The four backends (runners/macos.ts,
-// runners/windows-qemu.ts, runners/windows.ts, runners/ubuntu.ts)
-// implement the per-platform hooks; the step titles and their order stay
-// shell-identical.
+// runners/framework.ts — the shared runner flow: the step order and state
+// types every platform backend follows, plus the host/arch preflight. The
+// four backends (runners/macos.ts, runners/windows-qemu.ts,
+// runners/windows.ts, runners/ubuntu.ts) implement the per-platform hooks;
+// the step titles and their order stay shell-identical.
 //
-// Step order (per plan §7): preflight → 1 image+VM → 2 boot → 3 bridges
-// + rules → 4 settings → 5 OpenChamber → summary → foreground wait.
+// Step order: preflight → 1 image+VM → 2 boot → 3 bridges + rules → 4
+// settings → 5 OpenChamber → summary → foreground wait.
 
 import type { ChildProcess } from 'node:child_process';
 import { logger } from '../lib/logger.js';

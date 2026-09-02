@@ -69,7 +69,7 @@ variable "vmware_fusion_app_path" {
 
 variable "nodejs_version" {
   type        = string
-  description = "Node.js version, e.g. '22.23.2' (choco package version)."
+  description = "Node.js version, e.g. '26.8.1' (choco package version)."
 }
 
 variable "python_version" {
@@ -441,7 +441,7 @@ build {
       # up. The command goes through cmd /c so the package name and its
       # --version are parsed as separate arguments (passing $installArgs
       # straight to the exe makes choco look for a package literally named
-      # 'nodejs --version=22.23.2'). No 2>&1 here: redirecting native
+      # 'nodejs --version=26.8.1'). No 2>&1 here: redirecting native
       # stderr under $ErrorActionPreference='Stop' turns any choco warning
       # into a terminating error in Windows PowerShell 5.1 (the repo's
       # documented native-stderr bug) — the output just streams to the

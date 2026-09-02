@@ -5,7 +5,7 @@
 // same path is detected), clone the working VM + set its display name,
 // and upgrade it once per hardware version (.hw-version). Port of
 // run-{ubuntu,windows}-vmware-sandbox.sh §step 1/2; the CLI's data dir
-// replaces the legacy agent-sandbox one. The per-platform pieces (platform
+// replaces the legacy one. The per-platform pieces (platform
 // id, the archive override env var) are parameters, so the two VMware
 // backends share one implementation.
 //

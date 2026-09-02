@@ -10,6 +10,10 @@
 //      packages/guest-agent-windows -> dist/assets/guest/guest-agent-windows.js
 //      packages/guest-agent-ubuntu  -> dist/assets/guest/guest-agent-ubuntu.js
 // 3. Copies the runtime assets and the images/ snapshot into dist/.
+// 4. Copies the repo README into the CLI package root: npm only shows a
+//    package readme from a README at the package root (it does not follow
+//    symlinks and ignores a readme path outside the package), so the
+//    published agent-dev-env package gets this repo README.
 //
 // The bundled artifacts are how guests get the bridge code: the runners
 // SFTP them in and run them with node — no npm install inside guests.
@@ -62,6 +66,10 @@ async function main() {
   if (existsSync(images)) {
     cpSync(images, join(dist, 'assets', 'images'), { recursive: true });
   }
+
+  // The npm package readme — the repo README is the single source of
+  // truth (the package README is generated, never edited in place).
+  cpSync(join(repoRoot, 'README.md'), join(cliRoot, 'README.md'));
   console.log(`copy-assets: dist/ ready (${dist})`);
 }
 

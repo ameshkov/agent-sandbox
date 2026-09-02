@@ -59,12 +59,12 @@ export function guestUnpackScript(password: string): string {
     'printf "%s\\n" "' +
       password +
       '" | sudo -S chown -R "$USER:$USER" "$HOME/.local" 2>/dev/null || true',
-    'tar -C "$HOME" -xzf /tmp/agent-sandbox-settings.tar.gz || exit 1',
+    'tar -C "$HOME" -xzf /tmp/agent-dev-env-settings.tar.gz || exit 1',
     'rm -rf "$HOME/.config/mcp-compress-router" 2>/dev/null || true',
     'find "$HOME/.local" "$HOME/.config" "$HOME/.copilot" "$HOME/.opencodereview" "$HOME/.ssh" ' +
       '-name "._*" -delete 2>/dev/null || true',
     'chmod 700 "$HOME/.ssh" 2>/dev/null || true',
-    'rm -f /tmp/agent-sandbox-settings.tar.gz',
+    'rm -f /tmp/agent-dev-env-settings.tar.gz',
     '',
   ].join('\n');
 }
@@ -75,5 +75,5 @@ export function guestUnpackScript(password: string): string {
  * @returns The script text.
  */
 export function openchamberRestartCommand(): string {
-  return 'export XDG_RUNTIME_DIR="/run/user/$(id -u)"; systemctl --user restart agent-sandbox-openchamber';
+  return 'export XDG_RUNTIME_DIR="/run/user/$(id -u)"; systemctl --user restart agent-dev-env-openchamber';
 }

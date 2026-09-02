@@ -6,11 +6,11 @@
   "author": "Andrey Meshkov <am@adguard.com>",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/ameshkov/agent-sandbox.git"
+    "url": "git+https://github.com/ameshkov/agent-dev-env.git"
   },
-  "homepage": "https://github.com/ameshkov/agent-sandbox#readme",
+  "homepage": "https://github.com/ameshkov/agent-dev-env#readme",
   "bugs": {
-    "url": "https://github.com/ameshkov/agent-sandbox/issues"
+    "url": "https://github.com/ameshkov/agent-dev-env/issues"
   },
   "publishConfig": {
     "access": "public"
@@ -23,7 +23,7 @@
     "dist"
   ],
   "engines": {
-    "node": ">=20"
+    "node": ">=26"
   },
   "os": [
     "darwin"

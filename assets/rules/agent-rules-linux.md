@@ -54,7 +54,7 @@ bridges the *host's* engine into the VM instead:
 ## Config changes
 
 - After editing opencode or Copilot settings in the VM, restart OpenChamber
-  with `systemctl --user restart agent-sandbox-openchamber` (the CLI
+  with `systemctl --user restart agent-dev-env-openchamber` (the CLI
   restarts it automatically when it brings the bridges up). To pull the
   host's versions of the settings instead, the user runs
   `agent-dev-env sync ubuntu-vmware`.

@@ -82,7 +82,7 @@ when present, otherwise it asks to pull
 then extracts the pristine VM and clones a working VM under
 `~/Library/Application Support/agent-dev-env/ubuntu-vmware/<image>/`
 (the clone's display name in Fusion's library is
-`agent-sandbox-ubuntu-24-04-arm64-vmware` — the base keeps the image's
+`agent-dev-env-ubuntu-24-04-arm64-vmware` — the base keeps the image's
 name) — the pristine image is never written to. On the first clone the CLI
 also upgrades the working VM's virtual hardware to the version your
 Fusion supports (`vmrun upgradevm`, recorded once per clone) — without it
@@ -172,7 +172,7 @@ This walks you through the provider setup (API key, model, ...). Once
 configured, restart OpenChamber so it picks up the provider:
 
 ```bash
-systemctl --user restart agent-sandbox-openchamber
+systemctl --user restart agent-dev-env-openchamber
 ```
 
 ### Everyday commands
@@ -207,7 +207,7 @@ systemctl --user restart agent-sandbox-openchamber
   under `~/Library/Application Support/agent-dev-env/ubuntu-vmware/`. The
   next run re-pulls the archive and re-clones. Without `--yes` it asks
   before deleting. Note: Fusion's VM library may still list the deleted
-  working VM (`agent-sandbox-ubuntu-24-04-arm64-vmware`) — remove the
+  working VM (`agent-dev-env-ubuntu-24-04-arm64-vmware`) — remove the
   stale entry in the Fusion UI (harmless).
 
 - **Run several sandboxes side by side** — set `AGENT_DEV_ENV_DATA_HOME` to
@@ -271,12 +271,32 @@ docker --version
 docker compose version
 ```
 
+### What's synced from the host
+
+On first use (and on every later run) the runner wires three host
+integrations into the sandbox:
+
+- **Shared work directory** — `SANDBOX_WORK_DIR` / `--work-dir` mounts a
+  host folder into the guest at `/mnt/hgfs/work`; see
+  [Shared host folder](#shared-host-folder).
+- **SSH agent + Docker engine bridges** — the host's SSH agent (a
+  password manager) and Docker engine reach the guest (see
+  [SSH agent bridge](#ssh-agent-bridge) and
+  [Docker (remote engine)](#docker-remote-engine)).
+- **User settings copy** — opencode/Copilot/VS Code/git configs and
+  credentials are copied into the guest once per VM (see
+  [User settings on the guest](#user-settings-on-the-guest)).
+
+What is *not* synced: SSH keys (authentication goes through the bridged
+agent), the macOS Keychain (extension auth), and VS Code extension state
+— those stay on the host.
+
 ### OpenChamber from the host
 
 [OpenChamber](https://openchamber.dev) is the web UI for OpenCode: start
 sessions, supervise them, review changes — all from your host browser. The
 image installs it as a systemd **user** service
-(`agent-sandbox-openchamber`) that starts at boot (the image enables
+(`agent-dev-env-openchamber`) that starts at boot (the image enables
 `loginctl enable-linger admin`, so the user services run without anyone
 logging in), listening on `0.0.0.0:4000`. The guest's IP is reachable
 directly from the host, so with the VM running:
@@ -293,8 +313,8 @@ The default UI password is `sandbox`. Notes:
 - The UI binds to `0.0.0.0` inside the guest, which is only reachable over
   Fusion's NAT segment (vmnet8) — not your LAN (unless you bridge the guest
   network manually).
-- `systemctl --user status agent-sandbox-openchamber` and
-  `journalctl --user -u agent-sandbox-openchamber` (from the guest) help
+- `systemctl --user status agent-dev-env-openchamber` and
+  `journalctl --user -u agent-dev-env-openchamber` (from the guest) help
   when something is off.
 
 ### Docker (remote engine)
@@ -311,9 +331,9 @@ Docker engine socket is found on the host (Docker Desktop at
 it bridges it: a host-side forwarder (the bundled `bridge.js`, no socat)
 exposes the socket on TCP `4401` (bound to the host's vmnet8 address —
 reachable from the guest), and a guest-side systemd user service
-(`agent-sandbox-docker`) presents it as the Unix socket `/tmp/docker.sock`.
+(`agent-dev-env-docker`) presents it as the Unix socket `/tmp/docker.sock`.
 `DOCKER_HOST` (and `TESTCONTAINERS_HOST_OVERRIDE` for clients that ignore
-it) is exported in `/etc/profile.d/agent-sandbox.sh`, and the docker
+it) is exported in `/etc/profile.d/agent-dev-env.sh`, and the docker
 context `host` points at the same socket, so `docker`, `docker compose`,
 and testcontainers all hit the host engine:
 

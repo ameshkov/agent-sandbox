@@ -82,9 +82,9 @@ function argValue(argv: string[], flag: string): string | undefined {
 
 function bridgeFor(role: 'ssh-agent' | 'docker', port: number, hostAlias: string): SystemdBridge {
   return {
-    unitName: `agent-sandbox-${role}.service`,
+    unitName: `agent-dev-env-${role}.service`,
     description:
-      role === 'ssh-agent' ? 'Agent Sandbox SSH agent bridge' : 'Agent Sandbox Docker bridge',
+      role === 'ssh-agent' ? 'Agent Dev Env SSH agent bridge' : 'Agent Dev Env Docker bridge',
     nodePath: NODE_PATH,
     agentPath: AGENT_PATH,
     role,
@@ -114,7 +114,7 @@ function install(argv: string[]): number {
   }
   execFileSync('systemctl', ['--user', 'daemon-reload'], { stdio: 'ignore' });
   for (const [role] of [['ssh-agent'], ['docker']] as const) {
-    execFileSync('systemctl', ['--user', 'enable', '--now', `agent-sandbox-${role}.service`], {
+    execFileSync('systemctl', ['--user', 'enable', '--now', `agent-dev-env-${role}.service`], {
       stdio: 'ignore',
     });
   }
@@ -141,7 +141,7 @@ function installProfileExports(gw: string): void {
 }
 
 function profileMarker(): string {
-  return '# Agent sandbox bridge env';
+  return '# Agent dev env bridge env';
 }
 
 function bridgeCommand(argv: string[]): Promise<number> {
@@ -187,7 +187,7 @@ function rulesCommand(argv: string[]): number {
 
 function uninstall(): number {
   for (const role of ['ssh-agent', 'docker'] as const) {
-    const unit = `agent-sandbox-${role}.service`;
+    const unit = `agent-dev-env-${role}.service`;
     try {
       execFileSync('systemctl', ['--user', 'disable', '--now', unit], { stdio: 'ignore' });
     } catch {

@@ -17,7 +17,7 @@ describe('schtasks builders (windows)', () => {
   it('schtasksXml registers an ONLOGON task running the bridge on the pipe', () => {
     const xml = schtasksXml({
       taskName: WINDOWS_TASK_NAMES['ssh-agent'],
-      description: 'Agent Sandbox SSH agent bridge',
+      description: 'Agent Dev Env SSH agent bridge',
       nodePath: 'C:\\Program Files\\nodejs\\node.exe',
       agentPath: 'C:\\tools\\agent-dev-env\\guest-agent-windows.js',
       role: 'ssh-agent',
@@ -69,6 +69,6 @@ describe('schtasks builders (windows)', () => {
   });
 
   it('WINDOWS_TASK_NAMES includes the relay system task', () => {
-    expect(WINDOWS_TASK_NAMES.relays).toBe('agent-sandbox-relays');
+    expect(WINDOWS_TASK_NAMES.relays).toBe('agent-dev-env-relays');
   });
 });

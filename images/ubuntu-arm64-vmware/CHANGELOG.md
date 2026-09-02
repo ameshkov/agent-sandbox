@@ -27,6 +27,11 @@ the next release.
   mcp-compress-router, `.gitconfig` rewritten for `/home/admin`,
   OpenChamber restart). See `docs/ubuntu-vmware.md`.
 
+### Changed
+
+- Node.js is bumped from 22 to 26 (`node_version = "26"` in the vars
+  file): nvm installs Node 26 and sets it as the default.
+
 ### Fixed
 
 - **The shared host directory no longer fails when the share is
@@ -182,7 +187,7 @@ the next release.
     (apt base toolchain, hash-pinned Go/Rust/nvm Node/GitHub CLI/VS
     Code/Chrome CfT/Firefox/Docker CLI + compose + buildx, npm globals
     opencode/`ocr`/OpenChamber). OpenChamber runs as a systemd **user**
-    service (`agent-sandbox-openchamber`, linger enabled) on
+    service (`agent-dev-env-openchamber`, linger enabled) on
     `0.0.0.0:4000`.
     - `vars/sandbox-ubuntu-24-04-arm64-vmware.pkrvars.hcl` — Ubuntu point
     release, ISO SHA256, all pinned toolchain versions + hashes, VM
@@ -229,6 +234,6 @@ the next release.
   `DEVELOPMENT.md` and `AGENTS.md` list the new platform and the
   shared `scripts/lib/vmware.sh` helper.
 
-[unreleased]: https://github.com/ameshkov/agent-sandbox/compare/ubuntu-arm64-vmware-v1.1.0...HEAD
-[ubuntu-arm64-vmware-v1.1.0]: https://github.com/ameshkov/agent-sandbox/releases/tag/ubuntu-arm64-vmware-v1.1.0
-[ubuntu-arm64-vmware-v1.0.0]: https://github.com/ameshkov/agent-sandbox/releases/tag/ubuntu-arm64-vmware-v1.0.0
+[unreleased]: https://github.com/ameshkov/agent-dev-env/compare/ubuntu-arm64-vmware-v1.1.0...HEAD
+[ubuntu-arm64-vmware-v1.1.0]: https://github.com/ameshkov/agent-dev-env/releases/tag/ubuntu-arm64-vmware-v1.1.0
+[ubuntu-arm64-vmware-v1.0.0]: https://github.com/ameshkov/agent-dev-env/releases/tag/ubuntu-arm64-vmware-v1.0.0

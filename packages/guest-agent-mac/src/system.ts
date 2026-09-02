@@ -5,7 +5,7 @@
 // too — the agent's index.ts does the actual file I/O.
 
 export interface LaunchdBridge {
-  /** launchd label, e.g. dev.agent-sandbox.ssh-agent. */
+  /** launchd label, e.g. dev.agent-dev-env.ssh-agent. */
   label: string;
   /** node binary (process.execPath). */
   nodePath: string;
@@ -20,8 +20,8 @@ export interface LaunchdBridge {
 }
 
 export const LAUNCHD_LABELS = {
-  'ssh-agent': 'dev.agent-sandbox.ssh-agent',
-  docker: 'dev.agent-sandbox.docker',
+  'ssh-agent': 'dev.agent-dev-env.ssh-agent',
+  docker: 'dev.agent-dev-env.docker',
 } as const;
 
 export const GUEST_AGENT_SOCKET = '/tmp/ssh-agent.sock';

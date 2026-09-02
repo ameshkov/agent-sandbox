@@ -2,7 +2,7 @@
 // systemd user units (the bridges) and the /etc/profile.d env script.
 
 export interface SystemdBridge {
-  unitName: string; // e.g. agent-sandbox-ssh-agent.service
+  unitName: string; // e.g. agent-dev-env-ssh-agent.service
   description: string;
   nodePath: string;
   agentPath: string;
@@ -19,7 +19,7 @@ export const UBUNTU_SOCKETS = {
   docker: '/tmp/docker.sock',
 } as const;
 
-export const PROFILE_D_PATH = '/etc/profile.d/agent-sandbox.sh';
+export const PROFILE_D_PATH = '/etc/profile.d/agent-dev-env.sh';
 
 /** Builds a systemd user unit running `node agent bridge <role> …`. */
 export function systemdUnit(bridge: SystemdBridge): string {
@@ -54,7 +54,7 @@ export function systemdUnit(bridge: SystemdBridge): string {
 /** The /etc/profile.d script: bridge env exports for every login shell. */
 export function profileDScript(gw: string): string {
   return [
-    '# Agent sandbox bridge env (see docs/ubuntu-vmware.md)',
+    '# Agent dev env bridge env (see docs/ubuntu-vmware.md)',
     'export SSH_AUTH_SOCK=/tmp/ssh-agent.sock',
     'export DOCKER_HOST=unix:///tmp/docker.sock',
     `export TESTCONTAINERS_HOST_OVERRIDE=${gw}`,

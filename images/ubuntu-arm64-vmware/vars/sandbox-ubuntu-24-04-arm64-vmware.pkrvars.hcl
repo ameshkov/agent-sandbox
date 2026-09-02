@@ -19,7 +19,7 @@ iso_sha256 = "9a6ce6d7e66c8abed24d24944570a495caca80b3b0007df02818e13829f27f32"
 # (the hashes come from the vendor's published checksums); nvm (Node) and
 # rustup (Rust) pin the major/minor and resolve the latest patch. apt
 # packages (gcc, git, python3, ...) come from the Ubuntu archive.
-node_version = "22"
+node_version = "26"
 python_version = "3.12"
 github_cli_version = "2.98.0"
 github_cli_sha256 = "bbc4ac7964c2a091fd555cd1758d10a7cfcfdc472e405f0b0fb958f05d535cb6"

@@ -25,12 +25,12 @@ describe('deploy arg builders', () => {
       orasPushArgs(
         'ghcr.io/me/img:1.2.0,latest',
         'img.qcow2',
-        'application/vnd.agent-sandbox.qcow2',
+        'application/vnd.agent-dev-env.qcow2',
       ),
     ).toEqual([
       'push',
       '--artifact-type',
-      'application/vnd.agent-sandbox.qcow2',
+      'application/vnd.agent-dev-env.qcow2',
       'ghcr.io/me/img:1.2.0,latest',
       'img.qcow2:application/vnd.oci.image.layer.v1.tar',
     ]);

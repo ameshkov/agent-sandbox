@@ -267,6 +267,26 @@ docker compose version
 docker buildx version
 ```
 
+### What's synced from the host
+
+On first use (and on every later run) the runner wires three host
+integrations into the sandbox:
+
+- **Shared work directory** — a host directory is mounted into the guest
+  at `/Volumes/My Shared Files/<mount-name>` (default `dev`); see
+  [The one-VM, many-projects workflow in depth](#the-one-vm-many-projects-workflow-in-depth).
+- **SSH agent + Docker engine bridges** — the host's SSH agent (a
+  password manager) and Docker engine reach the guest (see
+  [Docker (remote engine)](#docker-remote-engine) and
+  [docs/ssh-agent.md](ssh-agent.md)).
+- **User settings copy** — opencode/Copilot/VS Code/git configs and
+  credentials are copied into the guest once per VM (see
+  [User settings on the guest](#user-settings-on-the-guest)).
+
+What is *not* synced: SSH keys (authentication goes through the bridged
+agent), the macOS Keychain (extension auth), and VS Code extension state
+— those stay on the host.
+
 ### OpenChamber from the host
 
 [OpenChamber](https://openchamber.dev) is the web UI for OpenCode: start
