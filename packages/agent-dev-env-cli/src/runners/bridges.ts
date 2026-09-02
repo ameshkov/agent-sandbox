@@ -69,16 +69,22 @@ export function findHostAgentSocket(
 
 /** The host's Docker engine socket — the engines the sandbox supports:
  *  Docker Desktop (4.30+), Colima, OrbStack, then the legacy /var/run.
+ *  The system-wide candidate is injectable so tests can be deterministic
+ *  on any host (Linux CI runners always expose /var/run/docker.sock).
  *
  * @param home - Host home directory.
+ * @param systemSocket - System-wide Docker socket candidate.
  * @returns The socket path, or undefined when no engine is running.
  */
-export function findHostDockerSocket(home: string): string | undefined {
+export function findHostDockerSocket(
+  home: string,
+  systemSocket = '/var/run/docker.sock',
+): string | undefined {
   const candidates = [
     join(home, '.docker', 'run', 'docker.sock'),
     join(home, '.colima', 'default', 'docker.sock'),
     join(home, '.orbstack', 'run', 'docker.sock'),
-    '/var/run/docker.sock',
+    systemSocket,
   ];
   return candidates.find((candidate) => isUnixSocket(candidate));
 }

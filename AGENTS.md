@@ -499,6 +499,11 @@ Every module MUST have test coverage:
   discovery, real process spawning) over mock-heavy unit tests. Where a
   boundary cannot run in a unit test (Tart, vmrun, guest SSH), keep the
   logic in a pure function and test that.
+- **Deterministic on any host**: Tests MUST NOT depend on implicit host
+  state (system sockets, installed tooling, env vars). Anything read from
+  the machine — e.g. the `/var/run/docker.sock` candidate in the Docker
+  socket discovery — must be injectable so the suite passes on both macOS
+  and GitHub's `ubuntu-latest` runners, not just the local machine.
 
 **Rationale**: Co-locating tests with source keeps related files close;
 testing against real components catches bugs that mocks hide.

@@ -87,3 +87,7 @@ never removed — changes land there until the next release.
   "Sandbox is ready" summary and then hung instead of exiting. The
   detached processes (`tart run`, the bridge forwarders, QEMU, the
   build watchdog) keep running under their pid files as intended.
+- The Docker socket discovery test no longer assumes the host has no
+  `/var/run/docker.sock`: the system-wide socket candidate is injectable,
+  so the suite is deterministic on GitHub's `ubuntu-latest` runners
+  (which always expose that socket) instead of passing only on macOS.

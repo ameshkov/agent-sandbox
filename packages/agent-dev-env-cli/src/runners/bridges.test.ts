@@ -55,7 +55,10 @@ describe('findHostDockerSocket', () => {
 
   it('returns nothing when no engine socket exists', () => {
     const home = mkdtempSync(join(tmpdir(), 'agent-empty-'));
-    expect(findHostDockerSocket(home)).toBeUndefined();
+    // CI runners (ubuntu-latest) always expose /var/run/docker.sock —
+    // point the system-wide candidate inside the empty temp home so the
+    // test is deterministic on any host.
+    expect(findHostDockerSocket(home, join(home, 'no-system-socket'))).toBeUndefined();
   });
 });
 
